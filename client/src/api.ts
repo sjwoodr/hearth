@@ -9,10 +9,13 @@ export class ApiError extends Error {
 }
 
 async function send(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+  // Non-GET requests are always JSON. With no Content-Type, Hono's csrf() treats the request
+  // as a form post and checks Origin, which fails for any LAN name other than HEARTH_ORIGIN.
+  const isRead = method === 'GET';
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: isRead ? undefined : { 'Content-Type': 'application/json' },
+    body: isRead ? undefined : JSON.stringify(body ?? {}),
     signal,
   });
   if (!res.ok) {
