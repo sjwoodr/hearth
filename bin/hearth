@@ -1,0 +1,4 @@
+#!/bin/sh
+# hearth admin console. No arguments opens the menu; `hearth help` lists subcommands.
+here=$(dirname "$(readlink -f "$0")")
+exec node "$here/../server/cli/hearth.ts" "$@"

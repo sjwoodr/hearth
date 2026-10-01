@@ -1,0 +1,34 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = path.resolve(import.meta.dirname, '..');
+
+// Values already in the environment win over .env (loadEnvFile never overwrites).
+const envFile = path.join(root, '.env');
+if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+
+function env(name: string, fallback: string): string {
+  return process.env[name] || fallback;
+}
+
+export const config = {
+  root,
+  host: env('HEARTH_HOST', '127.0.0.1'),
+  port: Number(env('HEARTH_PORT', '8787')),
+  origin: env('HEARTH_ORIGIN', 'http://localhost:5173'),
+  dbPath: path.resolve(root, env('HEARTH_DB_PATH', './data/hearth.db')),
+  ollamaUrl: env('OLLAMA_URL', 'http://127.0.0.1:11434'),
+  // Chosen by the French bench (docs/model-selection.md): 153/158 at 1.2 s/answer.
+  model: env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat'),
+  // Used, with thinking on, when the in-app Think toggle is on. The same model as HEARTH_MODEL keeps
+  // one copy in memory; a different one loads a second model.
+  thinkingModel: env('HEARTH_MODEL_THINKING', env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat')),
+  thinkingTokenBudget: Number(env('HEARTH_THINKING_TOKEN_BUDGET', '200')),
+  // 16k: long chats fit without trimming, so follow-ups reuse Ollama's cache (~1 s to the first word
+  // on a ~7k-token chat, against ~7 s at 8k). Gemma 4's sliding-window attention makes it nearly free:
+  // 14.01 GiB loaded against 13.99 at 8k.
+  numCtx: Number(env('HEARTH_NUM_CTX', '16384')),
+  embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
+  memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
+  systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
+};
