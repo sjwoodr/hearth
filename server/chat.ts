@@ -349,7 +349,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     if (!conversation) return c.json(notFound, 404);
     if (typeof body?.approve !== 'boolean') return c.json({ error: 'Say whether to search (approve: true or false).' }, 400);
     const pending = pendingSearches.take(conversation.id, user.id);
-    if (!pending) return c.json({ error: 'There is no search waiting in this chat.' }, 409);
+    // Waiting searches live in server memory, so a restart (or a newer message) loses them.
+    if (!pending) {
+      return c.json({ error: 'That search request is gone (hearth restarted, or the chat moved on). Tap Retry to ask again.' }, 409);
+    }
 
     const approved = body.approve === true && !!deps.webSearch;
     const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
