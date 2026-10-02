@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, ApiError, type Message, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
+import { plainSymbols } from '../../shared/plain-symbols.ts';
 
 type Props = {
   id: number | undefined;
@@ -461,7 +462,7 @@ function MessageBubble({ message, highlight }: BubbleProps) {
         remarkPlugins={[remarkGfm]}
         components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener" /> }}
       >
-        {content}
+        {plainSymbols(content)}
       </Markdown>
     </div>
   );

@@ -16,6 +16,7 @@ import {
 } from './conversations.ts';
 import { isPreempted } from './busy.ts';
 import { describeWaitingImages, parseImages, PendingImages, withImageText } from './images.ts';
+import { plainSymbols } from '../shared/plain-symbols.ts';
 import { SELF_CORRECTION, shouldThink, type ThinkDecision } from './think-router.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
@@ -176,12 +177,13 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           await send({ type: 'delta', text });
         }
         if (!reply.trim()) throw new Error('The model returned an empty reply.');
+        reply = plainSymbols(reply);
         const messageId = addMessage(db, conversationId, 'assistant', reply);
         // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
         await send({ type: 'done', messageId, ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}) });
       } catch (err) {
         // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
-        if (reply.trim()) addMessage(db, conversationId, 'assistant', reply);
+        if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply));
         if (!controller.signal.aborted) {
           await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });
         }

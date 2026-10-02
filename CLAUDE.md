@@ -178,7 +178,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   `"engine"`); it clipped a chat summary and two memories. Extraction keeps its schema, with a
   `pattern` (no raw `"`, must end in punctuation) that Ollama enforces. Use the same for new schemas.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
-  symbols as plain characters: Gemma otherwise emits LaTeX (`$\rightarrow$`) that shows raw.
+  symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
+  `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
+  spans made entirely of known commands, outside code, so dollar amounts and real math survive.
 
 ## Code map
 
@@ -193,6 +195,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
 | `server/busy.ts` | chat-first model scheduler |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
+| `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
