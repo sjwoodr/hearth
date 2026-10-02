@@ -253,6 +253,20 @@ then the client shows "Waiting for the model to finish another reply". Measured:
 into an extraction got its first token 3.0s later, instead of waiting out the ~28s run. Other Ollama
 clients are invisible to this.
 
-**Search.** The sidebar searches the user's messages with SQLite FTS5 (word forms and accents folded,
+**Search.** The sidebar searches the user's messages (and image descriptions) with SQLite FTS5 (word forms and accents folded,
 the last word matched as a prefix), and opening a result scrolls to the message. Input is quoted word
 by word, so it can never be FTS query syntax.
+
+**Images.** Paste, drop or add (**+**) up to 4 images to a message; the browser shrinks each to
+1600px JPEG first, which also strips EXIF data such as location. The chat model sees them with that
+message only. **Images are never stored**, not even as thumbnails: after the reply, a background job
+asks the model to transcribe any text exactly (mistakes kept) and describe the rest, and that
+description is all hearth keeps (`messages.image_note`). It stands in for the images in later
+prompts, summaries, memory extraction and search, and the message shows it, collapsed, after a
+reload. The description is written as a continuation of the prompt just answered, so Ollama reuses
+its cache and reads only the reply and the request. Until it's written, the images wait in server
+memory (at most 8 messages' worth), and a Regenerate or a re-answer with thinking still sees them
+until the next message. A restart loses undescribed images; the message then says so. Measured: an
+image costs ~260 prompt tokens however large (Ollama scales it down) and ~3.5 s to encode on the
+780M. Think: Auto thinks when an image comes with a request to check or correct, since the rules
+can't read the French inside it.

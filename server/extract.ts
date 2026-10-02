@@ -3,6 +3,7 @@
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
+import { withImageText, type MessageRow } from './images.ts';
 import { cosine, MAX_MEMORY_CHARS, toBlob, withEmbeddings, type MemoryKind } from './memories.ts';
 import type { EmbedFn, JsonFn } from './ollama.ts';
 import { cleanDisplayName, MAX_DISPLAY_NAME_CHARS } from './users.ts';
@@ -211,8 +212,8 @@ export async function extractMemories(
   if (!conversation) throw new Error(`No conversation ${conversationId}.`);
 
   const unread = db
-    .prepare('SELECT id, role, content FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
-    .all(conversation.id, conversation.memory_through_message_id) as { id: number; role: string; content: string }[];
+    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
+    .all(conversation.id, conversation.memory_through_message_id) as MessageRow[];
   const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, named: false };
   if (unread.length === 0) return none;
   const lastId = unread.at(-1)!.id;
@@ -222,7 +223,7 @@ export async function extractMemories(
   const transcript: string[] = [];
   for (let i = unread.length - 1; i >= 0; i--) {
     const m = unread[i]!;
-    const line = `${m.role === 'user' ? conversation.username : 'hearth'}: ${m.content}`;
+    const line = `${m.role === 'user' ? conversation.username : 'hearth'}: ${withImageText(m.content, m.image_count, m.image_note)}`;
     used += estimateTokens(line);
     if (used > TRANSCRIPT_BUDGET_TOKENS && transcript.length > 0) break;
     transcript.unshift(line);

@@ -1,8 +1,10 @@
+import { IMAGE_TOKENS } from './images.ts';
 import type { ChatMessage } from './ollama.ts';
 
 // Ceiling: a character-count estimate, not the model's tokenizer. ~3.5 chars per token
 // errs toward over-counting English, so trimming happens slightly early rather than late.
 export const estimateTokens = (text: string) => Math.ceil(text.length / 3.5) + 4;
+const messageTokens = (m: ChatMessage) => estimateTokens(m.content) + (m.images?.length ?? 0) * IMAGE_TOKENS;
 
 /**
  * The system prompt plus as much recent history as fits in `budget` tokens. Oldest
@@ -14,7 +16,7 @@ export function fitHistory(system: string, history: ChatMessage[], budget: numbe
   const kept: ChatMessage[] = [];
   for (let i = history.length - 1; i >= 0; i--) {
     const message = history[i]!;
-    const cost = estimateTokens(message.content);
+    const cost = messageTokens(message);
     if (used + cost > budget && kept.length > 0) break;
     used += cost;
     kept.unshift(message);

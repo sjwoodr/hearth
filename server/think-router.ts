@@ -29,9 +29,13 @@ const QUIZ_GIVEN = /_{2,}|\bpick (qui|que|one)\b|\bfill (in )?the (gap|blank)|gi
 const looksLikeAnswers = (text: string) =>
   text.length <= 200 && (/^\s*\d+[).:]/.test(text) || /\b\d+[).:]\s*\S+/.test(text) || text.trim().split(/\s+/).length <= 6);
 
-export function shouldThink(message: string, previousReply?: string): ThinkDecision {
+/** `hasImages`: the message came with images, whose text these rules can't see. */
+export function shouldThink(message: string, previousReply?: string, hasImages = false): ThinkDecision {
   // "Is it correct that Willie Mays played for the Giants?" is a fact check, not a French check.
   if (CHECKING.test(message) && aboutFrench(message)) return { think: true, reason: 'checking your French' };
+  // "Can you check my homework?" with a photo: the French is in the image. Fast mode misread a
+  // photographed "tu écoute" as correct, the same tu -s blind spot the text bench found.
+  if (hasImages && CHECKING.test(message)) return { think: true, reason: 'checking the French in an image' };
   if (previousReply && QUIZ_GIVEN.test(previousReply)) {
     if (looksLikeAnswers(message)) return { think: true, reason: 'grading quiz answers' };
     // Pushing back on a quiz ("I thought a verb meant qui?") needs the same care as the grading.

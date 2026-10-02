@@ -2,6 +2,7 @@
 import { createApp } from './app.ts';
 import { openDb } from './db.ts';
 import type { ChatFn, ChatMessage } from './ollama.ts';
+import { createUser } from './users.ts';
 
 export const ORIGIN = 'https://hearth.example.com';
 
@@ -23,6 +24,9 @@ export type FakeModel = {
   preempted: number;
   /** Prompts sent to the thinking variant; it reports THINKING_TOKENS of reasoning, then replies. */
   thinkingCalls: ChatMessage[][];
+  /** Image describe requests, and what the next one answers; an Error makes it fail. */
+  describeCalls: ChatMessage[][];
+  description: string | Error;
 };
 
 export const THINKING_TOKENS = 25;
@@ -40,6 +44,8 @@ export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkin
     busy: false,
     preempted: 0,
     thinkingCalls: [],
+    describeCalls: [],
+    description: 'A page of French homework.',
   };
   const chat: ChatFn = async function* (messages, signal) {
     model.calls.push(messages);
@@ -70,6 +76,11 @@ export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkin
       if (model.title instanceof Error) throw model.title;
       return model.title;
     },
+    describeImages: async (messages) => {
+      model.describeCalls.push(messages);
+      if (model.description instanceof Error) throw model.description;
+      return model.description;
+    },
     afterReply: (id) => model.afterReply.push(id),
     replyActive: () => model.busy,
     preemptBackground: () => {
@@ -94,4 +105,19 @@ export function sessionCookie(res: Response): string {
   const match = /hearth_session=([^;]+)/.exec(header);
   if (!match) throw new Error(`no session cookie in: ${header}`);
   return `hearth_session=${match[1]}`;
+}
+
+/** Creates a user and signs them in; returns the session cookie. */
+export async function signIn(ctx: ReturnType<typeof setupApp>, username: string): Promise<string> {
+  await createUser(ctx.db, username, 'a good password');
+  return sessionCookie(await login(ctx.app, username, 'a good password'));
+}
+
+/** An API request with the session cookie and a same-origin header, as JSON when there's a body. */
+export function call(app: TestApp, cookie: string, method: string, path: string, body?: unknown) {
+  return app.request(`/api${path}`, {
+    method,
+    headers: { Cookie: cookie, Origin: ORIGIN, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }

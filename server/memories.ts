@@ -116,6 +116,8 @@ export async function withEmbeddings(
 
 /** The user's facts ranked by similarity to `query`. */
 export async function rankFacts(db: DB, userId: number, query: string, embed: EmbedFn): Promise<ScoredFact[]> {
+  // An image sent without words has nothing to recall by.
+  if (!query.trim()) return [];
   const facts = await withEmbeddings(db, userId, embed, 'fact');
   if (facts.length === 0) return [];
   const [q] = await embed([query]);

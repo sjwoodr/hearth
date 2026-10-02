@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, ApiError, type Message, type StreamEvent } from './api.ts';
+import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 
 type Props = {
   id: number | undefined;
@@ -16,17 +17,22 @@ type Props = {
 /**
  * A message as shown here. `note` is this session's timing line ("Answered in 12.3 seconds");
  * `selfCorrected` marks a fast reply that caught itself mid-answer, to offer thinking.
+ * `previews` are images sent from this page, kept in this tab only: the server never stores
+ * them, so after a reload a message shows hearth's description of its images instead.
  */
-type ViewMessage = Message & { note?: string; selfCorrected?: boolean };
+type ViewMessage = Message & { note?: string; selfCorrected?: boolean; previews?: string[] };
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
 let tempId = 0;
-const localMessage = (role: Message['role'], content: string): ViewMessage => ({
+const localMessage = (role: Message['role'], content: string, previews: string[] = []): ViewMessage => ({
   id: --tempId,
   role,
   content,
+  image_count: previews.length,
+  image_note: null,
   created_at: '',
+  ...(previews.length ? { previews } : {}),
 });
 
 const DROPPED = 'The connection dropped before the reply finished. Reload to see what was saved.';
@@ -70,6 +76,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   // Why Auto chose to think for the reply in progress, if it did.
   const [autoReason, setAutoReason] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  // Images waiting to be sent with the draft, already shrunk, as data URLs.
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [highlight, setHighlight] = useState<number | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
@@ -206,12 +215,41 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     return controller;
   }
 
+  async function attach(files: File[]) {
+    if (files.length === 0) return;
+    const room = MAX_ATTACHMENTS - attachments.length;
+    if (files.length > room) setError(`At most ${MAX_ATTACHMENTS} images per message.`);
+    try {
+      const shrunk = await Promise.all(files.slice(0, Math.max(room, 0)).map(shrinkImage));
+      setAttachments((a) => [...a, ...shrunk].slice(0, MAX_ATTACHMENTS));
+    } catch {
+      setError("That image couldn't be opened.");
+    }
+  }
+
+  function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = imageFiles(e.clipboardData.files);
+    if (files.length === 0) return;
+    // Some apps put both the picture and its file name on the clipboard: keep only the picture.
+    e.preventDefault();
+    void attach(files);
+  }
+
+  function onDrop(e: DragEvent<HTMLFormElement>) {
+    const files = imageFiles(e.dataTransfer.files);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void attach(files);
+  }
+
   async function submit(e?: FormEvent) {
     e?.preventDefault();
     const text = draft.trim();
-    if (!text || streaming) return;
+    const images = attachments;
+    if ((!text && images.length === 0) || streaming) return;
     setDraft('');
-    const pending = localMessage('user', text);
+    setAttachments([]);
+    const pending = localMessage('user', text, images);
     setMessages((m) => [...m, pending]);
     const controller = begin();
 
@@ -226,13 +264,15 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setStreamText(null);
       setMessages((m) => m.filter((msg) => msg !== pending));
       setDraft(text);
+      setAttachments(images);
       onError(err);
       return;
     }
-    if (!(await readReply(api.sendMessage(conversationId, text, wire(think), controller.signal), controller))) {
+    if (!(await readReply(api.sendMessage(conversationId, text, images, wire(think), controller.signal), controller))) {
       // Refused before it was saved: take the message back out and restore the draft.
       setMessages((m) => m.filter((msg) => msg !== pending));
       setDraft(text);
+      setAttachments(images);
     }
   }
 
@@ -269,14 +309,14 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         {messages.length === 0 && !streaming && <p className="empty">What's on your mind, {name}?</p>}
         {messages.map((m) => (
           <Fragment key={m.id}>
-            <MessageBubble id={m.id} role={m.role} content={m.content} highlight={m.id === highlight} />
+            <MessageBubble message={m} highlight={m.id === highlight} />
             {m.note && <p className="reply-note">{m.note}</p>}
           </Fragment>
         ))}
         {streaming &&
           (streamText ? (
             <>
-              <MessageBubble role="assistant" content={streamText} />
+              <MessageBubble message={{ role: 'assistant', content: streamText }} />
               <p className="reply-note" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s
               </p>
@@ -319,10 +359,48 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         </div>
       </div>
 
-      <form className="composer" onSubmit={submit}>
+      <form className="composer" onSubmit={submit} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+        {attachments.length > 0 && (
+          <ul className="attachments" aria-label="Images to send">
+            {attachments.map((src, i) => (
+              <li key={i}>
+                <img src={src} alt={`Image ${i + 1} to send`} />
+                <button
+                  type="button"
+                  className="icon"
+                  aria-label={`Remove image ${i + 1}`}
+                  onClick={() => setAttachments((a) => a.filter((_, j) => j !== i))}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="visually-hidden" htmlFor="composer-input">
           Message
         </label>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            void attach(imageFiles(e.target.files));
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          className="attach"
+          title="Add images (or paste or drop them here). hearth describes them after replying and keeps only the description."
+          aria-label="Add images"
+          disabled={attachments.length >= MAX_ATTACHMENTS}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          +
+        </button>
         <textarea
           id="composer-input"
           rows={1}
@@ -330,6 +408,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           autoFocus
         />
         <button
@@ -350,7 +429,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             Stop
           </button>
         ) : (
-          <button type="submit" disabled={!draft.trim()}>
+          <button type="submit" disabled={!draft.trim() && attachments.length === 0}>
             Send
           </button>
         )}
@@ -359,14 +438,19 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   );
 }
 
-type BubbleProps = { id?: number; role: Message['role']; content: string; highlight?: boolean };
+type BubbleProps = {
+  message: Pick<ViewMessage, 'role' | 'content'> & Partial<ViewMessage>;
+  highlight?: boolean;
+};
 
-function MessageBubble({ id, role, content, highlight }: BubbleProps) {
+function MessageBubble({ message, highlight }: BubbleProps) {
+  const { id, role, content } = message;
   const className = `message ${role}${highlight ? ' highlight' : ''}`;
   const domId = id !== undefined && id > 0 ? `message-${id}` : undefined;
   if (role === 'user') {
     return (
       <div id={domId} className={className}>
+        <MessageImages message={message} />
         {content}
       </div>
     );
@@ -380,5 +464,28 @@ function MessageBubble({ id, role, content, highlight }: BubbleProps) {
         {content}
       </Markdown>
     </div>
+  );
+}
+
+/** Images sent from this tab, or else what hearth kept of them: its description. */
+function MessageImages({ message }: { message: BubbleProps['message'] }) {
+  const count = message.image_count ?? 0;
+  if (message.previews?.length) {
+    return (
+      <div className="message-images">
+        {message.previews.map((src, i) => (
+          <img key={i} src={src} alt={`Sent image ${i + 1}`} />
+        ))}
+      </div>
+    );
+  }
+  if (count === 0) return null;
+  const images = count === 1 ? 'Image' : `${count} images`;
+  if (!message.image_note) return <p className="image-note muted">{images}, not kept and not described</p>;
+  return (
+    <details className="image-note">
+      <summary>{images}, as hearth described {count === 1 ? 'it' : 'them'}</summary>
+      {message.image_note}
+    </details>
   );
 }

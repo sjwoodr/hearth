@@ -9,6 +9,7 @@ import { resolveClientIp } from './client-ip.ts';
 import { config } from './config.ts';
 import { openDb } from './db.ts';
 import { startMemorySweeper } from './extract.ts';
+import { makeImageDescriber } from './images.ts';
 import { memoryContext } from './memories.ts';
 import { ollamaChat, ollamaEmbed, ollamaJson, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
@@ -35,6 +36,7 @@ const app = createApp({
   // The budget itself, plus roughly as much again when the reasoning is handed back as notes.
   thinkingReserve: 2 * config.thinkingTokenBudget + 64,
   titleFor: makeTitler(json),
+  describeImages: makeImageDescriber(json),
   afterReply: createSummarizer(db, json, config.numCtx),
   replyActive: model.replyActive,
   preemptBackground: model.preemptBackground,

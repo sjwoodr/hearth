@@ -3,6 +3,7 @@
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
+import { withImageText, type MessageRow } from './images.ts';
 import type { JsonFn } from './ollama.ts';
 
 // Scaled to the context window: summarize once the unsummarized part passes half of it, keeping the
@@ -26,21 +27,22 @@ export async function summarizeIfLong(db: DB, conversationId: number, json: Json
   if (!chat) return false;
 
   const messages = db
-    .prepare('SELECT id, role, content FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
-    .all(conversationId, chat.through) as { id: number; role: string; content: string }[];
-  const total = messages.reduce((n, m) => n + estimateTokens(m.content), 0);
+    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
+    .all(conversationId, chat.through) as MessageRow[];
+  const text = (m: MessageRow) => withImageText(m.content, m.image_count, m.image_note);
+  const total = messages.reduce((n, m) => n + estimateTokens(text(m)), 0);
   if (total <= above) return false;
 
   // Keep the newest messages verbatim; everything older gets folded in.
   let kept = 0;
   let cut = messages.length;
-  while (cut > 0 && kept + estimateTokens(messages[cut - 1]!.content) <= keep) {
-    kept += estimateTokens(messages[--cut]!.content);
+  while (cut > 0 && kept + estimateTokens(text(messages[cut - 1]!)) <= keep) {
+    kept += estimateTokens(text(messages[--cut]!));
   }
   const fold = messages.slice(0, Math.max(cut, 1));
 
   console.log(`summary: folding ${fold.length} older message(s) of chat ${conversationId}…`);
-  const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : 'hearth'}: ${m.content}`).join('\n\n');
+  const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : 'hearth'}: ${text(m)}`).join('\n\n');
   const raw = (await json(
     [
       {

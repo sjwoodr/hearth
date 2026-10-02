@@ -3,7 +3,15 @@
 import type { DB } from './db.ts';
 
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
-export type Message = { id: number; role: 'user' | 'assistant'; content: string; created_at: string };
+/** `image_count` images came with the message; `image_note` is the model's description of them, once written. */
+export type Message = {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  image_count: number;
+  image_note: string | null;
+  created_at: string;
+};
 
 export function listConversations(db: DB, userId: number): Conversation[] {
   return db
@@ -56,7 +64,7 @@ export function deleteConversation(db: DB, userId: number, id: number): boolean 
 export function listMessages(db: DB, userId: number, conversationId: number): Message[] {
   return db
     .prepare(
-      `SELECT m.id, m.role, m.content, m.created_at FROM messages m
+      `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.created_at FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE m.conversation_id = ? AND c.user_id = ? ORDER BY m.id`,
     )
@@ -64,14 +72,19 @@ export function listMessages(db: DB, userId: number, conversationId: number): Me
 }
 
 /** Caller must already have checked the conversation belongs to the user. */
-export function addMessage(db: DB, conversationId: number, role: Message['role'], content: string): number {
+export function addMessage(db: DB, conversationId: number, role: Message['role'], content: string, imageCount = 0): number {
   return db.transaction(() => {
     const id = db
-      .prepare('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)')
-      .run(conversationId, role, content).lastInsertRowid;
+      .prepare('INSERT INTO messages (conversation_id, role, content, image_count) VALUES (?, ?, ?, ?)')
+      .run(conversationId, role, content, imageCount).lastInsertRowid;
     db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
     return Number(id);
   })();
+}
+
+/** The model's description of a message's images. Only the server's own background job calls this. */
+export function setImageNote(db: DB, messageId: number, note: string): boolean {
+  return db.prepare('UPDATE messages SET image_note = ? WHERE id = ? AND image_count > 0').run(note, messageId).changes > 0;
 }
 
 /** Caller must already have checked the conversation belongs to the user. */

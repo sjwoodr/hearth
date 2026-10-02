@@ -1,4 +1,5 @@
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+/** `images`: base64 PNG, JPEG or WebP, for a model that can see (Ollama's per-message field). */
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string; images?: string[] };
 
 /** Called as a thinking reply reasons, with the number of reasoning tokens so far. */
 export type ChatOptions = { onThinking?: (tokens: number) => void };

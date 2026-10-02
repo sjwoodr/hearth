@@ -15,6 +15,7 @@ import {
   titleFrom,
 } from './conversations.ts';
 import { isPreempted } from './busy.ts';
+import { describeWaitingImages, parseImages, PendingImages, withImageText } from './images.ts';
 import { SELF_CORRECTION, shouldThink, type ThinkDecision } from './think-router.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
@@ -35,6 +36,8 @@ export type ChatDeps = {
   thinkingReserve?: number;
   /** A model-written title for a chat's first exchange. */
   titleFor?: (userMessage: string, reply: string) => Promise<string | undefined>;
+  /** Runs a describe request (images.ts) in the background and returns the description. */
+  describeImages?: (messages: ChatMessage[]) => Promise<string>;
   /** Called after each saved reply, for background work such as summarizing long chats. */
   afterReply?: (conversationId: number) => void;
   /** True while another chat reply is being generated, so this one will queue. */
@@ -59,15 +62,16 @@ const parseId = (value: string) => {
  * The client's Think setting: true (always), false (never) or "auto", where the rules in
  * think-router.ts decide from the message and the reply before it.
  */
-function decideThinking(setting: unknown, message: string, previousReply: string | undefined) {
+function decideThinking(setting: unknown, message: string, previousReply: string | undefined, hasImages: boolean) {
   if (setting === true) return { think: true, auto: false };
-  if (setting === 'auto') return { ...shouldThink(message, previousReply), auto: true };
+  if (setting === 'auto') return { ...shouldThink(message, previousReply, hasImages), auto: true };
   return { think: false, auto: false };
 }
 
 export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   const { db, chat, systemPrompt, numCtx, memoryContext } = deps;
   const notFound = { error: 'Chat not found.' };
+  const pendingImages = new PendingImages();
 
   api.get('/conversations', (c) => c.json(listConversations(db, c.get('user').id)));
 
@@ -97,6 +101,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   api.delete('/conversations/:id', (c) => {
     const id = parseId(c.req.param('id'));
     if (!id || !deleteConversation(db, c.get('user').id, id)) return c.json(notFound, 404);
+    pendingImages.forget(id);
     return c.json({ ok: true });
   });
 
@@ -104,16 +109,20 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   // turn to turn (personality, always-remembered memories, the running summary, older history),
   // which lets Ollama reuse its cache and read only what's new. The facts recalled for this message
   // change every time, so they ride on the newest message, in the prompt only; the stored message
-  // is left as written.
+  // is left as written. Images go to the model while they're still in memory: until described, and
+  // after that only until the next message (so a retry still sees them). Then the description stands in.
   async function buildPrompt(user: SessionUser, conversationId: number, latest: string, think = false): Promise<ChatMessage[]> {
     const state = getContextState(db, conversationId);
-    const history: ChatMessage[] = listMessages(db, user.id, conversationId)
-      .filter((m) => m.id > state.summary_through_message_id)
-      .map(({ role, content }) => ({ role, content }));
+    const messages = listMessages(db, user.id, conversationId).filter((m) => m.id > state.summary_through_message_id);
+    const history: ChatMessage[] = messages.map((m) => {
+      const pending = m.image_count > 0 ? pendingImages.get(m.id) : undefined;
+      if (pending) return { role: m.role, content: m.content, images: pending.images };
+      return { role: m.role, content: withImageText(m.content, m.image_count, m.image_note) };
+    });
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
     if (recalled && last?.role === 'user') {
-      history[history.length - 1] = { role: 'user', content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
+      history[history.length - 1] = { ...last, content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
     }
     const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
     const system = [systemPrompt(), stable, earlier].filter(Boolean).join('\n\n');
@@ -188,6 +197,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
         }
       }
+      if (deps.describeImages) {
+        const turn = { conversationId, answeredId: opts.userMessageId, prompt, reply };
+        describeWaitingImages(db, pendingImages, deps.describeImages, turn);
+      }
       deps.afterReply?.(conversationId);
     });
   }
@@ -200,18 +213,26 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
 
     const body = await c.req.json().catch(() => null);
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
-    if (!content) return c.json({ error: 'Message is empty.' }, 400);
+    const parsed = parseImages(body?.images);
+    if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+    const { images } = parsed;
+    if (!content && images.length === 0) return c.json({ error: 'Message is empty.' }, 400);
     if (content.length > MAX_MESSAGE_CHARS) {
       return c.json({ error: `Message is too long (max ${MAX_MESSAGE_CHARS} characters).` }, 400);
     }
 
     const earlier = listMessages(db, user.id, conversation.id);
     const isFirst = earlier.length === 0;
-    const decision = decideThinking(body?.think, content, earlier.findLast((m) => m.role === 'assistant')?.content);
-    const userMessageId = addMessage(db, conversation.id, 'user', content);
-    if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(content));
+    const previousReply = earlier.findLast((m) => m.role === 'assistant')?.content;
+    const decision = decideThinking(body?.think, content, previousReply, images.length > 0);
+    pendingImages.moveOn(conversation.id);
+    const userMessageId = addMessage(db, conversation.id, 'user', content, images.length);
+    if (images.length > 0) pendingImages.add(userMessageId, conversation.id, images);
+    // An image alone has no words for a title yet; the model's title after the reply will name it.
+    const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
+    if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
     const prompt = await buildPrompt(user, conversation.id, content, decision.think);
-    return streamReply(c, conversation.id, prompt, { userMessageId, firstMessage: isFirst ? content : undefined, decision });
+    return streamReply(c, conversation.id, prompt, { userMessageId, firstMessage: isFirst ? firstMessage : undefined, decision });
   });
 
   // Regenerates the reply to the latest user message, replacing the last reply if there is one
@@ -230,7 +251,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     if (last!.role === 'assistant') deleteMessage(db, conversation.id, last!.id);
 
     const before = messages.slice(0, messages.indexOf(question));
-    const decision = decideThinking(body?.think, question.content, before.findLast((m) => m.role === 'assistant')?.content);
+    const decision = decideThinking(
+      body?.think,
+      question.content,
+      before.findLast((m) => m.role === 'assistant')?.content,
+      question.image_count > 0,
+    );
     const prompt = await buildPrompt(user, conversation.id, question.content, decision.think);
     return streamReply(c, conversation.id, prompt, {
       userMessageId: question.id,

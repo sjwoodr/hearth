@@ -166,6 +166,12 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   use `model.background(...)` and fail with `PreemptedError` when a reply starts; they write nothing
   and retry later (extraction skips its 15-minute failure backoff for preemption). Add new background
   model work the same way, never by calling `ollamaJson` directly.
+- **Images are never stored** (owner's call): the model sees an image on its own turn, then a
+  background job (`describeWaitingImages` in `chat.ts`) writes a transcription + description to
+  `messages.image_note`, and that stands in for it from then on. Undescribed images live only in
+  `PendingImages` (server memory). Don't add a BLOB or file store, and don't keep images in history:
+  ~260 tokens each, every turn. The describe request continues the just-answered prompt so it hits
+  Ollama's cache; keep it that way.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters: Gemma otherwise emits LaTeX (`$\rightarrow$`) that shows raw.
 
@@ -181,6 +187,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
 | `server/busy.ts` | chat-first model scheduler |
+| `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
@@ -218,5 +225,11 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   exposure: see `TODO.md`.
 - Bench models no longer needed are still pulled in Ollama (Mistral Small/Nemo, Ministral, Qwen 3,
   Aya, Gemma 12B, Nemotron); remove them if disk matters.
+- **Grading French from a photo is unmeasured.** In the first real run (2026-10-01, typed homework
+  image, Think: Auto thought first) the reply called "Tu écoute" correct, while the background
+  transcription kept the mistake verbatim. A 3-run probe was mixed (image + thinking caught it 3/3,
+  image + transcription + thinking 1/3, text only 3/3), far too small to decide anything. Worth a bench
+  section (printed and handwritten photos, right and wrong) before trusting photo grading; if images
+  grade worse than text, transcribe first and grade the transcript.
 - Every local model invents specifics on niche topics (commands, IDs). hearth's system prompt asks it
   to say when it is unsure; don't trust it for anything you'll act on without checking.

@@ -31,7 +31,15 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
 /** `name` is the display name, or the username when none is set. */
 export type Me = { username: string; name: string };
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
-export type Message = { id: number; role: 'user' | 'assistant'; content: string; created_at: string };
+/** `image_count` images came with the message; `image_note` is hearth's description of them, once written. */
+export type Message = {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  image_count: number;
+  image_note: string | null;
+  created_at: string;
+};
 
 export type SearchHit = {
   conversationId: number;
@@ -89,9 +97,18 @@ export const api = {
     request<{ conversation: Conversation; messages: Message[] }>('GET', `/api/conversations/${id}`),
   renameConversation: (id: number, title: string) => request('PATCH', `/api/conversations/${id}`, { title }),
   deleteConversation: (id: number) => request('DELETE', `/api/conversations/${id}`),
-  /** `think`: true always thinks, false never, "auto" lets the server decide per message. */
-  sendMessage: async function* (conversationId: number, content: string, think: boolean | 'auto', signal: AbortSignal) {
-    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/messages`, { content, think }, signal));
+  /**
+   * `images`: data URLs, sent once and never stored. `think`: true always thinks, false never,
+   * "auto" lets the server decide per message.
+   */
+  sendMessage: async function* (
+    conversationId: number,
+    content: string,
+    images: string[],
+    think: boolean | 'auto',
+    signal: AbortSignal,
+  ) {
+    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/messages`, { content, images, think }, signal));
   },
   retry: async function* (conversationId: number, think: boolean | 'auto', signal: AbortSignal) {
     yield* readEvents(await send('POST', `/api/conversations/${conversationId}/retry`, { think }, signal));
