@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, memo, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
@@ -488,7 +488,10 @@ type BubbleProps = {
   highlight?: boolean;
 };
 
-function MessageBubble({ message, highlight }: BubbleProps) {
+// Memoized: every keystroke in the composer re-renders this view, and re-parsing every message's
+// Markdown made typing lag in long chats (~36 ms a key at 166 messages). A message re-renders only
+// when it, or its highlight, changes.
+const MessageBubble = memo(function MessageBubble({ message, highlight }: BubbleProps) {
   const { id, role, content } = message;
   const className = `message ${role}${highlight ? ' highlight' : ''}`;
   const domId = id !== undefined && id > 0 ? `message-${id}` : undefined;
@@ -511,7 +514,7 @@ function MessageBubble({ message, highlight }: BubbleProps) {
       {message.sources?.length ? <Sources sources={message.sources} /> : null}
     </div>
   );
-}
+});
 
 const site = (url: string) => {
   try {
