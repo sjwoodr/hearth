@@ -200,6 +200,12 @@ describe('background JSON replies against a fake Ollama', () => {
     expect(requests[0]?.options?.num_predict).toBe(JSON_MAX_TOKENS);
   });
 
+  it('returns plain text, with no format sent, when there is no schema', async () => {
+    const { url, requests } = await fakeOllama({ message: { content: 'They discussed the band\'s "engine".' }, done_reason: 'stop' });
+    expect(await ollamaJson(url, 'm', 8192)([], null)).toBe('They discussed the band\'s "engine".');
+    expect(requests[0]).not.toHaveProperty('format');
+  });
+
   it('fails a reply cut off at the cap instead of parsing it', async () => {
     // Valid JSON on purpose: the cap must be detected from done_reason, not from a parse error.
     const { url } = await fakeOllama({ message: { content: '{"add":[],"update":[],"name":""}' }, done_reason: 'length' });

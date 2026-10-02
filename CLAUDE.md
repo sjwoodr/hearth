@@ -42,7 +42,7 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 |---|---|---|
 | Chat (`HEARTH_MODEL`) | `gemma4:26b-a4b-it-qat` | thinking off, ~1.2 s/answer, ~26 tok/s, 15 GB loaded |
 | Thinking (`HEARTH_MODEL_THINKING`) | same model, `think: true` | same model = one copy in memory; a different one loads a second |
-| Background (titles, summaries, extraction, duplicate checks) | `HEARTH_MODEL` via `ollamaJson` | never thinks; `format` JSON schema, temperature 0.2 |
+| Background (titles, summaries, extraction, duplicate checks) | `HEARTH_MODEL` via `ollamaJson` | never thinks; `format` JSON schema (extraction) or plain text, temperature 0.2 |
 | Embeddings (`HEARTH_EMBED_MODEL`) | `embeddinggemma:300m-qat-q8_0` | memory recall and near-duplicate candidates |
 
 Defaults live in `server/config.ts`; `.env` overrides them; the real environment overrides both.
@@ -172,6 +172,11 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   `PendingImages` (server memory). Don't add a BLOB or file store, and don't keep images in history:
   ~260 tokens each, every turn. The describe request continues the just-answered prompt so it hits
   Ollama's cache; keep it that way.
+- **Free prose from background jobs is plain text, not a JSON schema** (summaries, titles, image
+  descriptions: `json(messages, null)`). Under Ollama's `format` grammar, a `"` the model meant to open
+  a quotation closes the string, so text was silently cut mid-sentence ("…how the band's" before
+  `"engine"`); it clipped a chat summary and two memories. Extraction keeps its schema, with a
+  `pattern` (no raw `"`, must end in punctuation) that Ollama enforces. Use the same for new schemas.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters: Gemma otherwise emits LaTeX (`$\rightarrow$`) that shows raw.
 

@@ -57,19 +57,16 @@ export function withImageText(content: string, imageCount: number, imageNote: st
   return content ? `${text}\n\n${content}` : text;
 }
 
+// Plain text, not a JSON schema: under a schema a double quote in the transcribed text would end it
+// early (see JsonFn), and homework is full of quotations.
+const LAYOUT =
+  'First describe briefly what they show. Then, if they contain any text, write a line saying ' +
+  '"Text in the image:" and transcribe all of it exactly as written, keeping every spelling, accent and ' +
+  'grammar mistake. Reply with only that.';
 const DESCRIBE =
-  'For the record (this reply is not shown to me): transcribe all text in the image(s) in my last message ' +
-  'exactly as written, keeping every spelling, accent and grammar mistake, and describe briefly what else ' +
-  'they show. This replaces the images in our conversation from now on.';
-const DESCRIBE_ALONE =
-  'Transcribe all text in these images exactly as written, keeping every spelling, accent and grammar ' +
-  'mistake, and describe briefly what else they show.';
-
-const SCHEMA = {
-  type: 'object',
-  properties: { text: { type: 'string' }, description: { type: 'string' } },
-  required: ['text', 'description'],
-};
+  'For the record (this reply is not shown to me, and replaces the images in our conversation from now ' +
+  `on): describe the image(s) in my last message. ${LAYOUT}`;
+const DESCRIBE_ALONE = `Describe these images. ${LAYOUT}`;
 
 /**
  * Describing right after the reply, as a continuation of the same prompt, lets Ollama reuse what it
@@ -86,10 +83,8 @@ export const describeAlone = (images: string[]): ChatMessage[] => [{ role: 'user
 /** Runs a describe request and turns the answer into the stored description. */
 export function makeImageDescriber(json: JsonFn) {
   return async (messages: ChatMessage[]): Promise<string> => {
-    const raw = (await json(messages, SCHEMA)) as { text?: unknown; description?: unknown };
-    const description = typeof raw?.description === 'string' ? raw.description.trim() : '';
-    const text = typeof raw?.text === 'string' ? raw.text.trim() : '';
-    const note = [description, text && `Text in the image:\n${text}`].filter(Boolean).join('\n\n');
+    const raw = await json(messages, null);
+    const note = typeof raw === 'string' ? raw.trim() : '';
     if (!note) throw new Error('The model returned an empty image description.');
     return note.slice(0, MAX_NOTE_CHARS);
   };

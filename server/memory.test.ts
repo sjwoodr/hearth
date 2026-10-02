@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DB } from './db.ts';
-import { conversationsReadyForExtraction, extractMemories, sanitizeExtraction } from './extract.ts';
+import { conversationsReadyForExtraction, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { login, ORIGIN, sessionCookie, setupApp } from './testing.ts';
@@ -84,6 +84,19 @@ describe('sanitizing what the model proposes', () => {
     expect(sanitizeExtraction({ add: many, update: [] }, []).add).toHaveLength(8);
     expect(sanitizeExtraction(null, [])).toEqual({ add: [], update: [] });
     expect(sanitizeExtraction({ add: 'nope' }, [])).toEqual({ add: [], update: [] });
+  });
+});
+
+describe('the extraction schema', () => {
+  // Ollama enforces the pattern while generating. Without it, a quoted word ended a memory early:
+  // "Steve prefers music with a high-velocity, driving, and staccato" (the model meant "engine").
+  it('only lets a fact end where its sentence does, with no raw double quote', () => {
+    const pattern = new RegExp(EXTRACTION_SCHEMA.properties.add.items.properties.content.pattern);
+    expect(pattern.test("Steve likes Therapie TAXI's 'engine'.")).toBe(true);
+    expect(pattern.test('Steve prefers music with a driving, staccato')).toBe(false);
+    expect(pattern.test('Steve likes the "engine".')).toBe(false);
+    expect(pattern.test('Two\nlines.')).toBe(false);
+    expect(EXTRACTION_SCHEMA.properties.update.items.properties.content).toBe(EXTRACTION_SCHEMA.properties.add.items.properties.content);
   });
 });
 

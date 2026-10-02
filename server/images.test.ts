@@ -263,7 +263,7 @@ describe('background readers', () => {
       id,
       async (messages) => {
         seen.push(messages.at(-1)!.content);
-        return { summary: 'ok' };
+        return 'ok';
       },
       512,
     );

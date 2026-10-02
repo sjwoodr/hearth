@@ -14,8 +14,10 @@ const TRANSCRIPT_BUDGET_TOKENS = 4500;
 
 // The limits bound the grammar so the model can't loop on items or one endless string. Lengths
 // are twice the stored limit: a string the grammar cuts off is over the limit and gets dropped by
-// sanitizeExtraction, rather than saved as a truncated fact.
-const CONTENT = { type: 'string', maxLength: 2 * MAX_MEMORY_CHARS };
+// sanitizeExtraction, rather than saved as a truncated fact. The pattern stops a stray double
+// quote from ending a fact early (see JsonFn): with no raw quote allowed and a closing punctuation
+// mark required, the string can only end where the sentence does. Ollama enforces patterns.
+const CONTENT = { type: 'string', maxLength: 2 * MAX_MEMORY_CHARS, pattern: String.raw`^[^"\\\n]*[.!?)]$` };
 
 export const EXTRACTION_SCHEMA = {
   type: 'object',

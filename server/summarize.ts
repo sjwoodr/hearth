@@ -13,8 +13,6 @@ export const SUMMARIZE_ABOVE_TOKENS = summaryThresholds(8192).above;
 export const KEEP_RECENT_TOKENS = summaryThresholds(8192).keep;
 const MAX_SUMMARY_CHARS = 2400;
 
-const SCHEMA = { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] };
-
 /** Folds older messages into the summary when the chat is long enough. Returns true if it did. */
 export async function summarizeIfLong(db: DB, conversationId: number, json: JsonFn, numCtx = 8192): Promise<boolean> {
   const { above, keep } = summaryThresholds(numCtx);
@@ -33,17 +31,24 @@ export async function summarizeIfLong(db: DB, conversationId: number, json: Json
   const total = messages.reduce((n, m) => n + estimateTokens(text(m)), 0);
   if (total <= above) return false;
 
-  // Keep the newest messages verbatim; everything older gets folded in.
+  // Keep the newest messages verbatim; everything older gets folded in, at most `above` tokens per
+  // pass (and at least one message) so the request always fits the window. A chat with more than
+  // that to fold (one rebuilt from scratch) is folded over several passes, oldest first.
   let kept = 0;
   let cut = messages.length;
   while (cut > 0 && kept + estimateTokens(text(messages[cut - 1]!)) <= keep) {
     kept += estimateTokens(text(messages[--cut]!));
   }
-  const fold = messages.slice(0, Math.max(cut, 1));
+  let folding = 0;
+  let end = 0;
+  while (end < cut && (end === 0 || folding + estimateTokens(text(messages[end]!)) <= above)) {
+    folding += estimateTokens(text(messages[end++]!));
+  }
+  const fold = messages.slice(0, Math.max(end, 1));
 
   console.log(`summary: folding ${fold.length} older message(s) of chat ${conversationId}…`);
   const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : 'hearth'}: ${text(m)}`).join('\n\n');
-  const raw = (await json(
+  const raw = await json(
     [
       {
         role: 'system',
@@ -51,13 +56,14 @@ export async function summarizeIfLong(db: DB, conversationId: number, json: Json
 companion, so the conversation can continue after older messages are no longer shown. Rewrite the
 summary so it covers the previous summary plus the messages below. Keep the topics, what was decided or
 explained, details ${chat.name} shared, open questions, and anything hearth offered to do. Plain prose,
-third person, under 200 words.`,
+third person, under 200 words. Reply with the summary only.`,
       },
       { role: 'user', content: `Previous summary:\n${chat.summary ?? '(none)'}\n\nMessages to fold in:\n${transcript}` },
     ],
-    SCHEMA,
-  )) as { summary?: unknown };
-  const summary = typeof raw?.summary === 'string' ? raw.summary.trim().slice(0, MAX_SUMMARY_CHARS) : '';
+    // Plain text, not a JSON schema: under a schema a quoted word ended the summary mid-sentence.
+    null,
+  );
+  const summary = typeof raw === 'string' ? raw.trim().slice(0, MAX_SUMMARY_CHARS) : '';
   if (!summary) throw new Error('The model returned an empty summary.');
 
   // Only advance if nothing else summarized this chat in the meantime.

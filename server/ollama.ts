@@ -101,8 +101,13 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
  */
 export const JSON_MAX_TOKENS = 2048;
 
-/** One non-streamed reply constrained to a JSON schema (Ollama's `format`). */
-export type JsonFn = (messages: ChatMessage[], schema: object, signal?: AbortSignal) => Promise<unknown>;
+/**
+ * One non-streamed background reply: constrained to a JSON schema (Ollama's `format`) and parsed, or
+ * with `schema` null, plain text. Use plain text for free prose: under a schema, a double quote the
+ * model meant to open a quotation ("the band's \"engine\"") is taken as the end of the string, and the
+ * text is silently cut there. That clipped a chat summary and two memories mid-sentence.
+ */
+export type JsonFn = (messages: ChatMessage[], schema: object | null, signal?: AbortSignal) => Promise<unknown>;
 
 export function ollamaJson(baseUrl: string, model: string, numCtx: number): JsonFn {
   return async (messages, schema, signal) => {
@@ -114,15 +119,16 @@ export function ollamaJson(baseUrl: string, model: string, numCtx: number): Json
         messages,
         stream: false,
         think: false,
-        format: schema,
+        ...(schema ? { format: schema } : {}),
         options: { num_ctx: numCtx, temperature: 0.2, num_predict: JSON_MAX_TOKENS },
       }),
       signal,
     });
     if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { message?: { content?: string }; done_reason?: string };
-    if (data.done_reason === 'length') throw new Error(`The model's JSON reply hit the ${JSON_MAX_TOKENS}-token cap.`);
-    return JSON.parse(data.message?.content ?? '');
+    if (data.done_reason === 'length') throw new Error(`The model's reply hit the ${JSON_MAX_TOKENS}-token cap.`);
+    const content = data.message?.content ?? '';
+    return schema ? JSON.parse(content) : content;
   };
 }
 

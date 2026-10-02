@@ -244,13 +244,17 @@ describe('summarizing long chats', () => {
   it('folds the oldest messages into a summary and keeps the recent ones verbatim', async () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);
-    seedMessages(ctx.db, id, 20, 1400); // ~20 × 400 tokens, well past the threshold
+    seedMessages(ctx.db, id, 30, 1400); // ~30 × 400 tokens, well past the threshold
     const prompts: ChatMessage[][] = [];
     const json: JsonFn = async (messages) => {
       prompts.push(messages);
-      return { summary: 'Alice and hearth talked about many x characters.' };
+      return 'Alice and hearth talked about many x characters.';
     };
+    // More than one window's half to fold: it takes two passes, each fitting the window.
     expect(await summarizeIfLong(ctx.db, id, json)).toBe(true);
+    expect(await summarizeIfLong(ctx.db, id, json)).toBe(true);
+    expect(await summarizeIfLong(ctx.db, id, json)).toBe(false);
+    for (const prompt of prompts) expect(estimateTokens(prompt[1]!.content)).toBeLessThanOrEqual(SUMMARIZE_ABOVE_TOKENS + 100);
 
     const state = ctx.db
       .prepare('SELECT summary, summary_through_message_id AS through FROM conversations WHERE id = ?')
@@ -260,7 +264,8 @@ describe('summarizing long chats', () => {
       .prepare('SELECT content FROM messages WHERE conversation_id = ? AND id > ?')
       .all(id, state.through) as { content: string }[];
     const keptTokens = remaining.reduce((n, m) => n + estimateTokens(m.content), 0);
-    expect(keptTokens).toBeLessThanOrEqual(KEEP_RECENT_TOKENS);
+    expect(keptTokens).toBeLessThanOrEqual(SUMMARIZE_ABOVE_TOKENS);
+    expect(keptTokens).toBeGreaterThanOrEqual(KEEP_RECENT_TOKENS - 500);
     expect(remaining.length).toBeGreaterThan(0);
     expect(prompts[0]![1]!.content).toContain('m0 ');
 
@@ -291,7 +296,7 @@ describe('summarizing long chats', () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);
     seedMessages(ctx.db, id, 20, 1400); // ~8k tokens: past half of 8k, under half of 32k
-    const json: JsonFn = async () => ({ summary: 'A summary.' });
+    const json: JsonFn = async () => 'A summary.';
     expect(await summarizeIfLong(ctx.db, id, json, 32768)).toBe(false);
     expect(await summarizeIfLong(ctx.db, id, json, 8192)).toBe(true);
   });
@@ -300,12 +305,12 @@ describe('summarizing long chats', () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);
     seedMessages(ctx.db, id, 20, 1400);
-    await summarizeIfLong(ctx.db, id, async () => ({ summary: 'First summary.' }));
+    await summarizeIfLong(ctx.db, id, async () => 'First summary.');
     seedMessages(ctx.db, id, 20, 1400);
     const prompts: ChatMessage[][] = [];
     await summarizeIfLong(ctx.db, id, async (m) => {
       prompts.push(m);
-      return { summary: 'Second summary.' };
+      return 'Second summary.';
     });
     expect(prompts[0]![1]!.content).toContain('Previous summary:\nFirst summary.');
   });
@@ -314,7 +319,7 @@ describe('summarizing long chats', () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);
     seedMessages(ctx.db, id, 20, 1400);
-    await expect(summarizeIfLong(ctx.db, id, async () => ({ summary: '  ' }))).rejects.toThrow(/empty/);
+    await expect(summarizeIfLong(ctx.db, id, async () => '  ')).rejects.toThrow(/empty/);
     const state = ctx.db.prepare('SELECT summary_through_message_id AS t FROM conversations WHERE id = ?').get(id) as {
       t: number;
     };
