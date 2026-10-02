@@ -426,7 +426,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           Think: {think === 'auto' ? 'Auto' : think === 'on' ? 'On' : 'Off'}
         </button>
         {streaming ? (
-          <button type="button" onClick={() => abortRef.current?.abort()}>
+          <button type="button" className="stop" onClick={() => abortRef.current?.abort()}>
             Stop
           </button>
         ) : (
