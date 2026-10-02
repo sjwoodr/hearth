@@ -1,13 +1,32 @@
-/** `images`: base64 PNG, JPEG or WebP, for a model that can see (Ollama's per-message field). */
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string; images?: string[] };
+/** A tool the model asked to use, as Ollama reports it. */
+export type ToolCall = { id?: string; function: { name: string; arguments: Record<string, unknown> } };
 
-/** Called as a thinking reply reasons, with the number of reasoning tokens so far. */
-export type ChatOptions = { onThinking?: (tokens: number) => void };
+/**
+ * `images`: base64 PNG, JPEG or WebP, for a model that can see (Ollama's per-message field).
+ * `tool_calls` rides on an assistant message that asked for a tool; a `tool` message carries the result.
+ */
+export type ChatMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  images?: string[];
+  tool_calls?: ToolCall[];
+  tool_name?: string;
+};
+
+/**
+ * `onThinking`: called as a thinking reply reasons, with the number of reasoning tokens so far.
+ * `tools`: tool definitions the model may call; each call it makes is reported to `onToolCall`.
+ */
+export type ChatOptions = {
+  onThinking?: (tokens: number) => void;
+  tools?: object[];
+  onToolCall?: (call: ToolCall) => void;
+};
 
 /** Streams a reply as text chunks. Aborting the signal stops generation. */
 export type ChatFn = (messages: ChatMessage[], signal: AbortSignal, opts?: ChatOptions) => AsyncIterable<string>;
 
-type StreamLine = { error?: string; message?: { content?: string; thinking?: string } };
+type StreamLine = { error?: string; message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] } };
 
 /** Ollama streams one JSON object per line. */
 async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamLine> {
@@ -39,11 +58,16 @@ function startChat(baseUrl: string, body: object, signal: AbortSignal) {
   });
 }
 
+const withTools = (opts?: ChatOptions) => (opts?.tools?.length ? { tools: opts.tools } : {});
+
 export function ollamaChat(baseUrl: string, model: string, numCtx: number): ChatFn {
-  return async function* (messages, signal) {
+  return async function* (messages, signal, opts) {
     // think: false keeps chat snappy; the model otherwise reasons before every reply.
-    const body = await startChat(baseUrl, { model, messages, think: false, options: { num_ctx: numCtx } }, signal);
-    for await (const data of readLines(body)) if (data.message?.content) yield data.message.content;
+    const body = await startChat(baseUrl, { model, messages, think: false, ...withTools(opts), options: { num_ctx: numCtx } }, signal);
+    for await (const data of readLines(body)) {
+      for (const call of data.message?.tool_calls ?? []) opts?.onToolCall?.(call);
+      if (data.message?.content) yield data.message.content;
+    }
   };
 }
 
@@ -63,7 +87,11 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
     let tokens = 0;
     let cut = false;
     try {
-      const body = await startChat(baseUrl, { model, messages, think: true, options: { num_ctx: numCtx } }, thinking.signal);
+      const body = await startChat(
+        baseUrl,
+        { model, messages, think: true, ...withTools(opts), options: { num_ctx: numCtx } },
+        thinking.signal,
+      );
       for await (const data of readLines(body)) {
         if (data.message?.thinking) {
           notes += data.message.thinking;
@@ -76,6 +104,7 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
             break;
           }
         }
+        for (const call of data.message?.tool_calls ?? []) opts?.onToolCall?.(call);
         if (data.message?.content) yield data.message.content;
       }
     } catch (err) {
@@ -90,7 +119,7 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
       role: 'user',
       content: `(Your private reasoning so far, not shown to me:)\n${notes}\n\nThinking time is up. Reply to my last message now.`,
     };
-    yield* ollamaChat(baseUrl, model, numCtx)([...messages, answerNow], signal);
+    yield* ollamaChat(baseUrl, model, numCtx)([...messages, answerNow], signal, { tools: opts?.tools, onToolCall: opts?.onToolCall });
   };
 }
 

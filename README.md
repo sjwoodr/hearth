@@ -2,7 +2,8 @@
 
 A private, local chat companion with long-term memory. It runs on a local
 model through Ollama, keeps full chat history, and remembers your likes and
-the topics you discuss across sessions. Nothing leaves the machine.
+the topics you discuss across sessions. Nothing leaves the machine, except a web search you
+approve (see **Web search** below).
 
 ## Plan
 
@@ -270,3 +271,17 @@ until the next message. A restart loses undescribed images; the message then say
 image costs ~260 prompt tokens however large (Ollama scales it down) and ~3.5 s to encode on the
 780M. Think: Auto thinks when an image comes with a request to check or correct, since the rules
 can't read the French inside it.
+
+**Web search.** The model can ask to search the web (Ollama tool calling, one `web_search` tool),
+but asking runs nothing: the chat shows a card with the exact query, and only **Search** sends it
+out (to a local SearXNG, which forwards it to Google, Bing and other engines). **Answer without
+searching** makes the model reply from what it knows. The server enforces this: the request waits
+in server memory, and `POST /api/conversations/:id/search` with `approve: true` is the only code
+path that calls the search engine; a new message or a retry drops the request, and a restart loses
+it. The model sees the top 5 results (title, URL, snippet), labelled as untrusted web text, on that
+turn only; the reply keeps just the links (`messages.sources`), shown as site pills and listed for
+the model in later turns. At most 2 searches per message, then it must answer. The system prompt
+gains today's date and when to search: without them Gemma 4 asked for 1 of 10 questions that
+needed a search; with them 9 of 10, and 0 of 10 that didn't (French practice, grammar, chat).
+Setup: SearXNG in Docker on 127.0.0.1:8888 with `json` in `search.formats`
+(`HEARTH_SEARXNG_URL`; `off` never offers the tool).

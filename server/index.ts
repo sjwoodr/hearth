@@ -14,8 +14,10 @@ import { memoryContext } from './memories.ts';
 import { ollamaChat, ollamaEmbed, ollamaJson, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { makeTitler } from './titles.ts';
+import { searxngSearch } from './web-search.ts';
 
 const db = openDb(config.dbPath);
+const webSearch = config.searxngUrl === 'off' ? undefined : searxngSearch(config.searxngUrl);
 const embed = ollamaEmbed(config.ollamaUrl, config.embedModel);
 // Every chat-model call goes through the scheduler: replies go first, background work yields.
 const model = createModelScheduler();
@@ -40,6 +42,7 @@ const app = createApp({
   afterReply: createSummarizer(db, json, config.numCtx),
   replyActive: model.replyActive,
   preemptBackground: model.preemptBackground,
+  webSearch,
 });
 startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: model.replyActive });
 
@@ -52,6 +55,7 @@ app.get('*', serveStatic({ path: path.join(clientDir, 'index.html') }));
 serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(
     `hearth listening on http://${info.address}:${info.port} (origin ${config.origin}, model ${config.model}, ` +
-      `thinking ${config.thinkingModel} ≤${config.thinkingTokenBudget} tokens)`,
+      `thinking ${config.thinkingModel} ≤${config.thinkingTokenBudget} tokens, ` +
+      `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'})`,
   );
 });

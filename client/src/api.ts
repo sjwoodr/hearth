@@ -31,13 +31,18 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
 /** `name` is the display name, or the username when none is set. */
 export type Me = { username: string; name: string };
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
-/** `image_count` images came with the message; `image_note` is hearth's description of them, once written. */
+export type Source = { title: string; url: string };
+/**
+ * `image_count` images came with the message; `image_note` is hearth's description of them, once
+ * written. `sources`: the pages a reply drew on, when it followed a web search.
+ */
 export type Message = {
   id: number;
   role: 'user' | 'assistant';
   content: string;
   image_count: number;
   image_note: string | null;
+  sources: Source[] | null;
   created_at: string;
 };
 
@@ -67,7 +72,10 @@ export type StreamEvent =
   | { type: 'thinking'; tokens: number }
   | { type: 'title'; title: string }
   | { type: 'delta'; text: string }
-  | { type: 'done'; messageId: number; selfCorrected?: boolean }
+  | { type: 'searching'; query: string }
+  /** The model asked to search for `query`; the reply waits for answerSearch. */
+  | { type: 'search'; query: string }
+  | { type: 'done'; messageId: number; selfCorrected?: boolean; sources?: Source[] }
   | { type: 'error'; error: string };
 
 /** Yields a reply's stream events as they arrive. */
@@ -94,7 +102,10 @@ export const api = {
   conversations: () => request<Conversation[]>('GET', '/api/conversations'),
   createConversation: () => request<Conversation>('POST', '/api/conversations'),
   conversation: (id: number) =>
-    request<{ conversation: Conversation; messages: Message[] }>('GET', `/api/conversations/${id}`),
+    request<{ conversation: Conversation; messages: Message[]; pendingSearch: { query: string } | null }>(
+      'GET',
+      `/api/conversations/${id}`,
+    ),
   renameConversation: (id: number, title: string) => request('PATCH', `/api/conversations/${id}`, { title }),
   deleteConversation: (id: number) => request('DELETE', `/api/conversations/${id}`),
   /**
@@ -112,6 +123,10 @@ export const api = {
   },
   retry: async function* (conversationId: number, think: boolean | 'auto', signal: AbortSignal) {
     yield* readEvents(await send('POST', `/api/conversations/${conversationId}/retry`, { think }, signal));
+  },
+  /** The user's answer to a search card: only `approve: true` runs the search. */
+  answerSearch: async function* (conversationId: number, approve: boolean, signal: AbortSignal) {
+    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/search`, { approve }, signal));
   },
   search: (q: string) => request<SearchHit[]>('GET', `/api/search?q=${encodeURIComponent(q)}`),
   memories: () => request<Memory[]>('GET', '/api/memories'),

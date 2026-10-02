@@ -1,8 +1,9 @@
 // Shared setup for the server tests: an in-memory database and a scripted stand-in for Ollama.
 import { createApp } from './app.ts';
 import { openDb } from './db.ts';
-import type { ChatFn, ChatMessage } from './ollama.ts';
+import type { ChatFn, ChatMessage, ChatOptions } from './ollama.ts';
 import { createUser } from './users.ts';
+import type { SearchResult } from './web-search.ts';
 
 export const ORIGIN = 'https://hearth.example.com';
 
@@ -27,11 +28,23 @@ export type FakeModel = {
   /** Image describe requests, and what the next one answers; an Error makes it fail. */
   describeCalls: ChatMessage[][];
   description: string | Error;
+  /** Queries the model asks to search for, one per reply (taken in order); none means it just answers. */
+  asks: string[];
+  /** Whether each reply was offered the web_search tool. */
+  toolsOffered: boolean[];
+  /** Queries the search engine actually ran, and what it returns; an Error makes it fail. */
+  searched: string[];
+  results: SearchResult[] | Error;
 };
+
+/** Pinned so the date in the search instructions is predictable. */
+export const NOW = new Date('2026-10-02T12:00:00Z');
 
 export const THINKING_TOKENS = 25;
 
-export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkingReserve?: number } = {}) {
+export function setupApp(
+  opts: { numCtx?: number; systemPrompt?: string; thinkingReserve?: number; webSearch?: boolean } = {},
+) {
   const db = openDb(':memory:');
   const model: FakeModel = {
     calls: [],
@@ -46,9 +59,21 @@ export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkin
     thinkingCalls: [],
     describeCalls: [],
     description: 'A page of French homework.',
+    asks: [],
+    toolsOffered: [],
+    searched: [],
+    results: [{ title: 'Fishbach tour', url: 'https://example.com/tour', snippet: 'Le Havre, 16 October.' }],
   };
-  const chat: ChatFn = async function* (messages, signal) {
+  // A scripted search request stands in for the reply, as Ollama sends a tool call with no text.
+  const askedToSearch = (o?: ChatOptions) => {
+    model.toolsOffered.push(!!o?.tools?.length);
+    const query = o?.tools?.length ? model.asks.shift() : undefined;
+    if (query) o?.onToolCall?.({ function: { name: 'web_search', arguments: { query } } });
+    return !!query;
+  };
+  const chat: ChatFn = async function* (messages, signal, o) {
     model.calls.push(messages);
+    if (askedToSearch(o)) return;
     for (const chunk of model.reply) {
       if (signal.aborted) throw new Error('aborted');
       if (chunk instanceof Error) throw chunk;
@@ -67,9 +92,10 @@ export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkin
       model.recallQueries.push({ userId: user.id, message });
       return { stable: model.memory, recalled: model.recalled };
     },
-    thinkingChat: async function* (messages, _signal, opts) {
+    thinkingChat: async function* (messages, _signal, o) {
       model.thinkingCalls.push(messages);
-      for (let t = 1; t <= THINKING_TOKENS; t++) opts?.onThinking?.(t);
+      for (let t = 1; t <= THINKING_TOKENS; t++) o?.onThinking?.(t);
+      if (askedToSearch(o)) return;
       yield 'Considered answer.';
     },
     titleFor: async () => {
@@ -86,6 +112,16 @@ export function setupApp(opts: { numCtx?: number; systemPrompt?: string; thinkin
     preemptBackground: () => {
       model.preempted++;
     },
+    ...(opts.webSearch
+      ? {
+          webSearch: async (query: string) => {
+            model.searched.push(query);
+            if (model.results instanceof Error) throw model.results;
+            return model.results;
+          },
+          now: () => NOW,
+        }
+      : {}),
   });
   return { db, app, model };
 }

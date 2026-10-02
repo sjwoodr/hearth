@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api, ApiError, type Message, type StreamEvent } from './api.ts';
+import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
 
@@ -32,6 +32,7 @@ const localMessage = (role: Message['role'], content: string, previews: string[]
   content,
   image_count: previews.length,
   image_note: null,
+  sources: null,
   created_at: '',
   ...(previews.length ? { previews } : {}),
 });
@@ -82,6 +83,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [highlight, setHighlight] = useState<number | undefined>(undefined);
+  // A web search the model asked for, waiting on the user's answer; and the one running now.
+  const [searchRequest, setSearchRequest] = useState<string | null>(null);
+  const [searchingFor, setSearchingFor] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set when this view created the conversation itself, so the id arriving via props
   // doesn't trigger a reload that would wipe the reply still streaming in.
@@ -96,12 +100,14 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     setStreamText(null);
     setError('');
     setMessages([]);
+    setSearchRequest(null);
     stickToBottom.current = focusMessageId === undefined;
     if (id === undefined) return;
     let cancelled = false;
     api.conversation(id).then((r) => {
       if (cancelled) return;
       setMessages(r.messages);
+      setSearchRequest(r.pendingSearch?.query ?? null);
       if (focusMessageId !== undefined) setHighlight(focusMessageId);
     }, onError);
     return () => {
@@ -142,11 +148,11 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     const elapsed = () => seconds(performance.now() - startedRef.current);
     let thought = false;
     let reason: string | undefined;
-    const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean) => {
+    const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
       reply = '';
       if (!content.trim()) return;
-      const message = { ...localMessage('assistant', content), note, selfCorrected };
+      const message = { ...localMessage('assistant', content), note, selfCorrected, sources: sources ?? null };
       setMessages((m) => [...m, messageId === undefined ? message : { ...message, id: messageId }]);
     };
     try {
@@ -156,6 +162,13 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           reason = event.reason;
           setAutoReason(event.reason ?? null);
         } else if (event.type === 'queued') setQueued(true);
+        else if (event.type === 'searching') setSearchingFor(event.query);
+        else if (event.type === 'search') {
+          // The model wants to search: the reply waits for the user's answer on the card.
+          reply = '';
+          setStreamText(null);
+          setSearchRequest(event.query);
+        }
         else if (event.type === 'thinking') {
           setQueued(false);
           setThinkingTokens(event.tokens);
@@ -165,7 +178,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           setStreamText(reply);
         } else if (event.type === 'done') {
           const how = thought ? (reason ? ` · thought first (auto: ${reason})` : ' · thought first') : '';
-          keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected);
+          keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected, event.sources);
           setStreamText(null);
           setStartedAt(null);
         } else if (event.type === 'error') {
@@ -199,6 +212,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setQueued(false);
       setThinkingTokens(0);
       setAutoReason(null);
+      setSearchingFor(null);
       setStreamText(null);
       setStartedAt(null);
       onChanged();
@@ -250,6 +264,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     if ((!text && images.length === 0) || streaming) return;
     setDraft('');
     setAttachments([]);
+    setSearchRequest(null);
     const pending = localMessage('user', text, images);
     setMessages((m) => [...m, pending]);
     const controller = begin();
@@ -283,8 +298,18 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     const conversationId = id ?? createdRef.current;
     if (conversationId === undefined || streaming) return;
     setMessages((m) => (m.at(-1)?.role === 'assistant' ? m.slice(0, -1) : m));
+    setSearchRequest(null);
     const controller = begin();
     await readReply(api.retry(conversationId, withThinking ? true : wire(think), controller.signal), controller);
+  }
+
+  // The answer to a search card. Only Search sends the query anywhere; the server enforces it.
+  async function answerSearch(approve: boolean) {
+    const conversationId = id ?? createdRef.current;
+    if (conversationId === undefined || streaming) return;
+    setSearchRequest(null);
+    const controller = begin();
+    await readReply(api.answerSearch(conversationId, approve, controller.signal), controller);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -324,7 +349,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             </>
           ) : (
             <div className="message assistant pending">
-              {queued
+              {searchingFor
+                ? `Searching the web for “${searchingFor}”…`
+                : queued
                 ? 'Waiting for the model to finish another reply…'
                 : thinkingTokens > 0
                   ? `Thinking… ${thinkingTokens}${autoReason ? ` · auto: ${autoReason}` : ''}`
@@ -340,7 +367,24 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             {error}
           </p>
         )}
-        {!streaming && messages.length > 0 && (
+        {!streaming && searchRequest && (
+          <div className="search-card" role="group" aria-label="Web search request">
+            <p>hearth wants to search the web for:</p>
+            <p className="search-query">{searchRequest}</p>
+            <p className="small muted">
+              Nothing is searched unless you say so. The query goes to your SearXNG, which asks Google, Bing and other engines.
+            </p>
+            <div className="search-actions">
+              <button type="button" onClick={() => answerSearch(true)}>
+                Search
+              </button>
+              <button type="button" className="link" onClick={() => answerSearch(false)}>
+                Answer without searching
+              </button>
+            </div>
+          </div>
+        )}
+        {!streaming && !searchRequest && messages.length > 0 && (
           <div className="retry-row">
             <button type="button" className="link" onClick={() => retry()}>
               {messages.at(-1)!.role === 'assistant' ? '↻ Regenerate' : '↻ Retry'}
@@ -464,7 +508,33 @@ function MessageBubble({ message, highlight }: BubbleProps) {
       >
         {plainSymbols(content)}
       </Markdown>
+      {message.sources?.length ? <Sources sources={message.sources} /> : null}
     </div>
+  );
+}
+
+const site = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+};
+
+/** The pages a reply drew on, one pill per site (its first page). */
+function Sources({ sources }: { sources: Source[] }) {
+  const bySite = new Map<string, Source>();
+  for (const s of sources) if (!bySite.has(site(s.url))) bySite.set(site(s.url), s);
+  return (
+    <ul className="sources" aria-label="Sources">
+      {[...bySite].map(([name, s]) => (
+        <li key={name}>
+          <a href={s.url} title={s.title} target="_blank" rel="noreferrer noopener">
+            {name}
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 

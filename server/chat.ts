@@ -20,9 +20,22 @@ import { plainSymbols } from '../shared/plain-symbols.ts';
 import { SELF_CORRECTION, shouldThink, type ThinkDecision } from './think-router.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
-import type { ChatFn, ChatMessage } from './ollama.ts';
+import type { ChatFn, ChatMessage, ToolCall } from './ollama.ts';
 import { searchMessages } from './search.ts';
 import type { SessionUser } from './sessions.ts';
+import {
+  declinedTurn,
+  MAX_SEARCHES_PER_TURN,
+  PendingSearches,
+  SEARCH_RESERVE,
+  searchInstructions,
+  searchQuery,
+  searchTurn,
+  WEB_SEARCH_TOOL,
+  type SearchFn,
+  type Source,
+  type Turn,
+} from './web-search.ts';
 
 export type ChatDeps = {
   db: DB;
@@ -45,6 +58,10 @@ export type ChatDeps = {
   replyActive?: () => boolean;
   /** Cancels background model work so this reply goes first. */
   preemptBackground?: () => void;
+  /** The search engine behind the web_search tool; without it the model is never offered the tool. */
+  webSearch?: SearchFn;
+  /** The current time, for the date in the system prompt (tests pin it). */
+  now?: () => Date;
 };
 
 // Context tokens held back for the reply itself.
@@ -53,6 +70,22 @@ const MAX_MESSAGE_CHARS = 16_000;
 const MAX_TITLE_CHARS = 120;
 
 type Env = { Variables: { user: SessionUser } };
+
+/** Pages a reply drew on, as the model sees them in later turns. */
+const withSources = (content: string, sources: Source[] | null) =>
+  sources?.length ? `${content}\n\n[Sources: ${sources.map((s) => s.url).join(', ')}]` : content;
+
+type ReplyOpts = {
+  userMessageId: number;
+  firstMessage?: string;
+  decision: ThinkDecision & { auto: boolean };
+  /** Searches already asked for while answering this message. */
+  searches?: number;
+  /** Set when the user approved a search: the reply first waits for it (the turn promise). */
+  searching?: string;
+};
+
+
 
 const parseId = (value: string) => {
   const n = Number(value);
@@ -73,6 +106,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   const { db, chat, systemPrompt, numCtx, memoryContext } = deps;
   const notFound = { error: 'Chat not found.' };
   const pendingImages = new PendingImages();
+  const pendingSearches = new PendingSearches();
 
   api.get('/conversations', (c) => c.json(listConversations(db, c.get('user').id)));
 
@@ -85,7 +119,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const id = parseId(c.req.param('id'));
     const conversation = id ? getConversation(db, userId, id) : undefined;
     if (!conversation) return c.json(notFound, 404);
-    return c.json({ conversation, messages: listMessages(db, userId, conversation.id) });
+    const search = pendingSearches.get(conversation.id, userId);
+    return c.json({
+      conversation,
+      messages: listMessages(db, userId, conversation.id),
+      pendingSearch: search ? { query: search.query } : null,
+    });
   });
 
   api.patch('/conversations/:id', async (c) => {
@@ -103,6 +142,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const id = parseId(c.req.param('id'));
     if (!id || !deleteConversation(db, c.get('user').id, id)) return c.json(notFound, 404);
     pendingImages.forget(id);
+    pendingSearches.forget(id);
     return c.json({ ok: true });
   });
 
@@ -118,7 +158,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const history: ChatMessage[] = messages.map((m) => {
       const pending = m.image_count > 0 ? pendingImages.get(m.id) : undefined;
       if (pending) return { role: m.role, content: m.content, images: pending.images };
-      return { role: m.role, content: withImageText(m.content, m.image_count, m.image_note) };
+      return { role: m.role, content: withSources(withImageText(m.content, m.image_count, m.image_note), m.sources) };
     });
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
@@ -126,19 +166,20 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       history[history.length - 1] = { ...last, content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
     }
     const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
-    const system = [systemPrompt(), stable, earlier].filter(Boolean).join('\n\n');
-    const reserve = REPLY_RESERVE + (think ? (deps.thinkingReserve ?? 0) : 0);
+    const tool = deps.webSearch ? searchInstructions(deps.now?.() ?? new Date()) : '';
+    const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
+    const reserve = REPLY_RESERVE + (think ? (deps.thinkingReserve ?? 0) : 0) + (deps.webSearch ? SEARCH_RESERVE : 0);
     return fitHistory(system, history, numCtx - reserve);
   }
 
-  // Streams a reply as NDJSON: start, optional queued, delta..., then done or error, and after
-  // a chat's first reply, title.
-  function streamReply(
-    c: Context<Env>,
-    conversationId: number,
-    prompt: ChatMessage[],
-    opts: { userMessageId: number; firstMessage?: string; decision: ThinkDecision & { auto: boolean } },
-  ) {
+  // Streams a reply as NDJSON: start, optional searching and queued, delta..., then done or error,
+  // and after a chat's first reply, title. If the model asks to search instead, it ends with search
+  // (the query for the card) and the reply continues from POST /search once the user answers.
+  function streamReply(c: Context<Env>, conversationId: number, turnReady: Turn | Promise<Turn>, opts: ReplyOpts) {
+    const user = c.get('user');
+    const searches = opts.searches ?? 0;
+    // Past the limit the tool is withheld, so the model has to answer with what it found.
+    const tools = deps.webSearch && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : undefined;
     c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
     c.header('Cache-Control', 'no-cache');
     return stream(c, async (s) => {
@@ -165,25 +206,52 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         // Why Auto chose to think, so the client can say so.
         ...(think && opts.decision.auto && opts.decision.reason ? { reason: opts.decision.reason } : {}),
       });
+      if (opts.searching) await send({ type: 'searching', query: opts.searching });
+      const { prompt, sources = [] } = await turnReady;
       // Background jobs yield to chat; only another reply makes this one wait. Ceiling: other
       // Ollama clients are invisible here.
       const queued = deps.replyActive?.() ?? false;
       deps.preemptBackground?.();
       if (queued) await send({ type: 'queued' });
       let reply = '';
+      let call: { raw: ToolCall; query: string } | undefined;
+      const onToolCall = (raw: ToolCall) => {
+        const query = searchQuery(raw);
+        if (query && !call) call = { raw, query };
+      };
       try {
-        for await (const text of generate(prompt, controller.signal, { onThinking })) {
+        for await (const text of generate(prompt, controller.signal, { onThinking, tools, onToolCall })) {
           reply += text;
           await send({ type: 'delta', text });
         }
+        if (call) {
+          // Nothing is searched here. The request waits for the user's tap on the card.
+          pendingSearches.set(conversationId, {
+            userId: user.id,
+            userMessageId: opts.userMessageId,
+            query: call.query,
+            prompt: [...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }],
+            decision: opts.decision,
+            firstMessage: opts.firstMessage,
+            searches: searches + 1,
+            sources,
+          });
+          await send({ type: 'search', query: call.query });
+          return;
+        }
         if (!reply.trim()) throw new Error('The model returned an empty reply.');
         reply = plainSymbols(reply);
-        const messageId = addMessage(db, conversationId, 'assistant', reply);
-        // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
-        await send({ type: 'done', messageId, ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}) });
+        const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
+        await send({
+          type: 'done',
+          messageId,
+          ...(sources.length ? { sources } : {}),
+          // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
+          ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
+        });
       } catch (err) {
         // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
-        if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply));
+        if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources });
         if (!controller.signal.aborted) {
           await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });
         }
@@ -228,13 +296,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const previousReply = earlier.findLast((m) => m.role === 'assistant')?.content;
     const decision = decideThinking(body?.think, content, previousReply, images.length > 0);
     pendingImages.moveOn(conversation.id);
-    const userMessageId = addMessage(db, conversation.id, 'user', content, images.length);
+    // A search card left unanswered is dropped: the user moved on.
+    pendingSearches.forget(conversation.id);
+    const userMessageId = addMessage(db, conversation.id, 'user', content, { imageCount: images.length });
     if (images.length > 0) pendingImages.add(userMessageId, conversation.id, images);
     // An image alone has no words for a title yet; the model's title after the reply will name it.
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
     if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
     const prompt = await buildPrompt(user, conversation.id, content, decision.think);
-    return streamReply(c, conversation.id, prompt, { userMessageId, firstMessage: isFirst ? firstMessage : undefined, decision });
+    return streamReply(c, conversation.id, { prompt }, { userMessageId, firstMessage: isFirst ? firstMessage : undefined, decision });
   });
 
   // Regenerates the reply to the latest user message, replacing the last reply if there is one
@@ -251,6 +321,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const question = last?.role === 'assistant' ? messages.at(-2) : last;
     if (!question || question.role !== 'user') return c.json({ error: 'There is no message to retry.' }, 400);
     if (last!.role === 'assistant') deleteMessage(db, conversation.id, last!.id);
+    pendingSearches.forget(conversation.id);
 
     const before = messages.slice(0, messages.indexOf(question));
     const decision = decideThinking(
@@ -260,10 +331,34 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       question.image_count > 0,
     );
     const prompt = await buildPrompt(user, conversation.id, question.content, decision.think);
-    return streamReply(c, conversation.id, prompt, {
+    return streamReply(c, conversation.id, { prompt }, {
       userMessageId: question.id,
       firstMessage: messages.length <= 2 ? question.content : undefined,
       decision,
+    });
+  });
+
+  // The user's answer to a search card. This is the only place a web search ever runs: the model
+  // can ask, but only an approval here sends the query out. Declining tells the model to answer
+  // without it.
+  api.post('/conversations/:id/search', async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const user = c.get('user');
+    const id = parseId(c.req.param('id'));
+    const conversation = id ? getConversation(db, user.id, id) : undefined;
+    if (!conversation) return c.json(notFound, 404);
+    if (typeof body?.approve !== 'boolean') return c.json({ error: 'Say whether to search (approve: true or false).' }, 400);
+    const pending = pendingSearches.take(conversation.id, user.id);
+    if (!pending) return c.json({ error: 'There is no search waiting in this chat.' }, 409);
+
+    const approved = body.approve === true && !!deps.webSearch;
+    const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
+    return streamReply(c, conversation.id, turn, {
+      userMessageId: pending.userMessageId,
+      firstMessage: pending.firstMessage,
+      decision: pending.decision,
+      searches: pending.searches,
+      ...(approved ? { searching: pending.query } : {}),
     });
   });
 }

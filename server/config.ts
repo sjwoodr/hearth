@@ -31,4 +31,7 @@ export const config = {
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
+  // SearXNG behind the web_search tool; the model asks, the user approves each search. Set to
+  // "off" to never offer the tool.
+  searxngUrl: env('HEARTH_SEARXNG_URL', 'http://127.0.0.1:8888'),
 };

@@ -167,11 +167,20 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   and retry later (extraction skips its 15-minute failure backoff for preemption). Add new background
   model work the same way, never by calling `ollamaJson` directly.
 - **Images are never stored** (owner's call): the model sees an image on its own turn, then a
-  background job (`describeWaitingImages` in `chat.ts`) writes a transcription + description to
+  background job (`describeWaitingImages` in `images.ts`) writes a transcription + description to
   `messages.image_note`, and that stands in for it from then on. Undescribed images live only in
   `PendingImages` (server memory). Don't add a BLOB or file store, and don't keep images in history:
   ~260 tokens each, every turn. The describe request continues the just-answered prompt so it hits
   Ollama's cache; keep it that way.
+- **Web search is asked for by the model and approved by the user, per search** (owner's call:
+  the card, not a checkbox). The tool is offered on every reply, but a tool call only stores a
+  `PendingSearch` and sends a `search` event; `POST /conversations/:id/search` with `approve: true`
+  is the only path to the search engine. Keep it that way for any future tool that reaches outside
+  the machine. Results are seen on one turn only; the DB keeps links (`messages.sources`), never
+  result text. Without today's date and a firm "call the tool instead of saying you can't check",
+  Gemma 4 called it for 1 of 10 questions that needed it (9/10 with, 0 false calls in 10; a
+  20-message probe, so small). Leaving `tools` out of a request didn't force a full prompt reread
+  (measured ~1.4 s vs 7.6 s cold), so background calls without tools still hit the cache.
 - **Free prose from background jobs is plain text, not a JSON schema** (summaries, titles, image
   descriptions: `json(messages, null)`). Under Ollama's `format` grammar, a `"` the model meant to open
   a quotation closes the string, so text was silently cut mid-sentence ("…how the band's" before
@@ -188,13 +197,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`queued`/`thinking`/`delta`/`done`/`error`/`title`) |
+| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
 | `server/busy.ts` | chat-first model scheduler |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
+| `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |

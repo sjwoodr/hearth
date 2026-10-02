@@ -1,15 +1,20 @@
 // Conversation and message queries for the web app. Every function takes the signed-in
 // user's id and matches on it, so one user can never read or change another's chats.
 import type { DB } from './db.ts';
+import type { Source } from './web-search.ts';
 
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
-/** `image_count` images came with the message; `image_note` is the model's description of them, once written. */
+/**
+ * `image_count` images came with the message; `image_note` is the model's description of them, once
+ * written. `sources`: the pages a reply drew on, when it followed a web search.
+ */
 export type Message = {
   id: number;
   role: 'user' | 'assistant';
   content: string;
   image_count: number;
   image_note: string | null;
+  sources: Source[] | null;
   created_at: string;
 };
 
@@ -62,21 +67,29 @@ export function deleteConversation(db: DB, userId: number, id: number): boolean 
 }
 
 export function listMessages(db: DB, userId: number, conversationId: number): Message[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.created_at FROM messages m
+      `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.sources, m.created_at FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE m.conversation_id = ? AND c.user_id = ? ORDER BY m.id`,
     )
-    .all(conversationId, userId) as Message[];
+    .all(conversationId, userId) as (Omit<Message, 'sources'> & { sources: string | null })[];
+  return rows.map((m) => ({ ...m, sources: m.sources ? (JSON.parse(m.sources) as Source[]) : null }));
 }
 
 /** Caller must already have checked the conversation belongs to the user. */
-export function addMessage(db: DB, conversationId: number, role: Message['role'], content: string, imageCount = 0): number {
+export function addMessage(
+  db: DB,
+  conversationId: number,
+  role: Message['role'],
+  content: string,
+  extra: { imageCount?: number; sources?: Source[] } = {},
+): number {
+  const sources = extra.sources?.length ? JSON.stringify(extra.sources) : null;
   return db.transaction(() => {
     const id = db
-      .prepare('INSERT INTO messages (conversation_id, role, content, image_count) VALUES (?, ?, ?, ?)')
-      .run(conversationId, role, content, imageCount).lastInsertRowid;
+      .prepare('INSERT INTO messages (conversation_id, role, content, image_count, sources) VALUES (?, ?, ?, ?, ?)')
+      .run(conversationId, role, content, extra.imageCount ?? 0, sources).lastInsertRowid;
     db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
     return Number(id);
   })();
