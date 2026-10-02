@@ -191,7 +191,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       const think = opts.decision.think && !!deps.thinkingChat;
       const generate = think ? deps.thinkingChat! : chat;
       let lastReported = 0;
+      let thoughtTokens = 0;
       const onThinking = (tokens: number) => {
+        thoughtTokens = tokens;
         // Enough to show progress without an event per token.
         if (tokens === 1 || tokens - lastReported >= 10) {
           lastReported = tokens;
@@ -215,9 +217,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       if (queued) await send({ type: 'queued' });
       let reply = '';
       let call: { raw: ToolCall; query: string } | undefined;
+      const unusable: ToolCall[] = [];
       const onToolCall = (raw: ToolCall) => {
         const query = searchQuery(raw);
         if (query && !call) call = { raw, query };
+        else if (!query) unusable.push(raw);
       };
       try {
         for await (const text of generate(prompt, controller.signal, { onThinking, tools, onToolCall })) {
@@ -239,7 +243,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           await send({ type: 'search', query: call.query });
           return;
         }
-        if (!reply.trim()) throw new Error('The model returned an empty reply.');
+        if (!reply.trim()) {
+          // Rare and not yet reproduced: log enough to tell an unusable tool call from a thinking
+          // cut that left the model with nothing to say.
+          console.error(
+            `empty reply: chat ${conversationId}, think ${think} (${thoughtTokens} reasoning tokens), ` +
+              `searches ${searches}, prompt ends with ${prompt.at(-1)?.role}, unusable tool calls ${JSON.stringify(unusable)}`,
+          );
+          throw new Error('The model returned an empty reply. Retry usually works.');
+        }
         reply = plainSymbols(reply);
         const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
         await send({
