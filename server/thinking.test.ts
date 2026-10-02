@@ -132,6 +132,7 @@ describe('budget-capped thinking against a fake Ollama', () => {
             await new Promise((r) => setImmediate(r));
           }
           if (opts.answer) line({ message: { content: opts.answer } });
+          if (opts.toolCall) line({ message: { content: '', tool_calls: [opts.toolCall] } });
         } else if (opts.toolCall) line({ message: { content: '', tool_calls: [opts.toolCall] } });
         else line({ message: { content: opts.plain ?? '' } });
         res.end();
@@ -183,12 +184,36 @@ describe('budget-capped thinking against a fake Ollama', () => {
     expect(requests[1]!.tools).toBeUndefined();
   });
 
+  it('takes a tool call made while thinking as the answer, without asking again', async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 5, toolCall: searchCall });
+    const calls: unknown[] = [];
+    await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal, { tools, onToolCall: (c) => calls.push(c) }));
+    expect(requests).toHaveLength(1);
+    expect(calls).toEqual([searchCall]);
+  });
+
   it('keeps the tools when thinking hits the budget and the answer is asked for', async () => {
     const { url, requests } = await fakeOllama({ thoughts: 500, toolCall: searchCall });
     const calls: unknown[] = [];
     await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal, { tools, onToolCall: (c) => calls.push(c) }));
     expect(requests.map((r) => r.tools)).toEqual([tools, tools]);
     expect(calls).toEqual([searchCall]);
+  });
+
+  it('asks for the answer when reasoning stops short of the budget with nothing said', async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 5, plain: 'Recovered.' });
+    const out = await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal));
+    expect(out).toBe('Recovered.');
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.messages.at(-1)!.content).toContain('t4 ');
+  });
+
+  it('reminds the model it can still call a tool when time is up, if tools are offered', async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 500, plain: 'Answer.' });
+    await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal, { tools }));
+    expect(requests[1]!.messages.at(-1)!.content).toMatch(/Reply to my last message now, or call a tool if you need one\.$/);
+    await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal));
+    expect(requests[3]!.messages.at(-1)!.content).toMatch(/Reply to my last message now\.$/);
   });
 
   it('surfaces a real error that happens before the budget', async () => {

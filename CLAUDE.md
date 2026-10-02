@@ -147,6 +147,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 - **Budget forcing** (`ollamaThinkingChat`): count reasoning chunks (~1 token each), abort at the
   budget, then call the fast path with the reasoning handed back as a user-role "private notes" message.
   Reasoning is never shown or stored. `thinkingReserve` holds back `2 × budget + 64` tokens of context.
+  Reasoning that ends under the budget with no text and no tool call gets the same "answer now" turn
+  (it surfaced as "The model returned an empty reply" with Think on). With tools offered, that turn
+  adds "or call a tool if you need one": without it, a cut before searching made the model answer
+  from memory and invent specifics (searched 1/9 runs; 6/9 with it).
   Keep `tokens++` on its own line (a comment explains why).
 - **Keep the prompt start stable for Ollama's cache.** Order: personality, always-remembered memories,
   running summary (all in the system prompt), then history. Recalled facts change every message, so

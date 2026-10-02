@@ -86,6 +86,9 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
     let notes = '';
     let tokens = 0;
     let cut = false;
+    // Whether the model wrote anything or asked for a tool. Reasoning that stops short of the budget
+    // with neither would otherwise end as an empty reply; it gets the same "answer now" turn as a cut.
+    let answered = false;
     try {
       const body = await startChat(
         baseUrl,
@@ -104,8 +107,14 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
             break;
           }
         }
-        for (const call of data.message?.tool_calls ?? []) opts?.onToolCall?.(call);
-        if (data.message?.content) yield data.message.content;
+        for (const call of data.message?.tool_calls ?? []) {
+          answered = true;
+          opts?.onToolCall?.(call);
+        }
+        if (data.message?.content) {
+          answered = true;
+          yield data.message.content;
+        }
       }
     } catch (err) {
       // Leaving the stream at the cap can throw while it shuts down; anything before the cap is real.
@@ -114,10 +123,13 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
       signal.removeEventListener('abort', stop);
       thinking.abort();
     }
-    if (!cut) return;
+    if (answered && !cut) return;
+    // "Reply now" alone made the model answer from memory instead of asking to search (and invent
+    // specifics), so when tools are offered it's reminded it may still call one.
+    const orTool = opts?.tools?.length ? ', or call a tool if you need one' : '';
     const answerNow: ChatMessage = {
       role: 'user',
-      content: `(Your private reasoning so far, not shown to me:)\n${notes}\n\nThinking time is up. Reply to my last message now.`,
+      content: `(Your private reasoning so far, not shown to me:)\n${notes}\n\nThinking time is up. Reply to my last message now${orTool}.`,
     };
     yield* ollamaChat(baseUrl, model, numCtx)([...messages, answerNow], signal, { tools: opts?.tools, onToolCall: opts?.onToolCall });
   };
