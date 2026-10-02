@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { JSON_MAX_TOKENS, ollamaJson, ollamaThinkingChat } from './ollama.ts';
+import { JSON_MAX_TOKENS, ollamaChat, ollamaJson, ollamaThinkingChat } from './ollama.ts';
 import { login, ORIGIN, sessionCookie, setupApp, THINKING_TOKENS } from './testing.ts';
 import { createUser } from './users.ts';
 
@@ -112,14 +112,14 @@ describe('budget-capped thinking against a fake Ollama', () => {
   afterEach(() => server?.close());
 
   /** A fake /api/chat: thinking requests stream `thoughts` tokens then `answer`; others stream `plain`. */
-  async function fakeOllama(opts: { thoughts: number; answer?: string; plain?: string; errorAfter?: number }) {
-    const requests: { think: boolean; messages: { role: string; content: string }[] }[] = [];
+  async function fakeOllama(opts: { thoughts: number; answer?: string; plain?: string; errorAfter?: number; toolCall?: object }) {
+    const requests: { think: boolean; messages: { role: string; content: string }[]; tools?: object[] }[] = [];
     server = http.createServer((req, res) => {
       let raw = '';
       req.on('data', (c) => (raw += c));
       req.on('end', async () => {
         const body = JSON.parse(raw);
-        requests.push({ think: body.think, messages: body.messages });
+        requests.push({ think: body.think, messages: body.messages, tools: body.tools });
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
         const line = (o: object) => res.write(`${JSON.stringify(o)}\n`);
         if (body.think) {
@@ -132,7 +132,8 @@ describe('budget-capped thinking against a fake Ollama', () => {
             await new Promise((r) => setImmediate(r));
           }
           if (opts.answer) line({ message: { content: opts.answer } });
-        } else line({ message: { content: opts.plain ?? '' } });
+        } else if (opts.toolCall) line({ message: { content: '', tool_calls: [opts.toolCall] } });
+        else line({ message: { content: opts.plain ?? '' } });
         res.end();
       });
     });
@@ -167,6 +168,27 @@ describe('budget-capped thinking against a fake Ollama', () => {
     expect(notes).toContain('t9 ');
     expect(notes).not.toContain('t10 ');
     expect(notes).toContain('Thinking time is up');
+  });
+
+  const searchCall = { function: { name: 'web_search', arguments: { query: 'Louvre hours' } } };
+  const tools = [{ type: 'function', function: { name: 'web_search' } }];
+
+  it('offers tools only when given, and reports a tool call the model streams', async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 0, toolCall: searchCall });
+    const calls: unknown[] = [];
+    await collect(ollamaChat(url, 'm', 8192)(messages, new AbortController().signal, { tools, onToolCall: (c) => calls.push(c) }));
+    expect(requests[0]!.tools).toEqual(tools);
+    expect(calls).toEqual([searchCall]);
+    await collect(ollamaChat(url, 'm', 8192)(messages, new AbortController().signal));
+    expect(requests[1]!.tools).toBeUndefined();
+  });
+
+  it('keeps the tools when thinking hits the budget and the answer is asked for', async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 500, toolCall: searchCall });
+    const calls: unknown[] = [];
+    await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal, { tools, onToolCall: (c) => calls.push(c) }));
+    expect(requests.map((r) => r.tools)).toEqual([tools, tools]);
+    expect(calls).toEqual([searchCall]);
   });
 
   it('surfaces a real error that happens before the budget', async () => {
