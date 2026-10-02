@@ -93,6 +93,13 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
   };
 }
 
+/**
+ * Output cap for background JSON replies. The largest legitimate one (an extraction at its
+ * 8 + 8 change limit) is about 1,400 tokens. Without a cap, schema-constrained output can loop:
+ * one extraction ran 6,000 tokens until Node's fetch gave up at 5 minutes, holding the only slot.
+ */
+export const JSON_MAX_TOKENS = 2048;
+
 /** One non-streamed reply constrained to a JSON schema (Ollama's `format`). */
 export type JsonFn = (messages: ChatMessage[], schema: object, signal?: AbortSignal) => Promise<unknown>;
 
@@ -107,12 +114,13 @@ export function ollamaJson(baseUrl: string, model: string, numCtx: number): Json
         stream: false,
         think: false,
         format: schema,
-        options: { num_ctx: numCtx, temperature: 0.2 },
+        options: { num_ctx: numCtx, temperature: 0.2, num_predict: JSON_MAX_TOKENS },
       }),
       signal,
     });
     if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { message?: { content?: string } };
+    const data = (await res.json()) as { message?: { content?: string }; done_reason?: string };
+    if (data.done_reason === 'length') throw new Error(`The model's JSON reply hit the ${JSON_MAX_TOKENS}-token cap.`);
     return JSON.parse(data.message?.content ?? '');
   };
 }

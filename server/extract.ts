@@ -5,28 +5,35 @@ import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
 import { cosine, MAX_MEMORY_CHARS, toBlob, withEmbeddings, type MemoryKind } from './memories.ts';
 import type { EmbedFn, JsonFn } from './ollama.ts';
-import { cleanDisplayName } from './users.ts';
+import { cleanDisplayName, MAX_DISPLAY_NAME_CHARS } from './users.ts';
 
 const MAX_CHANGES = 8;
 const MAX_EXISTING_SHOWN = 80;
 const TRANSCRIPT_BUDGET_TOKENS = 4500;
+
+// The limits bound the grammar so the model can't loop on items or one endless string. Lengths
+// are twice the stored limit: a string the grammar cuts off is over the limit and gets dropped by
+// sanitizeExtraction, rather than saved as a truncated fact.
+const CONTENT = { type: 'string', maxLength: 2 * MAX_MEMORY_CHARS };
 
 export const EXTRACTION_SCHEMA = {
   type: 'object',
   properties: {
     add: {
       type: 'array',
-      items: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] },
+      maxItems: MAX_CHANGES,
+      items: { type: 'object', properties: { content: CONTENT }, required: ['content'] },
     },
     update: {
       type: 'array',
+      maxItems: MAX_CHANGES,
       items: {
         type: 'object',
-        properties: { id: { type: 'integer' }, content: { type: 'string' } },
+        properties: { id: { type: 'integer' }, content: CONTENT },
         required: ['id', 'content'],
       },
     },
-    name: { type: 'string' },
+    name: { type: 'string', maxLength: 2 * MAX_DISPLAY_NAME_CHARS },
   },
   required: ['add', 'update', 'name'],
 };

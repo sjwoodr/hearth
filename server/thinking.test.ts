@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ollamaThinkingChat } from './ollama.ts';
+import { JSON_MAX_TOKENS, ollamaJson, ollamaThinkingChat } from './ollama.ts';
 import { login, ORIGIN, sessionCookie, setupApp, THINKING_TOKENS } from './testing.ts';
 import { createUser } from './users.ts';
 
@@ -172,5 +172,37 @@ describe('budget-capped thinking against a fake Ollama', () => {
   it('surfaces a real error that happens before the budget', async () => {
     const { url } = await fakeOllama({ thoughts: 50, errorAfter: 3 });
     await expect(collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal))).rejects.toThrow('model crashed');
+  });
+});
+
+describe('background JSON replies against a fake Ollama', () => {
+  let server: http.Server | undefined;
+  afterEach(() => server?.close());
+
+  async function fakeOllama(reply: object) {
+    const requests: { options?: { num_predict?: number } }[] = [];
+    server = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        requests.push(JSON.parse(raw));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(reply));
+      });
+    });
+    await new Promise<void>((r) => server!.listen(0, '127.0.0.1', r));
+    return { url: `http://127.0.0.1:${(server!.address() as AddressInfo).port}`, requests };
+  }
+
+  it('caps the output length so a looping reply cannot hold the slot', async () => {
+    const { url, requests } = await fakeOllama({ message: { content: '{"title":"Hi"}' }, done_reason: 'stop' });
+    expect(await ollamaJson(url, 'm', 8192)([], {})).toEqual({ title: 'Hi' });
+    expect(requests[0]?.options?.num_predict).toBe(JSON_MAX_TOKENS);
+  });
+
+  it('fails a reply cut off at the cap instead of parsing it', async () => {
+    // Valid JSON on purpose: the cap must be detected from done_reason, not from a parse error.
+    const { url } = await fakeOllama({ message: { content: '{"add":[],"update":[],"name":""}' }, done_reason: 'length' });
+    await expect(ollamaJson(url, 'm', 8192)([], {})).rejects.toThrow('token cap');
   });
 });
