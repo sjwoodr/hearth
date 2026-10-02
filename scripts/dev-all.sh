@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the backend (node --watch) and the Vite dev server together; Ctrl-C stops both.
-# Open http://localhost:5173 (Vite proxies /api to the backend).
+# Open http://localhost:5180 (Vite proxies /api to the backend).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

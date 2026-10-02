@@ -11,6 +11,10 @@ export default defineConfig({
   // resolves .local, so this does not reopen DNS rebinding.
   server: {
     host: true,
+    // Fixed and strict: another project's Vite owns 5173 on this machine, and a silent
+    // fallback to 5174 would make the URL depend on which started first.
+    port: 5180,
+    strictPort: true,
     allowedHosts: ['.local'],
     proxy: { '/api': 'http://127.0.0.1:8787' },
   },

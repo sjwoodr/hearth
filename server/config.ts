@@ -15,7 +15,7 @@ export const config = {
   root,
   host: env('HEARTH_HOST', '127.0.0.1'),
   port: Number(env('HEARTH_PORT', '8787')),
-  origin: env('HEARTH_ORIGIN', 'http://localhost:5173'),
+  origin: env('HEARTH_ORIGIN', 'http://localhost:5180'),
   dbPath: path.resolve(root, env('HEARTH_DB_PATH', './data/hearth.db')),
   ollamaUrl: env('OLLAMA_URL', 'http://127.0.0.1:11434'),
   // Chosen by the French bench (docs/model-selection.md): 153/158 at 1.2 s/answer.

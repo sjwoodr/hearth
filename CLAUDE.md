@@ -11,7 +11,7 @@ and what not to undo. Read the README section before changing a feature.
 ## Commands
 
 ```
-pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5173, /api proxied to :8787
+pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5180, /api proxied to :8787
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands

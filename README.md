@@ -24,7 +24,7 @@ admin menus, `fzf`.
 pnpm install
 cp .env.example .env         # optional; defaults suit local development
 bin/hearth users add <you>   # create an account (there is no web sign-up)
-pnpm dev:fullstack           # backend + Vite; open http://localhost:5173
+pnpm dev:fullstack           # backend + Vite; open http://localhost:5180
 pnpm test                    # vitest
 pnpm check-types
 ```
