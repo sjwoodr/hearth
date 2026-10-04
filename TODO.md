@@ -34,9 +34,36 @@
 - [x] Model-written chat titles after the first reply.
 - [ ] Per-user personality, or editing the system prompt from the web instead of the file.
 - [ ] Users changing their own password or display name from the web (today it's CLI only, by design).
-- [ ] Web search for current events; the local model knows nothing recent.
+- [x] Web search for current events; the model asks, the user approves each search on a card.
 - [ ] Automated front-end tests. Browser checks so far were ad hoc scripts driving headless Chrome with
       playwright-core borrowed from another project.
+
+### Using the embedding model for more
+
+The embedding model can't write replies (it turns text into a vector of meaning), but comparing
+vectors is cheap, and it runs apart from the chat model, so it never disturbs the chat model's
+slot or cached conversation. Measure each idea before trusting it.
+
+- [ ] **Think: Auto second opinion.** When the keyword rules don't match, compare the message's
+      vector (already computed for memory recall) with labelled examples of "needs thinking" and
+      "doesn't", and take the nearer. Catches rephrasings the keywords miss, with no cache cost (the
+      reason a model-call classifier was ruled out). Measure against `think-router.test.ts`'s
+      labelled messages and real history; false "think" costs ~10 s, a miss costs French accuracy.
+- [ ] **Search chats by meaning (hybrid).** Today's FTS5 search matches word forms (porter stemming,
+      accents ignored) but needs the same word: "antenna" never finds "the dipole on the roof", French
+      forms stem poorly, and English never matches French. Embed messages (or exchanges) and merge
+      the vector ranking with the keyword ranking, so exact strings (names, numbers, errors) still hit
+      and rephrasings, related words and the other language do too.
+- [ ] **Recall old conversations, not just facts.** Retrieve the most relevant earlier exchanges for
+      a new message, beyond what the running summary keeps. Bigger: it adds prompt tokens, so attach
+      them to the newest message only (like recalled facts) to protect the cache.
+- [ ] **Group recurring French mistakes** by similarity ("five dropped *-s* on *tu* forms this month")
+      to suggest targeted drills.
+- [ ] **Ask about a long document.** Today a message is capped at 16,000 characters and the context at
+      16k tokens, so a 67 KB document (~19k tokens) is refused, and even under a raised cap it would
+      stay in the chat's history, slowing every later reply and overflowing the summarizer. Instead:
+      attach a file, keep it out of the running history, split it into sections, embed them, and
+      bring only the sections relevant to each question into the prompt.
 
 ## Before exposing hearth to the internet
 
