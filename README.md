@@ -45,6 +45,14 @@ through. Point hearth at it with `HEARTH_GATEWAY_URL` (plus the same token): eve
 model call, embeddings included, then goes through the gateway, and hearth stops
 scheduling in-process. Unset, hearth talks to Ollama directly, as before.
 
+**Worker** (`pnpm worker`, optional). By default the main process also runs the
+background jobs. With `HEARTH_ROLE=api` it only serves chats (plus chat titles,
+which go out on the reply's own stream, and image descriptions, since an
+undescribed image exists only in that process's memory), and `pnpm worker` runs
+memory extraction and running summaries in its own process, checking every minute
+for chats with new replies. Both need the gateway, so the worker's jobs still
+yield to the api's replies; either refuses to start without it.
+
 **Migrations** (`server/migrations/NNN_name.sql`) apply on start by default. A
 deployment can make them a separate step instead: run `pnpm migrate` (or
 `node server/migrate.ts`) first and start hearth with `HEARTH_AUTO_MIGRATE=0`.
@@ -54,19 +62,21 @@ newer hearth or restore a backup; migrations only go forward).
 
 ### In Docker
 
-`docker compose up --build` runs the dev setup in two containers (Linux only), the
-way a deployment splits it: **gateway** (`pnpm gateway`, the model gateway on
-:11435, owning Ollama's slots) and **hearth** (`pnpm dev:fullstack`), which sends
-every model call through the gateway. Both read `HEARTH_GATEWAY_TOKEN` from `.env`
-(generate one with `openssl rand -hex 32`); hearth's `HEARTH_GATEWAY_URL` is set
-in the compose file, so `pnpm dev:fullstack` on the host stays single-process.
+`docker compose up --build` runs the dev setup in three containers (Linux only),
+the way a deployment splits it: **gateway** (`pnpm gateway`, the model gateway on
+:11435, owning Ollama's slots), **hearth** (`pnpm dev:fullstack` with
+`HEARTH_ROLE=api`: chats, titles, image descriptions) and **worker** (`pnpm
+worker`: memory extraction and summaries). hearth and the worker send every model
+call through the gateway. All read `HEARTH_GATEWAY_TOKEN` from `.env` (generate one
+with `openssl rand -hex 32`); the gateway URL and the api role are set in the
+compose file, so `pnpm dev:fullstack` on the host stays single-process.
 
 The repo is bind-mounted, so edits on the host still restart the backend (and
-the gateway) and hot-reload Vite, and the database stays in `data/`. The
+the gateway and the worker) and hot-reload Vite, and the database stays in `data/`. The
 containers use host networking, so every address is the same as on the host
 (Ollama and SearXNG on 127.0.0.1, Vite on :5180); stop any host dev server
 first. They share their own `node_modules` volume: the gateway runs `pnpm
-install` on each start and hearth waits until the gateway is healthy, so the two
+install` on each start and the others wait until the gateway is healthy, so they
 never install at once, and lockfile changes land on the next `docker compose
 restart`. `.git` is mounted read-only, so nothing in a container can plant a git
 hook that runs on the host. `pnpm test`, `bin/hearth` and the editor keep using

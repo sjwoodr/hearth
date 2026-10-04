@@ -14,6 +14,7 @@
     "start": "node server/index.ts",
     "migrate": "node server/migrate.ts",
     "gateway": "node server/gateway-main.ts",
+    "worker": "node server/worker.ts",
     "test": "vitest run",
     "check-types": "tsc --noEmit"
   },

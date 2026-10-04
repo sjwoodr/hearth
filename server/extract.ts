@@ -1,5 +1,6 @@
 // Memory extraction: reads the unread part of a conversation and records durable facts
 // about the user. Runs in the background once a chat has gone quiet.
+import { every } from './every.ts';
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
@@ -364,8 +365,5 @@ export function startMemorySweeper(
   idleMinutes: number,
   opts: { paused?: () => boolean } = {},
 ): () => void {
-  const sweep = createSweep(db, json, embed, idleMinutes, opts);
-  const timer = setInterval(() => void sweep(), 60_000);
-  timer.unref();
-  return () => clearInterval(timer);
+  return every(60_000, createSweep(db, json, embed, idleMinutes, opts));
 }

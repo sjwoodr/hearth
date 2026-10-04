@@ -1,8 +1,9 @@
 # Run the dev setup in Docker with live reload: `docker compose up --build`.
 # The repo is bind-mounted, so edits on the host restart the processes and hot-reload Vite.
 #
-# Two services, as in a deployment: the model gateway (owns Ollama's slots) and hearth, which sends
-# every model call through it. Needs HEARTH_GATEWAY_TOKEN in .env (both read it).
+# Three services, as in a deployment: the model gateway (owns Ollama's slots), hearth (the API, chat
+# titles and image descriptions) and the worker (memory extraction and summaries). hearth and the
+# worker send every model call through the gateway. Needs HEARTH_GATEWAY_TOKEN in .env (all read it).
 #
 # Host networking keeps every address the same as running on the host: Ollama and
 # SearXNG stay on 127.0.0.1, the gateway on 127.0.0.1:11435, the backend on 127.0.0.1:8787,
@@ -35,7 +36,19 @@ services:
   hearth:
     <<: *dev
     environment:
-      # Gateway mode here only, not in .env, so the host's single-process setup keeps working.
+      # Gateway mode and the api role here only, not in .env, so the host's single-process setup
+      # (`pnpm dev:fullstack`) keeps working.
+      HEARTH_GATEWAY_URL: http://127.0.0.1:11435
+      HEARTH_ROLE: api
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  worker:
+    <<: *dev
+    # No install of its own: the gateway did it, and this waits for the gateway to be healthy.
+    command: ["node", "--watch", "server/worker.ts"]
+    environment:
       HEARTH_GATEWAY_URL: http://127.0.0.1:11435
     depends_on:
       gateway:

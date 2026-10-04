@@ -2,6 +2,7 @@
 // oldest messages are folded into a running summary that is sent in their place.
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
+import { every } from './every.ts';
 import type { DB } from './db.ts';
 import { withImageText, type MessageRow } from './images.ts';
 import type { JsonFn } from './ollama.ts';
@@ -97,4 +98,49 @@ export function createSummarizer(db: DB, json: JsonFn, numCtx = 8192): (conversa
       }
     });
   };
+}
+
+/**
+ * For a worker in its own process, which doesn't see replies happen: each pass looks for chats with
+ * new replies since the last pass and summarizes the long ones. The first pass checks every chat
+ * once (cheap: no model call unless one is over the threshold). A summary preempted for a reply is
+ * retried on the next pass; other failures wait for the chat's next reply, as with createSummarizer.
+ */
+export function createSummarySweep(db: DB, json: JsonFn, numCtx = 8192) {
+  let lastSeen = 0;
+  const retry = new Set<number>();
+  let running = false;
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      const fresh = db
+        .prepare(
+          `SELECT conversation_id AS id, max(id) AS last FROM messages
+           WHERE id > ? AND role = 'assistant' GROUP BY conversation_id`,
+        )
+        .all(lastSeen) as { id: number; last: number }[];
+      for (const row of fresh) lastSeen = Math.max(lastSeen, row.last);
+      const chats = new Set([...retry, ...fresh.map((r) => r.id)]);
+      retry.clear();
+      for (const id of chats) {
+        try {
+          if (await summarizeIfLong(db, id, json, numCtx)) console.log(`summary: chat ${id} updated`);
+        } catch (err) {
+          if (isPreempted(err)) {
+            retry.add(id);
+            console.log(`summary: chat ${id} paused for a chat reply; will retry`);
+          } else console.error(`summary: chat ${id} failed:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } finally {
+      running = false;
+    }
+  };
+}
+
+// No "pause while a reply is active" (unlike the memory sweeper): the worker runs with the gateway,
+// which preempts its calls for replies, and a preempted summary is retried on the next pass.
+export function startSummarySweeper(db: DB, json: JsonFn, numCtx: number): () => void {
+  return every(60_000, createSummarySweep(db, json, numCtx), { now: true, keepAlive: true });
 }

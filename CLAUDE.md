@@ -12,11 +12,12 @@ and what not to undo. Read the README section before changing a feature.
 
 ```
 pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5180, /api proxied to :8787
-docker compose up      # gateway + hearth in containers (bind mount, host networking; README "In Docker")
+docker compose up      # gateway + hearth (api) + worker in containers (bind mount, host networking; README "In Docker")
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
 pnpm migrate           # apply pending migrations and exit (hearth also migrates on start unless HEARTH_AUTO_MIGRATE=0)
 pnpm gateway           # the model gateway on :11435 (needs HEARTH_GATEWAY_TOKEN); optional for one process
+pnpm worker            # memory extraction + summaries in their own process (with HEARTH_ROLE=api + the gateway)
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
 ```
 
@@ -218,7 +219,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`; each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
-| `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
+| `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
+| `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
 | `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
 | `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`) |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
@@ -268,8 +270,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   refused, a day's expiry, the date refreshed on approval) and migrations as their own step
   (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema), the slot-aware
   scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
-  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default). The rest, **not started,
-  don't begin without being asked**: a separate worker process; health checks, graceful
+  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default), and the worker
+  (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api). The rest,
+  **not started, don't begin without being asked**: health checks, graceful
   shutdown, opt-in JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
