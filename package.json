@@ -13,6 +13,7 @@
     "build": "vite build",
     "start": "node server/index.ts",
     "migrate": "node server/migrate.ts",
+    "gateway": "node server/gateway-main.ts",
     "test": "vitest run",
     "check-types": "tsc --noEmit"
   },

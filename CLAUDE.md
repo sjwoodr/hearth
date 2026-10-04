@@ -16,6 +16,7 @@ docker compose up      # the same, in a container (bind mount, host networking; 
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
 pnpm migrate           # apply pending migrations and exit (hearth also migrates on start unless HEARTH_AUTO_MIGRATE=0)
+pnpm gateway           # the model gateway on :11435 (needs HEARTH_GATEWAY_TOKEN); optional for one process
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
 ```
 
@@ -218,7 +219,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
-| `server/busy.ts` | chat-first model scheduler |
+| `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
+| `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`) |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
@@ -264,10 +266,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
   follow it. Done: waiting searches in SQLite (`pending_searches`: one row per chat, image bytes
   refused, a day's expiry, the date refreshed on approval) and migrations as their own step
-  (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema). The rest, **not
-  started, don't begin without being asked**: an Ollama-compatible **model gateway** (slots, reply
-  priority, preemption, user turns, bearer token) that takes over `busy.ts`'s job, which must keep
-  working in-process when there's no gateway; a separate worker process; health checks, graceful
+  (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema), the slot-aware
+  scheduler (`busy.ts`) and the gateway service (`gateway.ts`). Next: hearth as a gateway client
+  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process). The rest, **not started, don't begin
+  without being asked**: a separate worker process; health checks, graceful
   shutdown, opt-in JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a

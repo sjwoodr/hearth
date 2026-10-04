@@ -36,6 +36,11 @@ export const config = {
   // Requests Ollama runs at once. Must equal Ollama's OLLAMA_NUM_PARALLEL: more than that and Ollama
   // queues internally, out of the scheduler's sight, so a reply could wait behind background work.
   ollamaSlots: Number(env('HEARTH_OLLAMA_SLOTS', '1')),
+  // The model gateway (server/gateway-main.ts, `pnpm gateway`): where it listens, and the token
+  // every caller must send. It refuses to start without a token.
+  gatewayHost: env('HEARTH_GATEWAY_HOST', '127.0.0.1'),
+  gatewayPort: Number(env('HEARTH_GATEWAY_PORT', '11435')),
+  gatewayToken: env('HEARTH_GATEWAY_TOKEN', ''),
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),

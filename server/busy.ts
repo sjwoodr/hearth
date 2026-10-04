@@ -26,6 +26,14 @@ type Job = {
   protected?: boolean;
 };
 
+/** A slot held for one model call. Release it exactly once, when the call is over. */
+export type Lease = {
+  /** Aborts if the caller's signal aborts, or (background only) if a reply preempts this call. */
+  signal: AbortSignal;
+  isPreempted: () => boolean;
+  release: () => void;
+};
+
 export type SchedulerOptions = {
   /** Requests Ollama runs at once: must equal its OLLAMA_NUM_PARALLEL, or chat-first breaks. */
   slots?: number;
@@ -84,41 +92,62 @@ export class ModelScheduler {
     };
   }
 
+  /**
+   * Waits for a slot and holds it until `release()`. The primitive under chat() and background(),
+   * and what the gateway uses to proxy raw Ollama requests.
+   */
+  async lease(
+    kind: 'reply' | 'background',
+    opts: { userId?: number; signal?: AbortSignal; onQueued?: (position: number) => void } = {},
+  ): Promise<Lease> {
+    const controller = new AbortController();
+    let preempted = false;
+    opts.signal?.addEventListener('abort', () => controller.abort(opts.signal!.reason), { once: true });
+    if (opts.signal?.aborted) controller.abort(opts.signal.reason);
+    // Preemptible from the moment it holds a slot, before the caller resumes.
+    const preempt =
+      kind === 'background'
+        ? () => {
+            preempted = true;
+            controller.abort(new PreemptedError());
+          }
+        : undefined;
+    const job = await this.#acquire({ kind, userId: opts.userId, queuedAt: this.#now(), preempt }, controller.signal, opts.onQueued);
+    let released = false;
+    return {
+      signal: controller.signal,
+      isPreempted: () => preempted,
+      release: () => {
+        if (released) return;
+        released = true;
+        this.#release(job);
+      },
+    };
+  }
+
   chat(fn: ChatFn): ChatFn {
     const scheduler = this;
     return async function* (messages, signal, callOpts) {
-      const job = await scheduler.#acquire(
-        { kind: 'reply', userId: callOpts?.userId, queuedAt: scheduler.#now() },
-        signal,
-        callOpts?.onQueued,
-      );
+      const lease = await scheduler.lease('reply', { userId: callOpts?.userId, signal, onQueued: callOpts?.onQueued });
       try {
         yield* fn(messages, signal, callOpts);
       } finally {
-        scheduler.#release(job);
+        lease.release();
       }
     };
   }
 
   background(fn: JsonFn): JsonFn {
     return async (messages, schema, signal) => {
-      const controller = new AbortController();
-      let preempted = false;
-      signal?.addEventListener('abort', () => controller.abort());
-      // Preemptible from the moment it holds a slot, before this function resumes.
-      const preempt = () => {
-        preempted = true;
-        controller.abort();
-      };
-      const job = await this.#acquire({ kind: 'background', queuedAt: this.#now(), preempt }, controller.signal);
+      const lease = await this.lease('background', { signal });
       try {
-        if (preempted) throw new PreemptedError(); // preempted before it even started
-        return await fn(messages, schema, controller.signal);
+        if (lease.isPreempted()) throw new PreemptedError(); // preempted before it even started
+        return await fn(messages, schema, lease.signal);
       } catch (err) {
-        if (preempted) throw new PreemptedError();
+        if (lease.isPreempted()) throw new PreemptedError();
         throw err;
       } finally {
-        this.#release(job);
+        lease.release();
       }
     };
   }

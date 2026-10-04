@@ -32,6 +32,17 @@ pnpm check-types
 `pnpm build` puts the front end in `dist/client`, and `pnpm start` serves it
 and the API from one process.
 
+**Model gateway** (`pnpm gateway`, optional). One hearth process schedules its
+own model calls. Several processes sharing one Ollama (the planned multi-service
+deployment) need one scheduler for all of them: the gateway, an Ollama-compatible
+server in front of Ollama on `HEARTH_GATEWAY_PORT` (11435). It requires
+`Authorization: Bearer $HEARTH_GATEWAY_TOKEN` (and won't start without a token),
+schedules `/api/chat` and `/api/generate` by `X-Hearth-Priority: reply|background`
+and `X-Hearth-User`, tells a waiting streamed reply its place with
+`{"hearth":{"queued":n}}` lines, answers a preempted background call with
+`{"error":"preempted"}`, and passes embeddings and everything else straight
+through. hearth can't use it yet; that's the next step.
+
 **Migrations** (`server/migrations/NNN_name.sql`) apply on start by default. A
 deployment can make them a separate step instead: run `pnpm migrate` (or
 `node server/migrate.ts`) first and start hearth with `HEARTH_AUTO_MIGRATE=0`.
