@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.ts';
-import { openDb } from '../db.ts';
+import { openDbOrExit } from '../db.ts';
 import { extractMemories } from '../extract.ts';
 import { DEFAULT_RECALL, memoryContext, rankFacts } from '../memories.ts';
 import { ollamaEmbed, ollamaJson } from '../ollama.ts';
@@ -61,7 +61,7 @@ const fail = (message: string): never => {
   throw new CliError(message);
 };
 
-const db = openDb(config.dbPath);
+const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
 
 function requireUser(username: string | undefined): User {
   if (!username) fail('A username is required.');

@@ -15,6 +15,7 @@ pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5180, /
 docker compose up      # the same, in a container (bind mount, host networking; README "In Docker")
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
+pnpm migrate           # apply pending migrations and exit (hearth also migrates on start unless HEARTH_AUTO_MIGRATE=0)
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
 ```
 
@@ -211,7 +212,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
-| `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one |
+| `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/src/ConversationView.tsx` | chat UI, Think toggle (per-browser `localStorage` `hearth.think`) |
@@ -251,11 +252,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   real chats vary more.
 - **Deployment is planned on the owner's home k3s cluster**, as a learning project; the plan lives in
   a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
-  follow it. Waiting searches in SQLite are done (`pending_searches`: one row per chat, image
-  bytes refused, a day's expiry, the date refreshed on approval). The rest, **not started, don't
-  begin without being asked**: migrations as their own step; an Ollama-compatible **model gateway**
-  (slots, reply priority, preemption, user turns, bearer token) that takes over `busy.ts`'s job; a separate worker process; health checks,
-  graceful shutdown, JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
+  follow it. Done: waiting searches in SQLite (`pending_searches`: one row per chat, image bytes
+  refused, a day's expiry, the date refreshed on approval) and migrations as their own step
+  (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema). The rest, **not
+  started, don't begin without being asked**: an Ollama-compatible **model gateway** (slots, reply
+  priority, preemption, user turns, bearer token) that takes over `busy.ts`'s job, which must keep
+  working in-process when there's no gateway; a separate worker process; health checks, graceful
+  shutdown, opt-in JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
+  Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
   live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:
   see `TODO.md`.

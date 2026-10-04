@@ -7,7 +7,7 @@ import { createApp } from './app.ts';
 import { createModelScheduler } from './busy.ts';
 import { resolveClientIp } from './client-ip.ts';
 import { config } from './config.ts';
-import { openDb } from './db.ts';
+import { openDbOrExit } from './db.ts';
 import { startMemorySweeper } from './extract.ts';
 import { makeImageDescriber } from './images.ts';
 import { memoryContext } from './memories.ts';
@@ -16,7 +16,7 @@ import { createSummarizer } from './summarize.ts';
 import { makeTitler } from './titles.ts';
 import { searxngSearch } from './web-search.ts';
 
-const db = openDb(config.dbPath);
+const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
 const webSearch = config.searxngUrl === 'off' ? undefined : searxngSearch(config.searxngUrl);
 const embed = ollamaEmbed(config.ollamaUrl, config.embedModel);
 // Every chat-model call goes through the scheduler: replies go first, background work yields.

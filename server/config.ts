@@ -11,12 +11,17 @@ function env(name: string, fallback: string): string {
   return process.env[name] || fallback;
 }
 
+const isOff = (value: string) => ['0', 'false', 'off', 'no'].includes(value.trim().toLowerCase());
+
 export const config = {
   root,
   host: env('HEARTH_HOST', '127.0.0.1'),
   port: Number(env('HEARTH_PORT', '8787')),
   origin: env('HEARTH_ORIGIN', 'http://localhost:5180'),
   dbPath: path.resolve(root, env('HEARTH_DB_PATH', './data/hearth.db')),
+  // Apply pending migrations on start (the default, fine for one process). A deployment sets 0 and
+  // runs `pnpm migrate` as its own step; hearth then only checks the schema version.
+  autoMigrate: !isOff(env('HEARTH_AUTO_MIGRATE', '1')),
   ollamaUrl: env('OLLAMA_URL', 'http://127.0.0.1:11434'),
   // Chosen by the French bench (docs/model-selection.md): 153/158 at 1.2 s/answer.
   model: env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat'),

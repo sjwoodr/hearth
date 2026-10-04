@@ -32,6 +32,13 @@ pnpm check-types
 `pnpm build` puts the front end in `dist/client`, and `pnpm start` serves it
 and the API from one process.
 
+**Migrations** (`server/migrations/NNN_name.sql`) apply on start by default. A
+deployment can make them a separate step instead: run `pnpm migrate` (or
+`node server/migrate.ts`) first and start hearth with `HEARTH_AUTO_MIGRATE=0`.
+hearth and `bin/hearth` then only check the schema version, and refuse to start
+if the database is behind the code (run the migrations) or ahead of it (run the
+newer hearth or restore a backup; migrations only go forward).
+
 ### In Docker
 
 `docker compose up --build` runs `pnpm dev:fullstack` in a container (Linux only).
