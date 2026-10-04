@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { call, setupApp, signIn, type TestApp } from './testing.ts';
-import { DECLINED, MAX_SEARCHES_PER_TURN, resultsForModel, searchQuery, searxngSearch } from './web-search.ts';
+import { openDb } from './db.ts';
+import { call, NOW, setupApp, signIn, type TestApp } from './testing.ts';
+import {
+  DECLINED,
+  MAX_SEARCHES_PER_TURN,
+  PENDING_SEARCH_TTL_MS,
+  PendingSearches,
+  resultsForModel,
+  searchQuery,
+  searxngSearch,
+  type PendingSearch,
+} from './web-search.ts';
 
 type Event = { type: string; query?: string; messageId?: number; sources?: { title: string; url: string }[] };
 
@@ -196,6 +206,125 @@ describe('answering the card', () => {
     expect(first.events.some((e) => e.type === 'title')).toBe(false);
     const { events } = await post(app, cookie, `/conversations/${id}/search`, { approve: true });
     expect(events.at(-1)?.type).toBe('title');
+  });
+});
+
+describe('waiting in the database', () => {
+  const HOUR = 60 * 60 * 1000;
+  // A tiny but valid PNG header, enough for the image checks.
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+  const rows = (db: ReturnType<typeof openDb>) =>
+    db.prepare('SELECT * FROM pending_searches').all() as { state: string; query: string }[];
+
+  it('survives a restart: the card comes back and the search still runs', async () => {
+    const first = await setup();
+    first.model.asks.push('Fishbach tour dates 2026');
+    await post(first.app, first.cookie, `/conversations/${first.id}/messages`, { content: 'When is Fishbach touring?' });
+
+    // Same database, empty server memory: a restart, or a second server process.
+    const after = setupApp({ webSearch: true, db: first.db });
+    expect((await chat(after.app, first.cookie, first.id)).pendingSearch).toEqual({ query: 'Fishbach tour dates 2026' });
+    const { events } = await post(after.app, first.cookie, `/conversations/${first.id}/search`, { approve: true });
+
+    expect(after.model.searched).toEqual(['Fishbach tour dates 2026']);
+    expect(events.at(-1)?.type).toBe('done');
+    expect((await chat(after.app, first.cookie, first.id)).messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(rows(first.db)).toEqual([]);
+  });
+
+  it('is answerable for a day, then expires and is deleted', async () => {
+    let now = NOW;
+    const ctx = setupApp({ webSearch: true, now: () => now });
+    const cookie = await signIn(ctx, 'steve');
+    const id = await newChat(ctx.app, cookie);
+    ctx.model.asks.push('q');
+    await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: 'News?' });
+
+    now = new Date(NOW.getTime() + 23 * HOUR);
+    expect((await chat(ctx.app, cookie, id)).pendingSearch).toEqual({ query: 'q' });
+
+    now = new Date(NOW.getTime() + PENDING_SEARCH_TTL_MS + 1);
+    expect((await chat(ctx.app, cookie, id)).pendingSearch).toBeNull();
+    expect((await post(ctx.app, cookie, `/conversations/${id}/search`, { approve: true })).res.status).toBe(409);
+    expect(ctx.model.searched).toEqual([]);
+    // The saved prompt is a copy of the chat, so an expired row is removed, not just hidden.
+    setupApp({ webSearch: true, db: ctx.db, now: () => now });
+    expect(rows(ctx.db)).toEqual([]);
+  });
+
+  it("tells the model today's date when the card is answered after midnight", async () => {
+    let now = NOW; // Friday 2 October, midday UTC
+    const ctx = setupApp({ webSearch: true, now: () => now });
+    const cookie = await signIn(ctx, 'steve');
+    const id = await newChat(ctx.app, cookie);
+    ctx.model.asks.push('q');
+    await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: 'News?' });
+    expect(ctx.model.calls[0]![0]!.content).toContain('Today is Friday, 2 October 2026.');
+
+    now = new Date(NOW.getTime() + 18 * HOUR); // early Saturday, in UTC and in US time zones
+    await post(ctx.app, cookie, `/conversations/${id}/search`, { approve: true });
+    const system = ctx.model.calls.at(-1)![0]!.content;
+    expect(system).toContain('Today is Saturday, 3 October 2026.');
+    expect(system).not.toContain('Friday');
+  });
+
+  it('keeps the prompt byte-for-byte when answered the same day, for the cache', async () => {
+    const ctx = await setup();
+    ctx.model.asks.push('q');
+    await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'News?' });
+    await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/search`, { approve: true });
+    const [asked, answered] = ctx.model.calls;
+    expect(answered!.slice(0, asked!.length)).toEqual(asked);
+  });
+
+  it('never stores image bytes, and puts the image back while hearth still has it', async () => {
+    const ctx = await setup();
+    ctx.model.asks.push('what is this landmark');
+    await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'Where is this?', images: [PNG] });
+
+    const [row] = rows(ctx.db);
+    expect(row!.state).not.toContain(PNG);
+    expect(JSON.parse(row!.state).images).toEqual([expect.objectContaining({ count: 1 })]);
+
+    await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/search`, { approve: true });
+    const userTurn = ctx.model.calls.at(-1)!.find((m) => m.role === 'user');
+    expect(userTurn!.images).toEqual([PNG]);
+  });
+
+  it('says the image is gone when hearth restarted before the card was answered', async () => {
+    const first = await setup();
+    first.model.asks.push('what is this landmark');
+    await post(first.app, first.cookie, `/conversations/${first.id}/messages`, { content: 'Where is this?', images: [PNG] });
+
+    const after = setupApp({ webSearch: true, db: first.db });
+    await post(after.app, first.cookie, `/conversations/${first.id}/search`, { approve: true });
+    const userTurn = after.model.calls.at(-1)!.find((m) => m.role === 'user');
+    expect(userTurn!.images).toBeUndefined();
+    expect(userTurn!.content).toContain('[Attached an image, no longer available]');
+  });
+
+  it('refuses image bytes and is scoped to its user at the storage level', () => {
+    const db = openDb(':memory:');
+    db.prepare("INSERT INTO users (id, username, password_hash) VALUES (1, 'a', 'x'), (2, 'b', 'x')").run();
+    db.prepare('INSERT INTO conversations (id, user_id) VALUES (1, 1)').run();
+    db.prepare("INSERT INTO messages (id, conversation_id, role, content) VALUES (1, 1, 'user', 'hi')").run();
+    const searches = new PendingSearches(db, () => NOW);
+    const base: Omit<PendingSearch, 'askedAt' | 'prompt'> = {
+      userId: 1,
+      userMessageId: 1,
+      query: 'q',
+      images: [],
+      decision: { think: false, auto: false },
+      searches: 1,
+      sources: [],
+    };
+
+    expect(() => searches.set(1, { ...base, prompt: [{ role: 'user', content: 'x', images: [PNG] }] })).toThrow(/image bytes/);
+    searches.set(1, { ...base, prompt: [{ role: 'user', content: 'x' }] });
+    expect(searches.get(1, 2)).toBeUndefined();
+    expect(searches.take(1, 2)).toBeUndefined();
+    expect(searches.take(1, 1)?.query).toBe('q');
+    expect(searches.take(1, 1)).toBeUndefined();
   });
 });
 

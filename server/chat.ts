@@ -27,6 +27,9 @@ import {
   declinedTurn,
   MAX_SEARCHES_PER_TURN,
   PendingSearches,
+  withTodaysDate,
+  type ImageRef,
+  type PendingSearch,
   SEARCH_RESERVE,
   searchInstructions,
   searchQuery,
@@ -102,11 +105,50 @@ function decideThinking(setting: unknown, message: string, previousReply: string
   return { think: false, auto: false };
 }
 
+// A waiting search is saved to the database, so its prompt loses any image bytes; each image
+// message keeps a reference to the message it came from instead (`imageSource`, set by buildPrompt).
+function withoutImages(prompt: ChatMessage[], imageSource: WeakMap<ChatMessage, number>) {
+  const images: ImageRef[] = [];
+  const stripped = prompt.map((message, index): ChatMessage => {
+    if (!message.images?.length) return message;
+    const { images: bytes, ...rest } = message;
+    const messageId = imageSource.get(message);
+    if (messageId === undefined) return { ...rest, content: withImageText(rest.content, bytes.length, null) };
+    images.push({ index, messageId, count: bytes.length });
+    return rest;
+  });
+  return { prompt: stripped, images };
+}
+
+// Puts a waiting search's images back for the model: the bytes if still in memory, else (after a
+// restart, say) the description the background job wrote, or a note that they're gone.
+function withImagesBack(
+  pending: PendingSearch,
+  held: { pendingImages: PendingImages; imageSource: WeakMap<ChatMessage, number>; notes: () => Map<number, string | null> },
+): ChatMessage[] {
+  if (pending.images.length === 0) return pending.prompt;
+  const notes = held.notes();
+  return pending.prompt.map((message, index) => {
+    const ref = pending.images.find((r) => r.index === index);
+    if (!ref) return message;
+    const inMemory = held.pendingImages.get(ref.messageId);
+    if (inMemory) {
+      const restored: ChatMessage = { ...message, images: inMemory.images };
+      held.imageSource.set(restored, ref.messageId);
+      return restored;
+    }
+    return { ...message, content: withImageText(message.content, ref.count, notes.get(ref.messageId) ?? null) };
+  });
+}
+
 export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   const { db, chat, systemPrompt, numCtx, memoryContext } = deps;
   const notFound = { error: 'Chat not found.' };
   const pendingImages = new PendingImages();
-  const pendingSearches = new PendingSearches();
+  const pendingSearches = new PendingSearches(db, deps.now);
+  // Which message each image-carrying prompt message came from. A waiting search is saved without
+  // image bytes (images are never stored), so this is how they're put back when it runs.
+  const imageSource = new WeakMap<ChatMessage, number>();
 
   api.get('/conversations', (c) => c.json(listConversations(db, c.get('user').id)));
 
@@ -157,13 +199,20 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const messages = listMessages(db, user.id, conversationId).filter((m) => m.id > state.summary_through_message_id);
     const history: ChatMessage[] = messages.map((m) => {
       const pending = m.image_count > 0 ? pendingImages.get(m.id) : undefined;
-      if (pending) return { role: m.role, content: m.content, images: pending.images };
+      if (pending) {
+        const message: ChatMessage = { role: m.role, content: m.content, images: pending.images };
+        imageSource.set(message, m.id);
+        return message;
+      }
       return { role: m.role, content: withSources(withImageText(m.content, m.image_count, m.image_note), m.sources) };
     });
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
     if (recalled && last?.role === 'user') {
-      history[history.length - 1] = { ...last, content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
+      const withRecall = { ...last, content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
+      const source = imageSource.get(last);
+      if (source !== undefined) imageSource.set(withRecall, source);
+      history[history.length - 1] = withRecall;
     }
     const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
     const tool = deps.webSearch ? searchInstructions(deps.now?.() ?? new Date()) : '';
@@ -230,11 +279,13 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         }
         if (call) {
           // Nothing is searched here. The request waits for the user's tap on the card.
+          const saved = withoutImages([...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }], imageSource);
           pendingSearches.set(conversationId, {
             userId: user.id,
             userMessageId: opts.userMessageId,
             query: call.query,
-            prompt: [...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }],
+            prompt: saved.prompt,
+            images: saved.images,
             decision: opts.decision,
             firstMessage: opts.firstMessage,
             searches: searches + 1,
@@ -360,12 +411,16 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const conversation = id ? getConversation(db, user.id, id) : undefined;
     if (!conversation) return c.json(notFound, 404);
     if (typeof body?.approve !== 'boolean') return c.json({ error: 'Say whether to search (approve: true or false).' }, 400);
-    const pending = pendingSearches.take(conversation.id, user.id);
-    // Waiting searches live in server memory, so a restart (or a newer message) loses them.
-    if (!pending) {
-      return c.json({ error: 'That search request is gone (hearth restarted, or the chat moved on). Tap Retry to ask again.' }, 409);
+    const waiting = pendingSearches.take(conversation.id, user.id);
+    // Gone if a newer message or a retry replaced it, or it waited longer than a day.
+    if (!waiting) {
+      return c.json({ error: 'That search request is gone (it expired, or the chat moved on). Tap Retry to ask again.' }, 409);
     }
 
+    const notes = () => new Map(listMessages(db, user.id, conversation.id).map((m) => [m.id, m.image_note]));
+    const restored = withImagesBack(waiting, { pendingImages, imageSource, notes });
+    const prompt = withTodaysDate(restored, waiting.askedAt, deps.now?.() ?? new Date());
+    const pending = { ...waiting, prompt };
     const approved = body.approve === true && !!deps.webSearch;
     const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
     return streamReply(c, conversation.id, turn, {

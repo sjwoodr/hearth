@@ -2,7 +2,7 @@
 
 ## Deployment (planned: home k3s cluster; the detailed plan is kept privately)
 
-- [ ] Waiting searches in SQLite, so an approval survives a restart and any replica can answer it
+- [x] Waiting searches in SQLite, so an approval survives a restart and any replica can answer it
 - [ ] Migrations as their own step (a Job), with the app checking the schema version on start
 - [ ] Model gateway: Ollama-compatible, slots, reply priority, preemption, user turns, bearer token
 - [ ] Separate worker process for extraction, summaries and titles

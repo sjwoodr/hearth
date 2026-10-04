@@ -290,9 +290,12 @@ can't read the French inside it.
 but asking runs nothing: the chat shows a card with the exact query, and only **Search** sends it
 out (to a local SearXNG, which forwards it to Google, Bing and other engines). **Answer without
 searching** makes the model reply from what it knows. The server enforces this: the request waits
-in server memory, and `POST /api/conversations/:id/search` with `approve: true` is the only code
-path that calls the search engine; a new message or a retry drops the request, and a restart loses
-it. The model sees the top 5 results (title, URL, snippet), labelled as untrusted web text, on that
+in the database (`pending_searches`), and `POST /api/conversations/:id/search` with `approve: true`
+is the only code path that calls the search engine. A new message or a retry drops the request; a
+restart doesn't, and an unanswered card expires after a day. The saved prompt never holds image
+bytes: images are put back from memory when the search runs, or, after a restart, replaced by
+their description or a note that they're gone. Answered after midnight, the prompt gets today's
+date. The model sees the top 5 results (title, URL, snippet), labelled as untrusted web text, on that
 turn only; the reply keeps just the links (`messages.sources`), shown as site pills and listed for
 the model in later turns. At most 2 searches per message, then it must answer. The system prompt
 gains today's date and when to search: without them Gemma 4 asked for 1 of 10 questions that

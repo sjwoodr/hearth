@@ -179,9 +179,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   Ollama's cache; keep it that way.
 - **Web search is asked for by the model and approved by the user, per search** (owner's call:
   the card, not a checkbox). The tool is offered on every reply, but a tool call only stores a
-  `PendingSearch` and sends a `search` event; `POST /conversations/:id/search` with `approve: true`
-  is the only path to the search engine. Keep it that way for any future tool that reaches outside
-  the machine. Results are seen on one turn only; the DB keeps links (`messages.sources`), never
+  `PendingSearch` (a `pending_searches` row, so it survives restarts) and sends a `search` event;
+  `POST /conversations/:id/search` with `approve: true` is the only path to the search engine. Keep
+  it that way for any future tool that reaches outside the machine. Results are seen on one turn only; the DB keeps links (`messages.sources`), never
   result text. Without today's date and a firm "call the tool instead of saying you can't check",
   Gemma 4 called it for 1 of 10 questions that needed it (9/10 with, 0 false calls in 10; a
   20-message probe, so small). Leaving `tools` out of a request didn't force a full prompt reread
@@ -251,10 +251,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   real chats vary more.
 - **Deployment is planned on the owner's home k3s cluster**, as a learning project; the plan lives in
   a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
-  follow it. Changes it asks of this repo, **none started, don't begin without being asked**:
-  waiting searches into SQLite (expire after a day, refresh the date on approval); migrations as
-  their own step; an Ollama-compatible **model gateway** (slots, reply priority, preemption, user
-  turns, bearer token) that takes over `busy.ts`'s job; a separate worker process; health checks,
+  follow it. Waiting searches in SQLite are done (`pending_searches`: one row per chat, image
+  bytes refused, a day's expiry, the date refreshed on approval). The rest, **not started, don't
+  begin without being asked**: migrations as their own step; an Ollama-compatible **model gateway**
+  (slots, reply priority, preemption, user turns, bearer token) that takes over `busy.ts`'s job; a separate worker process; health checks,
   graceful shutdown, JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
   live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:

@@ -2,6 +2,7 @@
 // waits here until the user taps Search on the card it puts in the chat, and only that route
 // (POST /conversations/:id/search) ever calls the search engine. Results go to the model on that
 // turn only; a reply keeps just the links it drew on.
+import type { DB } from './db.ts';
 import type { ChatMessage, ToolCall } from './ollama.ts';
 import type { ThinkDecision } from './think-router.ts';
 
@@ -129,40 +130,115 @@ export async function searchTurn(pending: PendingSearch, search: SearchFn, conve
   }
 }
 
+/** A message in a waiting search's prompt that carried images, which are stored as a reference. */
+export type ImageRef = { index: number; messageId: number; count: number };
+
 /** A web search the model asked for, waiting for the user's answer. */
 export type PendingSearch = {
   userId: number;
   userMessageId: number;
   query: string;
-  /** The prompt so far, ending with the model's tool call. */
+  /** The prompt so far, ending with the model's tool call. No image bytes: see `images`. */
   prompt: ChatMessage[];
+  /** Which prompt messages had images, so the caller can put them back when the search runs. */
+  images: ImageRef[];
   decision: ThinkDecision & { auto: boolean };
   firstMessage?: string;
   /** Searches asked for so far while answering this message, and the pages found. */
   searches: number;
   sources: Source[];
+  /** When the model asked. Its prompt holds that day's date (see withTodaysDate). */
+  askedAt: Date;
 };
 
+/** How long a search card stays answerable: long enough to come back to after lunch or overnight. */
+export const PENDING_SEARCH_TTL_MS = 24 * 60 * 60 * 1000;
+
+// This chat's request, only for its owner, and only if it hasn't expired.
+const CURRENT_FOR_USER = 'conversation_id = ? AND user_id = ? AND asked_at > ?';
+
+type Row = { user_id: number; user_message_id: number; query: string; state: string; asked_at: string };
+type State = Pick<PendingSearch, 'prompt' | 'images' | 'decision' | 'firstMessage' | 'searches' | 'sources'>;
+
 /**
- * Search requests waiting on the user, one per chat, in server memory only: a restart drops them,
- * and the chat then just shows Retry. A new message or a retry replaces the request.
+ * Search requests waiting on the user, one per chat, in SQLite so they survive a restart and any
+ * server process can answer them. A new message or a retry replaces the request; unanswered ones
+ * expire after PENDING_SEARCH_TTL_MS. Image bytes are refused: images are never stored.
  */
 export class PendingSearches {
-  #byChat = new Map<number, PendingSearch>();
-  set(conversationId: number, search: PendingSearch) {
-    this.#byChat.set(conversationId, search);
+  #db: DB;
+  #now: () => Date;
+
+  constructor(db: DB, now: () => Date = () => new Date()) {
+    this.#db = db;
+    this.#now = now;
+    this.#expire();
   }
+
+  set(conversationId: number, search: Omit<PendingSearch, 'askedAt'>) {
+    if (search.prompt.some((m) => m.images?.length)) throw new Error('A waiting search must not hold image bytes.');
+    const state: State = {
+      prompt: search.prompt,
+      images: search.images,
+      decision: search.decision,
+      firstMessage: search.firstMessage,
+      searches: search.searches,
+      sources: search.sources,
+    };
+    this.#expire();
+    this.#db
+      .prepare(
+        `INSERT INTO pending_searches (conversation_id, user_id, user_message_id, query, state, asked_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (conversation_id) DO UPDATE SET user_id = excluded.user_id,
+           user_message_id = excluded.user_message_id, query = excluded.query, state = excluded.state,
+           asked_at = excluded.asked_at`,
+      )
+      .run(conversationId, search.userId, search.userMessageId, search.query, JSON.stringify(state), this.#now().toISOString());
+  }
+
   get(conversationId: number, userId: number): PendingSearch | undefined {
-    const search = this.#byChat.get(conversationId);
-    return search?.userId === userId ? search : undefined;
+    return this.#one(`SELECT * FROM pending_searches WHERE ${CURRENT_FOR_USER}`, conversationId, userId);
   }
-  /** Removes and returns the chat's request, so a double tap can't run it twice. */
+
+  /** Removes and returns the chat's request in one statement, so a double tap can't run it twice. */
   take(conversationId: number, userId: number): PendingSearch | undefined {
-    const search = this.get(conversationId, userId);
-    if (search) this.#byChat.delete(conversationId);
-    return search;
+    return this.#one(`DELETE FROM pending_searches WHERE ${CURRENT_FOR_USER} RETURNING *`, conversationId, userId);
   }
+
   forget(conversationId: number) {
-    this.#byChat.delete(conversationId);
+    this.#db.prepare('DELETE FROM pending_searches WHERE conversation_id = ?').run(conversationId);
   }
+
+  #one(sql: string, conversationId: number, userId: number): PendingSearch | undefined {
+    const row = this.#db.prepare(sql).get(conversationId, userId, this.#cutoff()) as Row | undefined;
+    return row && fromRow(row);
+  }
+
+  #cutoff(): string {
+    return new Date(this.#now().getTime() - PENDING_SEARCH_TTL_MS).toISOString();
+  }
+
+  // The saved prompt is a copy of the chat, so expired rows are deleted, not just ignored.
+  #expire() {
+    this.#db.prepare('DELETE FROM pending_searches WHERE asked_at <= ?').run(this.#cutoff());
+  }
+}
+
+function fromRow(row: Row): PendingSearch {
+  const state = JSON.parse(row.state) as State;
+  return { userId: row.user_id, userMessageId: row.user_message_id, query: row.query, ...state, askedAt: new Date(row.asked_at) };
+}
+
+/**
+ * A waiting search's prompt says what day it was asked. Answered after midnight, it would tell the
+ * model yesterday's date while the results say otherwise, so swap in today's. Same day: unchanged,
+ * which keeps the prompt identical for Ollama's cache.
+ */
+export function withTodaysDate(prompt: ChatMessage[], askedAt: Date, now: Date): ChatMessage[] {
+  const then = searchInstructions(askedAt);
+  const today = searchInstructions(now);
+  const system = prompt[0];
+  if (then === today || system?.role !== 'system' || !system.content.includes(then)) return prompt;
+  return [{ ...system, content: system.content.replace(then, today) }, ...prompt.slice(1)];
 }

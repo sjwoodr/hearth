@@ -11,3 +11,6 @@ dist/
 
 # runtime data (database)
 data/
+
+# git worktrees (the wt helper keeps them here)
+.worktrees/

@@ -1,6 +1,6 @@
 // Shared setup for the server tests: an in-memory database and a scripted stand-in for Ollama.
 import { createApp } from './app.ts';
-import { openDb } from './db.ts';
+import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions } from './ollama.ts';
 import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
@@ -42,10 +42,21 @@ export const NOW = new Date('2026-10-02T12:00:00Z');
 
 export const THINKING_TOKENS = 25;
 
+/**
+ * `db` reuses another app's database: a second app on it behaves like hearth after a restart (or
+ * a second server process), with the database intact and server memory empty. `now` moves the clock.
+ */
 export function setupApp(
-  opts: { numCtx?: number; systemPrompt?: string; thinkingReserve?: number; webSearch?: boolean } = {},
+  opts: {
+    numCtx?: number;
+    systemPrompt?: string;
+    thinkingReserve?: number;
+    webSearch?: boolean;
+    db?: DB;
+    now?: () => Date;
+  } = {},
 ) {
-  const db = openDb(':memory:');
+  const db = opts.db ?? openDb(':memory:');
   const model: FakeModel = {
     calls: [],
     reply: ['Hello', ' there.'],
@@ -119,7 +130,7 @@ export function setupApp(
             if (model.results instanceof Error) throw model.results;
             return model.results;
           },
-          now: () => NOW,
+          now: opts.now ?? (() => NOW),
         }
       : {}),
   });
