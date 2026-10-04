@@ -54,11 +54,12 @@ export type ChatOptions = {
 /** Streams a reply as text chunks. Aborting the signal stops generation. */
 export type ChatFn = (messages: ChatMessage[], signal: AbortSignal, opts?: ChatOptions) => AsyncIterable<string>;
 
-type StreamLine = {
+export type StreamLine = {
   error?: string;
   done?: boolean;
   eval_count?: number;
   eval_duration?: number;
+  prompt_eval_count?: number;
   prompt_eval_duration?: number;
   message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] };
   /** From the gateway only: this reply is waiting for a slot, at this position. */
@@ -76,7 +77,7 @@ function parseLine(line: string, onQueued?: (position: number) => void): StreamL
 }
 
 /** Ollama streams one JSON object per line. */
-async function* readLines(body: ReadableStream<Uint8Array>, onQueued?: (position: number) => void): AsyncGenerator<StreamLine> {
+export async function* readLines(body: ReadableStream<Uint8Array>, onQueued?: (position: number) => void): AsyncGenerator<StreamLine> {
   const decoder = new TextDecoder();
   let buffer = '';
   for await (const chunk of body) {

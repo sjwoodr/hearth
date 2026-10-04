@@ -1,0 +1,364 @@
+{
+  "model": "gemma4:26b-a4b-it-qat",
+  "numCtx": 16384,
+  "slots": "4",
+  "turns": 3,
+  "scenarios": [
+    {
+      "users": 1,
+      "waitMedianS": 1.420053439000003,
+      "waitMaxS": 3.386045865000001,
+      "tokPerSMedian": 23.399018155261626,
+      "totalTokPerS": 19.702319006405038,
+      "firstPromptS": 3.372725,
+      "laterPromptSMedian": 1.384733,
+      "laterPromptSMax": 1.403389,
+      "memoryGB": 16.391696546,
+      "wallS": 38.980182979999995,
+      "turns": [
+        {
+          "user": 0,
+          "turn": 1,
+          "waitS": 3.386045865000001,
+          "seconds": 14.237792794,
+          "promptTokens": 1309,
+          "promptS": 3.372725,
+          "tokens": 256,
+          "tokPerS": 23.59116945666035
+        },
+        {
+          "user": 0,
+          "turn": 2,
+          "waitS": 1.3794173130000018,
+          "seconds": 12.320622142,
+          "promptTokens": 1604,
+          "promptS": 1.366077,
+          "tokens": 256,
+          "tokPerS": 23.399018155261626
+        },
+        {
+          "user": 0,
+          "turn": 3,
+          "waitS": 1.420053439000003,
+          "seconds": 12.421481115000002,
+          "promptTokens": 1901,
+          "promptS": 1.403389,
+          "tokens": 256,
+          "tokPerS": 23.271483306165088
+        }
+      ]
+    },
+    {
+      "users": 2,
+      "waitMedianS": 2.5355771779999996,
+      "waitMaxS": 7.584153050000001,
+      "tokPerSMedian": 17.283578484099618,
+      "totalTokPerS": 26.99552440953004,
+      "firstPromptS": 7.266068,
+      "laterPromptSMedian": 2.273638,
+      "laterPromptSMax": 2.329674,
+      "memoryGB": 16.391696546,
+      "wallS": 56.898320502999994,
+      "turns": [
+        {
+          "user": 0,
+          "turn": 1,
+          "waitS": 7.381293868000001,
+          "seconds": 22.258497802999997,
+          "promptTokens": 1309,
+          "promptS": 7.164203,
+          "tokens": 256,
+          "tokPerS": 17.20799593729971
+        },
+        {
+          "user": 0,
+          "turn": 2,
+          "waitS": 2.4785893720000023,
+          "seconds": 17.259485595000005,
+          "promptTokens": 1604,
+          "promptS": 2.283211,
+          "tokens": 256,
+          "tokPerS": 17.320316934736912
+        },
+        {
+          "user": 0,
+          "turn": 3,
+          "waitS": 2.5368630660000053,
+          "seconds": 17.37966151599999,
+          "promptTokens": 1901,
+          "promptS": 2.329674,
+          "tokens": 256,
+          "tokPerS": 17.247645056400472
+        },
+        {
+          "user": 1,
+          "turn": 1,
+          "waitS": 7.584153050000001,
+          "seconds": 22.30949766100001,
+          "promptTokens": 1293,
+          "promptS": 7.367933,
+          "tokens": 256,
+          "tokPerS": 17.385757913100548
+        },
+        {
+          "user": 1,
+          "turn": 2,
+          "waitS": 2.427796721000006,
+          "seconds": 17.21096667000001,
+          "promptTokens": 1590,
+          "promptS": 2.231109,
+          "tokens": 256,
+          "tokPerS": 17.319511911798763
+        },
+        {
+          "user": 1,
+          "turn": 3,
+          "waitS": 2.534291289999994,
+          "seconds": 17.37737287199999,
+          "promptTokens": 1885,
+          "promptS": 2.264065,
+          "tokens": 256,
+          "tokPerS": 17.246885118228743
+        }
+      ]
+    },
+    {
+      "users": 3,
+      "waitMedianS": 4.148830820999981,
+      "waitMaxS": 11.286575754000005,
+      "tokPerSMedian": 9.809581086821115,
+      "totalTokPerS": 23.598382661069774,
+      "firstPromptS": 10.549484,
+      "laterPromptSMedian": 3.6522895,
+      "laterPromptSMax": 3.734111,
+      "memoryGB": 16.391696546,
+      "wallS": 97.633809617,
+      "turns": [
+        {
+          "user": 0,
+          "turn": 1,
+          "waitS": 11.286575754000005,
+          "seconds": 37.15439778400002,
+          "promptTokens": 1309,
+          "promptS": 5.473919,
+          "tokens": 256,
+          "tokPerS": 9.896591061221125
+        },
+        {
+          "user": 0,
+          "turn": 2,
+          "waitS": 3.9458298289999947,
+          "seconds": 30.043139515999997,
+          "promptTokens": 1604,
+          "promptS": 3.575449,
+          "tokens": 256,
+          "tokPerS": 9.809581086821115
+        },
+        {
+          "user": 0,
+          "turn": 3,
+          "waitS": 4.148830820999981,
+          "seconds": 30.43622191199998,
+          "promptTokens": 1901,
+          "promptS": 3.598701,
+          "tokens": 256,
+          "tokPerS": 9.738612224172353
+        },
+        {
+          "user": 1,
+          "turn": 1,
+          "waitS": 11.286044393999997,
+          "seconds": 37.15349001699999,
+          "promptTokens": 1293,
+          "promptS": 10.87106,
+          "tokens": 256,
+          "tokPerS": 9.896598712985996
+        },
+        {
+          "user": 1,
+          "turn": 2,
+          "waitS": 3.946304801999999,
+          "seconds": 30.04428342699999,
+          "promptTokens": 1590,
+          "promptS": 3.636935,
+          "tokens": 256,
+          "tokPerS": 9.809622059019745
+        },
+        {
+          "user": 1,
+          "turn": 3,
+          "waitS": 4.1481609499999905,
+          "seconds": 30.435278457999985,
+          "promptTokens": 1885,
+          "promptS": 3.667644,
+          "tokens": 256,
+          "tokPerS": 9.73874559554769
+        },
+        {
+          "user": 2,
+          "turn": 1,
+          "waitS": 10.948553727999998,
+          "seconds": 37.095886363,
+          "promptTokens": 1347,
+          "promptS": 10.549484,
+          "tokens": 256,
+          "tokPerS": 9.790662255310412
+        },
+        {
+          "user": 2,
+          "turn": 2,
+          "waitS": 4.003496031000017,
+          "seconds": 30.100350572000025,
+          "promptTokens": 1642,
+          "promptS": 3.688974,
+          "tokens": 256,
+          "tokPerS": 9.809654761845914
+        },
+        {
+          "user": 2,
+          "turn": 3,
+          "waitS": 4.149246401000012,
+          "seconds": 30.436102277,
+          "promptTokens": 1940,
+          "promptS": 3.734111,
+          "tokens": 256,
+          "tokPerS": 9.73892528220438
+        }
+      ]
+    },
+    {
+      "users": 4,
+      "waitMedianS": 3.796141889999999,
+      "waitMaxS": 15.742777879000002,
+      "tokPerSMedian": 10.58061972090324,
+      "totalTokPerS": 32.726744665325796,
+      "firstPromptS": 10.5829015,
+      "laterPromptSMedian": 3.1455475,
+      "laterPromptSMax": 3.337507,
+      "memoryGB": 16.391696546,
+      "wallS": 93.86818125100002,
+      "turns": [
+        {
+          "user": 0,
+          "turn": 1,
+          "waitS": 12.03242205600001,
+          "seconds": 38.08027893100001,
+          "promptTokens": 1309,
+          "promptS": 11.426601,
+          "tokens": 256,
+          "tokPerS": 9.8279064478514
+        },
+        {
+          "user": 0,
+          "turn": 2,
+          "waitS": 3.503612996999989,
+          "seconds": 27.605317277999973,
+          "promptTokens": 1604,
+          "promptS": 3.171797,
+          "tokens": 256,
+          "tokPerS": 10.621567050405352
+        },
+        {
+          "user": 0,
+          "turn": 3,
+          "waitS": 3.7968870899999745,
+          "seconds": 28.08655046099995,
+          "promptTokens": 1901,
+          "promptS": 3.337507,
+          "tokens": 256,
+          "tokPerS": 10.539701036439617
+        },
+        {
+          "user": 1,
+          "turn": 1,
+          "waitS": 15.50070483599999,
+          "seconds": 38.15931428699999,
+          "promptTokens": 1293,
+          "promptS": 9.514603,
+          "tokens": 256,
+          "tokPerS": 11.298613664516884
+        },
+        {
+          "user": 1,
+          "turn": 2,
+          "waitS": 3.424966742999997,
+          "seconds": 27.527478231000014,
+          "promptTokens": 1590,
+          "promptS": 3.057517,
+          "tokens": 256,
+          "tokPerS": 10.621538405366863
+        },
+        {
+          "user": 1,
+          "turn": 3,
+          "waitS": 3.7960290880000103,
+          "seconds": 28.087122748000024,
+          "promptTokens": 1885,
+          "promptS": 3.200996,
+          "tokens": 256,
+          "tokPerS": 10.539165597792175
+        },
+        {
+          "user": 2,
+          "turn": 1,
+          "waitS": 15.499518415999978,
+          "seconds": 38.157703649000005,
+          "promptTokens": 1347,
+          "promptS": 14.875217,
+          "tokens": 256,
+          "tokPerS": 11.298524902544706
+        },
+        {
+          "user": 2,
+          "turn": 2,
+          "waitS": 3.426059938999999,
+          "seconds": 27.52840611599997,
+          "promptTokens": 1642,
+          "promptS": 3.119298,
+          "tokens": 256,
+          "tokPerS": 10.621565728323251
+        },
+        {
+          "user": 2,
+          "turn": 3,
+          "waitS": 3.7962546919999878,
+          "seconds": 28.086640009999975,
+          "promptTokens": 1940,
+          "promptS": 3.269754,
+          "tokens": 256,
+          "tokPerS": 10.539406408280218
+        },
+        {
+          "user": 3,
+          "turn": 1,
+          "waitS": 15.742777879000002,
+          "seconds": 41.17586212999999,
+          "promptTokens": 1358,
+          "promptS": 9.739202,
+          "tokens": 256,
+          "tokPerS": 10.065815096088231
+        },
+        {
+          "user": 3,
+          "turn": 2,
+          "waitS": 1.9946018420000036,
+          "seconds": 27.877866820000026,
+          "promptTokens": 1656,
+          "promptS": 1.586594,
+          "tokens": 256,
+          "tokPerS": 9.891011485357536
+        },
+        {
+          "user": 3,
+          "turn": 3,
+          "waitS": 2.0203774910000503,
+          "seconds": 24.813877622,
+          "promptTokens": 1951,
+          "promptS": 1.591822,
+          "tokens": 256,
+          "tokPerS": 11.231431723249099
+        }
+      ]
+    }
+  ]
+}

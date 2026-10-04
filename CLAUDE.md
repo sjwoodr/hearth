@@ -19,6 +19,7 @@ pnpm check-types       # tsc --noEmit
 pnpm migrate           # apply pending migrations and exit (hearth also migrates on start unless HEARTH_AUTO_MIGRATE=0)
 pnpm gateway           # the model gateway on :11435 (needs HEARTH_GATEWAY_TOKEN); optional for one process
 pnpm worker            # memory extraction + summaries in their own process (with HEARTH_ROLE=api + the gateway)
+node scripts/bench-slots.ts   # Ollama slot benchmark (1-4 simulated users; results in data/bench/)
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
 ```
 
@@ -38,12 +39,21 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 - **Ollama is a systemd service** with drop-ins in `/etc/systemd/system/ollama.service.d/`:
   `OLLAMA_IGPU_ENABLE=1` (without it Ollama ignores the iGPU), `OLLAMA_FLASH_ATTENTION=1`,
   `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_NUM_PARALLEL=2` (in `tuning.conf`).
-  **Two slots** (since 2026-10-04; it was one): two requests at once, two cached conversations, and
-  hearth's `HEARTH_OLLAMA_SLOTS=2` must match. Quick measurement (one sample, 16k context): one
-  reply alone 24.8 tok/s; two at once 20.6 + 19.1 = ~40 tok/s combined (each ~20% slower, ~1.6×
-  total), both starting within 0.5 s; `ollama ps` still 15 GB. A fuller benchmark of slot counts
-  is pending. Much of the design (cache-stable prompts, chat first) came from the one-slot days and
-  still holds: a slot is still a single cached conversation.
+  **Two slots** (since 2026-10-04; it was one): two requests at once, and hearth's
+  `HEARTH_OLLAMA_SLOTS=2` must match. Chosen from `scripts/bench-slots.ts`, written up in
+  [docs/ollama-slots.md](docs/ollama-slots.md) (2026-10-04, Ollama
+  0.33.3, 16k context, 1-8 simulated users each sending 3 messages in a ~1.3k-token chat; one run
+  per cell, so expect noise). The GPU's total is fixed at **~33-36 tok/s** (memory bandwidth);
+  slots only split it: one reply ~23 tok/s, two at once ~17 each, four ~11, eight ~5.5. More
+  users than slots queue ~12 s per reply ahead (1 slot, 4 users: 40 s median wait); enough slots
+  and the first word comes in 1.4-4 s. Each slot costs ~0.33 GB (`ollama ps`: 1 → 15.0 GB,
+  2 → 15.3, 4 → 16.4, 8 → 17.7). Two covers the real use: the owner's reply plus background work,
+  or two people at once; a third person is rare and waits.
+  **Ollama kept every conversation cached at every setting**, even 4 users through 1 slot (later
+  messages read their prompt in 1.4 s vs ~4.6 s for a reread). Mechanism unverified. The
+  one-slot-era reasoning below ("a classifier call would evict the chat") may be weaker than it
+  was; re-measure before relying on that either way. Note Ollama's `prompt_eval_count` is the whole
+  prompt even on a cache hit; use `prompt_eval_duration` as the signal.
 - First message after the model has been unloaded takes ~16 s to load it.
 
 ## Models in use
@@ -271,7 +281,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   real chats vary more.
 - **Deployment is planned on the owner's home k3s cluster**, as a learning project; the plan lives in
   a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
-  follow it. **Phase 1 (this repo) is done** except the slot-count benchmark: waiting searches in
+  follow it. **Phase 1 (this repo) is done**, including the slot-count benchmark (2 slots kept): waiting searches in
   SQLite, migrations as a step (`pnpm migrate`, `HEARTH_AUTO_MIGRATE=0`), the slot-aware scheduler
   (`busy.ts`), the gateway (`gateway.ts`) and hearth as its client (`HEARTH_GATEWAY_URL`), the worker
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api), trusted

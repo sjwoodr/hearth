@@ -164,9 +164,10 @@ Multi-user, with no sign-up from the web interface; accounts come from
   the username. Extraction fills a blank display name when a user explicitly
   says what to call them, and never replaces one that is set.
 - All users share one Ollama instance, which runs a fixed number of requests at once (its
-  slots: `OLLAMA_NUM_PARALLEL`, mirrored in `HEARTH_OLLAMA_SLOTS`; 1 by default). Replies go
-  before background work, which is paused and retried. When every slot holds a reply, the next
-  one waits ("queued"), and waiting replies take turns between users.
+  slots: `OLLAMA_NUM_PARALLEL`, mirrored in `HEARTH_OLLAMA_SLOTS`; 1 by default; measured in
+  [docs/ollama-slots.md](docs/ollama-slots.md)). Replies go before background work, which is
+  paused and retried. When every slot holds a reply, the next one waits ("queued"), and waiting
+  replies take turns between users.
 
 ## Network and TLS
 

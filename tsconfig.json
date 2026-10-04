@@ -14,5 +14,5 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true
   },
-  "include": ["server", "client", "shared", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "client", "shared", "scripts", "vite.config.ts", "vitest.config.ts"]
 }
