@@ -1,0 +1,20 @@
+# Run the dev server in Docker with live reload: `docker compose up --build`.
+# The repo is bind-mounted, so edits on the host restart the backend and hot-reload Vite.
+#
+# Host networking keeps every address the same as running on the host: Ollama and
+# SearXNG stay on 127.0.0.1, the backend on 127.0.0.1:8787, Vite on :5180 (LAN too).
+# Linux only. Stop any host `pnpm dev:fullstack` first, or the ports clash.
+services:
+  hearth:
+    build: .
+    image: hearth-dev
+    network_mode: host
+    init: true # forwards Ctrl-C / docker stop to dev-all.sh so both processes exit
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules # the container's own; the host's stays untouched
+      # Read-only so nothing in here can plant a git hook that later runs on the host.
+      - ./.git:/app/.git:ro
+
+volumes:
+  node_modules:

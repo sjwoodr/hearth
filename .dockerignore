@@ -1,0 +1,2 @@
+# Nothing is copied into the image (the source is bind-mounted), so keep the build context empty.
+*

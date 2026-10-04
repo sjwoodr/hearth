@@ -32,6 +32,18 @@ pnpm check-types
 `pnpm build` puts the front end in `dist/client`, and `pnpm start` serves it
 and the API from one process.
 
+### In Docker
+
+`docker compose up --build` runs `pnpm dev:fullstack` in a container (Linux only).
+The repo is bind-mounted, so edits on the host still restart the backend and
+hot-reload Vite, and the database stays in `data/`. The container uses host
+networking, so every address is the same as on the host (Ollama and SearXNG on
+127.0.0.1, Vite on :5180); stop any host dev server first. It keeps its own
+`node_modules` in a volume and runs `pnpm install` on each start, so lockfile
+changes land on the next `docker compose restart`. `.git` is mounted read-only, so
+nothing in the container can plant a git hook that runs on the host. `pnpm test`, `bin/hearth` and
+the editor keep using the host's `node_modules`.
+
 ## Admin console: `bin/hearth`
 
 Everything in the database is managed from the host with `bin/hearth`; there is

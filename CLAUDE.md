@@ -12,6 +12,7 @@ and what not to undo. Read the README section before changing a feature.
 
 ```
 pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5180, /api proxied to :8787
+docker compose up      # the same, in a container (bind mount, host networking; README "In Docker")
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
