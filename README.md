@@ -143,10 +143,20 @@ certificates, but any reverse proxy fits.
 
 - **A reverse proxy terminates TLS** and forwards to the backend, which never handles TLS. On a
   plain host the backend listens only on `127.0.0.1`.
-- **Client addresses:** the backend trusts `X-Forwarded-For` only from localhost, so login
-  throttling sees real client addresses when the proxy runs on the same host. Behind a proxy
-  elsewhere (a container network, a Kubernetes ingress) every client would share one throttle
-  bucket until a trusted-proxy setting exists (planned).
+- **Client addresses:** the backend believes `X-Forwarded-For` only from a trusted proxy
+  (`HEARTH_TRUSTED_PROXIES`, addresses or CIDR ranges; by default only this machine), taking the
+  rightmost address it doesn't trust, so a client can't fake its own. Behind a proxy elsewhere
+  add its range (for a k3s ingress, the pod network: `127.0.0.0/8, ::1/128, 10.42.0.0/16`), or
+  every client shares one login-throttle bucket. A typo in the setting stops startup.
+- **Probes:** `/healthz` (the process is up) and `/readyz` (the database answers and its schema
+  matches; 503 otherwise), with no login, on the backend and on the worker
+  (`HEARTH_WORKER_PORT`, 8788). `/readyz` reports whether the models are reachable but doesn't
+  fail over it, so an Ollama outage doesn't take the whole UI down.
+- **Shutdown:** on SIGTERM each process stops accepting connections, lets open requests finish
+  (a reply mid-stream ends normally), closes the database and exits; anything still open after
+  `HEARTH_SHUTDOWN_GRACE_MS` (25 s, under Kubernetes' 30) is cut off.
+- **Logs:** plain lines by default; `HEARTH_LOG_FORMAT=json` writes one JSON object per line
+  (`time`, `level`, `service`, `msg`, and `chat` when a message names one) for a log store.
 - **Certificates:** Let's Encrypt via the ACME **DNS-01** challenge, so no inbound route is needed
   and LAN-only names still get real certificates. A wildcard certificate (`*.example.com`) also keeps
   individual hostnames out of the public Certificate Transparency logs.

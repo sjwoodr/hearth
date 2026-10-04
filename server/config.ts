@@ -16,6 +16,10 @@ const isOff = (value: string) => ['0', 'false', 'off', 'no'].includes(value.trim
 export const config = {
   root,
   host: env('HEARTH_HOST', '127.0.0.1'),
+  // Proxies allowed to say who the client is (X-Forwarded-For), as addresses or CIDR ranges. The
+  // default trusts only this machine. Behind a Kubernetes ingress, add the pod network
+  // ("127.0.0.0/8, ::1/128, 10.42.0.0/16" on k3s), or every client shares one login-throttle bucket.
+  trustedProxies: env('HEARTH_TRUSTED_PROXIES', '127.0.0.0/8, ::1/128'),
   port: Number(env('HEARTH_PORT', '8787')),
   origin: env('HEARTH_ORIGIN', 'http://localhost:5180'),
   dbPath: path.resolve(root, env('HEARTH_DB_PATH', './data/hearth.db')),
@@ -48,6 +52,13 @@ export const config = {
   // "api" (the API, chat titles and image descriptions; memory extraction and summaries are left to
   // the worker, `pnpm worker`). Separate processes need the gateway.
   role: env('HEARTH_ROLE', 'all'),
+  // The worker's health endpoints (/healthz, /readyz) for probes; it serves nothing else.
+  workerPort: Number(env('HEARTH_WORKER_PORT', '8788')),
+  // On SIGTERM, how long open requests (a streaming reply) get to finish before they're cut off.
+  // Keep it under the supervisor's limit: Kubernetes kills after 30 s by default.
+  shutdownGraceMs: Number(env('HEARTH_SHUTDOWN_GRACE_MS', '25000')),
+  // "text" (default): readable lines for a terminal. "json": one JSON object per line, for Loki.
+  logFormat: env('HEARTH_LOG_FORMAT', 'text'),
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),

@@ -2,7 +2,10 @@
 // deployment the migrate Job (`node server/migrate.ts`) that runs before hearth starts, so the
 // app itself can run with HEARTH_AUTO_MIGRATE=0 and only check the schema.
 import { config } from './config.ts';
+import { setLogFormat } from './logging.ts';
 import { connect, latestVersion, migrate, schemaVersion } from './db.ts';
+
+setLogFormat(config.logFormat, 'migrate');
 
 const db = connect(config.dbPath);
 try {

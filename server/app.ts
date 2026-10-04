@@ -4,6 +4,7 @@ import { csrf } from 'hono/csrf';
 import { registerChatRoutes, type ChatDeps } from './chat.ts';
 import { registerMemoryRoutes } from './memory-routes.ts';
 import type { DB } from './db.ts';
+import { registerHealthRoutes, type ModelsProbe } from './health.ts';
 import { getDummyHash, verifyPassword } from './passwords.ts';
 import {
   createSession,
@@ -25,6 +26,8 @@ export type AppOptions = Omit<ChatDeps, 'db'> & {
   // 5 misses on one username from one address, or 20 from one address, locks for 15 minutes.
   pairThrottle?: LoginThrottle;
   ipThrottle?: LoginThrottle;
+  /** For /readyz: whether the models are reachable (reported, never failing readiness). */
+  checkModels?: ModelsProbe;
 };
 
 type Env = { Variables: { user: SessionUser } };
@@ -36,6 +39,7 @@ export function createApp(opts: AppOptions) {
   const secure = origin.startsWith('https://');
 
   const app = new Hono<Env>();
+  registerHealthRoutes(app, { db, models: opts.checkModels });
   app.use('/api/*', csrf({ origin }));
 
   app.post('/api/login', async (c) => {

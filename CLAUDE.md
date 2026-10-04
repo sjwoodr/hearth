@@ -220,6 +220,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
+| `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
 | `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
 | `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`) |
@@ -239,10 +240,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 - **Public repo.** The real domain, hostnames, Cloudflare token and `.env` stay local. `data/` (the
   database) is gitignored.
 - **Ollama stays on 127.0.0.1:11434**; the backend listens on 127.0.0.1 behind a reverse proxy.
-  `resolveClientIp` (`server/client-ip.ts`) trusts `X-Forwarded-For` only from loopback, so the
-  login throttle sees real client IPs behind a proxy on the same host. Any other proxy setup (a
-  container network, Kubernetes ingress) needs a trusted-proxy setting first, or every client
-  shares one throttle bucket.
+  `resolveClientIp` (`server/client-ip.ts`) believes `X-Forwarded-For` only from
+  `HEARTH_TRUSTED_PROXIES` (loopback by default) and takes the rightmost untrusted hop, so a
+  client can't fake its address; behind an ingress, add the pod network, or every client shares
+  one login-throttle bucket.
 
 ## Testing practice
 
@@ -272,8 +273,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
   (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default), and the worker
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api). The rest,
-  **not started, don't begin without being asked**: health checks, graceful
-  shutdown, opt-in JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
+  **not started, don't begin without being asked**: `/metrics`; production images and CI pushing to
+  GHCR. Done in 1.5 so far: trusted proxies, health endpoints, graceful shutdown, JSON logs.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
   live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:

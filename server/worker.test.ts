@@ -127,7 +127,7 @@ describe('which background jobs the main process runs', () => {
   });
 });
 
-describe('starting the api and the worker as separate processes', () => {
+describe('starting the api and the worker as separate processes', { timeout: 30_000 }, () => {
   const dirs: string[] = [];
   afterEach(() => {
     for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
@@ -145,6 +145,12 @@ describe('starting the api and the worker as separate processes', () => {
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/needs the model gateway.*would never yield/);
     }
+  });
+
+  it('refuses a HEARTH_TRUSTED_PROXIES it can\'t read, rather than trusting the wrong proxies', () => {
+    const r = run('server/index.ts', { HEARTH_TRUSTED_PROXIES: '10.42.0.0/16, 10.43.0.0/99' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(`can't read "10.43.0.0/99"`);
   });
 
   it('refuses an unknown role, and a gateway URL without a token', () => {
@@ -176,7 +182,7 @@ describe('starting the api and the worker as separate processes', () => {
   }
 
   it('starts both with the gateway: the api says the worker has the background jobs', async () => {
-    const gateway = { HEARTH_GATEWAY_URL: 'http://127.0.0.1:1', HEARTH_GATEWAY_TOKEN: 't' };
+    const gateway = { HEARTH_GATEWAY_URL: 'http://127.0.0.1:1', HEARTH_GATEWAY_TOKEN: 't', HEARTH_WORKER_PORT: '0' };
     expect(await firstLine('server/worker.ts', gateway)).toMatch(/^hearth worker running: memories after .* via the gateway/);
     expect(await firstLine('server/index.ts', { ...gateway, HEARTH_ROLE: 'api', HEARTH_PORT: '0' })).toMatch(
       /api only: the worker extracts memories and summarizes/,

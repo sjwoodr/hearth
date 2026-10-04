@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveClientIp } from './client-ip.ts';
+import { parseTrustedProxies, resolveClientIp } from './client-ip.ts';
 import { openDb, type DB } from './db.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
@@ -196,11 +196,45 @@ describe('login throttling', () => {
 });
 
 describe('client IP behind a reverse proxy', () => {
-  it('trusts X-Forwarded-For only from localhost', () => {
+  it('trusts X-Forwarded-For only from localhost by default', () => {
     expect(resolveClientIp('127.0.0.1', '192.168.1.50')).toBe('192.168.1.50');
     expect(resolveClientIp('::1', 'spoofed, 100.64.0.7')).toBe('100.64.0.7');
+    expect(resolveClientIp('::ffff:127.0.0.1', '192.168.1.50')).toBe('192.168.1.50');
     expect(resolveClientIp('192.168.1.9', '1.2.3.4')).toBe('192.168.1.9');
+    expect(resolveClientIp('10.42.1.7', '203.0.113.9')).toBe('10.42.1.7'); // a pod isn't trusted by default
     expect(resolveClientIp('127.0.0.1', undefined)).toBe('127.0.0.1');
+    // One client, one throttle bucket, whether it arrived on an IPv4 or a dual-stack socket.
+    expect(resolveClientIp('::ffff:198.51.100.4', undefined)).toBe('198.51.100.4');
+  });
+
+  // Behind Traefik in k3s: connections come from the pod network.
+  const k3s = parseTrustedProxies('127.0.0.0/8, ::1/128, 10.42.0.0/16');
+
+  it('behind an ingress, takes the client the proxy saw', () => {
+    expect(resolveClientIp('10.42.1.7', '203.0.113.9', k3s)).toBe('203.0.113.9');
+    expect(resolveClientIp('::ffff:10.42.1.7', '203.0.113.9', k3s)).toBe('203.0.113.9');
+    // Through two of our proxies: skip both.
+    expect(resolveClientIp('10.42.1.7', '203.0.113.9, 10.42.0.5', k3s)).toBe('203.0.113.9');
+  });
+
+  it("can't be fooled by a client sending its own X-Forwarded-For", () => {
+    // The client claims to be 127.0.0.1 and 10.42.0.9; Traefik appends who it really saw.
+    expect(resolveClientIp('10.42.1.7', '127.0.0.1, 10.42.0.9, 198.51.100.4', k3s)).toBe('198.51.100.4');
+    // Straight to hearth, not through a trusted proxy: the header counts for nothing.
+    expect(resolveClientIp('198.51.100.4', '10.42.0.9', k3s)).toBe('198.51.100.4');
+  });
+
+  it('falls back to the leftmost hop when every hop is ours', () => {
+    expect(resolveClientIp('10.42.1.7', '10.42.0.9, 10.42.0.5', k3s)).toBe('10.42.0.9');
+  });
+
+  it('reads IPv6 ranges and refuses what it can\'t read', () => {
+    const v6 = parseTrustedProxies('fd00::/8');
+    expect(resolveClientIp('fd12::1', '2001:db8::7', v6)).toBe('2001:db8::7');
+    expect(resolveClientIp('2001:db8::9', '2001:db8::7', v6)).toBe('2001:db8::9');
+    for (const bad of ['10.42.0.0/33', 'banana', '10.42.0.0/x', '::1/129']) {
+      expect(() => parseTrustedProxies(bad)).toThrow(/can't read/);
+    }
   });
 });
 

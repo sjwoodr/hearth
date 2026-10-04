@@ -6,7 +6,8 @@
 - [x] Migrations as their own step (a Job), with the app checking the schema version on start
 - [x] Model gateway: Ollama-compatible, slots, reply priority, preemption, user turns, bearer token
 - [x] Separate worker process for extraction and summaries (titles and image descriptions stay in the api)
-- [ ] Health and readiness endpoints, graceful shutdown, JSON logs, a trusted-proxy setting
+- [x] Health and readiness endpoints, graceful shutdown, JSON logs, a trusted-proxy setting
+- [ ] `/metrics` (Prometheus) on the api, worker and gateway
 - [ ] Production images and CI pushing to GHCR
 - [ ] Helm chart
 - [ ] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming
