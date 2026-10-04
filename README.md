@@ -78,7 +78,9 @@ containers use host networking, so every address is the same as on the host
 first. They share their own `node_modules` volume: the gateway runs `pnpm
 install` on each start and the others wait until the gateway is healthy, so they
 never install at once, and lockfile changes land on the next `docker compose
-restart`. `.git` is mounted read-only, so nothing in a container can plant a git
+restart` of the gateway (after a dependency change the others stop until it has
+reinstalled: `docker compose restart gateway`, then `docker compose restart hearth
+worker`). `.git` is mounted read-only, so nothing in a container can plant a git
 hook that runs on the host. `pnpm test`, `bin/hearth` and the editor keep using
 the host's `node_modules`. Watch the slots with `curl -s localhost:11435/healthz`.
 
@@ -155,6 +157,11 @@ certificates, but any reverse proxy fits.
 - **Shutdown:** on SIGTERM each process stops accepting connections, lets open requests finish
   (a reply mid-stream ends normally), closes the database and exits; anything still open after
   `HEARTH_SHUTDOWN_GRACE_MS` (25 s, under Kubernetes' 30) is cut off.
+- **Metrics:** `/metrics` (Prometheus) on the backend, the worker and the gateway (behind its
+  token there): reply time and time to first word, outcomes (done, search, error, stopped),
+  Ollama's own tokens per second and prompt reading time (short when its cache held the chat),
+  slot waits, preemptions, searches asked/approved/declined/failed, background jobs by outcome,
+  and Node's process metrics. Every series carries `service` (hearth, worker, gateway).
 - **Logs:** plain lines by default; `HEARTH_LOG_FORMAT=json` writes one JSON object per line
   (`time`, `level`, `service`, `msg`, and `chat` when a message names one) for a log store.
 - **Certificates:** Let's Encrypt via the ACME **DNS-01** challenge, so no inbound route is needed

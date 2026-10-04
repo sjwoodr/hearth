@@ -39,6 +39,10 @@ export type SchedulerOptions = {
   slots?: number;
   backgroundMaxWaitMs?: number;
   now?: () => number;
+  /** For metrics: a call got a slot after waiting, a background call was preempted, one went overdue. */
+  onStart?: (kind: 'reply' | 'background', waitedMs: number) => void;
+  onPreempt?: () => void;
+  onOverdue?: () => void;
 };
 
 /**
@@ -70,8 +74,10 @@ export class ModelScheduler {
   // longest for a turn.
   #lastServed = new Map<number | undefined, number>();
   #served = 0;
+  #hooks: Pick<SchedulerOptions, 'onStart' | 'onPreempt' | 'onOverdue'>;
 
   constructor(opts: SchedulerOptions = {}) {
+    this.#hooks = opts;
     this.slots = Math.max(1, Math.floor(opts.slots ?? 1));
     this.#maxWait = opts.backgroundMaxWaitMs ?? BACKGROUND_MAX_WAIT_MS;
     this.#now = opts.now ?? Date.now;
@@ -178,7 +184,10 @@ export class ModelScheduler {
 
   #markOverdue() {
     for (const job of this.#waiting) {
-      if (job.kind === 'background' && !job.protected && this.#now() - job.queuedAt >= this.#maxWait) job.protected = true;
+      if (job.kind === 'background' && !job.protected && this.#now() - job.queuedAt >= this.#maxWait) {
+        job.protected = true;
+        this.#hooks.onOverdue?.();
+      }
     }
   }
 
@@ -192,6 +201,7 @@ export class ModelScheduler {
     this.#waiting.splice(this.#waiting.indexOf(job), 1);
     this.#running.add(job);
     if (job.kind === 'reply') this.#lastServed.set(job.userId, ++this.#served);
+    this.#hooks.onStart?.(job.kind, this.#now() - job.queuedAt);
     job.start();
   }
 
@@ -202,6 +212,7 @@ export class ModelScheduler {
       const preempt = job.preempt!;
       job.preempt = undefined; // once is enough; its slot frees when the call unwinds
       job.freeing = true;
+      this.#hooks.onPreempt?.();
       preempt();
     }
   }

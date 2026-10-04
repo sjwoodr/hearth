@@ -17,6 +17,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import type { ModelScheduler } from './busy.ts';
+import { metricsResponse } from './metrics.ts';
 
 export const PREEMPTED = 'preempted';
 
@@ -122,12 +123,15 @@ export function createGateway(opts: GatewayOptions) {
   // Open, so a probe can check the process is up; it reaches no model.
   app.get('/healthz', (c) => c.json({ ok: true, ...opts.scheduler.stats() }));
 
-  app.use('/api/*', async (c, next) => {
+  const tokenRequired = async (c: Context, next: () => Promise<void>) => {
     const header = c.req.header('authorization') ?? '';
     const sent = header.startsWith('Bearer ') ? header.slice(7) : '';
     if (!sent || !sameToken(sent, opts.token)) return c.json({ error: 'unauthorized' }, 401);
     return next();
-  });
+  };
+  app.use('/api/*', tokenRequired);
+  // Behind the token too (unlike the api's): the gateway's port is on the LAN, with no firewall.
+  app.get('/metrics', tokenRequired, metricsResponse);
 
   const forward: Forward = (c, path, body, signal) =>
     upstreamFetch(`${opts.upstream}${path}`, {

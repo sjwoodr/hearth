@@ -3,6 +3,7 @@
 // (POST /conversations/:id/search) ever calls the search engine. Results go to the model on that
 // turn only; a reply keeps just the links it drew on.
 import type { DB } from './db.ts';
+import { searches } from './metrics.ts';
 import type { ChatMessage, ToolCall } from './ollama.ts';
 import type { ThinkDecision } from './think-router.ts';
 
@@ -126,6 +127,7 @@ export async function searchTurn(pending: PendingSearch, search: SearchFn, conve
   } catch (err) {
     const why = err instanceof Error ? err.message : 'unknown error';
     console.error(`web search: chat ${conversationId} failed:`, why);
+    searches.inc({ outcome: 'failed' });
     return { prompt: [...pending.prompt, toolResult(searchFailed(why))], sources: pending.sources };
   }
 }

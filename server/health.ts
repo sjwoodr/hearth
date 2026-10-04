@@ -5,14 +5,18 @@
 //             goes elsewhere. Whether the models are reachable is reported, but doesn't fail it:
 //             with Ollama down hearth can still show chats and memories, and failing readiness
 //             would take the whole UI offline over one dependency.
+//   /metrics  Prometheus metrics (server/metrics.ts). Unauthenticated: the api's and worker's
+//             ports aren't reachable through the ingress, which routes only / and /api.
 import type { Env, Hono } from 'hono';
 import { checkSchema, type DB } from './db.ts';
+import { metricsResponse } from './metrics.ts';
 
 /** Resolves undefined when the models are reachable, or a short reason when not. */
 export type ModelsProbe = () => Promise<string | undefined>;
 
 export function registerHealthRoutes<E extends Env>(app: Hono<E>, opts: { db: DB; models?: ModelsProbe }) {
   app.get('/healthz', (c) => c.json({ ok: true }));
+  app.get('/metrics', metricsResponse);
   app.get('/readyz', async (c) => {
     let database = 'ok';
     try {

@@ -1,3 +1,4 @@
+import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchCount } from './metrics.ts';
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { fitHistory } from './context.ts';
@@ -228,6 +229,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
     c.header('Cache-Control', 'no-cache');
     return stream(c, async (s) => {
+      const startedAt = performance.now();
       const controller = new AbortController();
       s.onAbort(() => controller.abort());
       // One queue for every write: thinking progress arrives from a callback while text streams. A
@@ -270,7 +272,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
         const onQueued = () => void send({ type: 'queued' });
         const callOpts = { onThinking, tools, onToolCall, userId: user.id, onQueued };
+        const labels = { think: String(think) };
+        const sinceStart = () => (performance.now() - startedAt) / 1000;
         for await (const text of generate(prompt, controller.signal, callOpts)) {
+          if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
           reply += text;
           // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
           // mustn't hold a model slot that other replies are waiting for. The text buffers here
@@ -291,6 +296,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
             searches: searches + 1,
             sources,
           });
+          searchCount.inc({ outcome: 'asked' });
+          replies.inc({ ...labels, outcome: 'search' });
+          replySeconds.observe(labels, sinceStart());
           await send({ type: 'search', query: call.query });
           return;
         }
@@ -305,6 +313,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         }
         reply = plainSymbols(reply);
         const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
+        replies.inc({ ...labels, outcome: 'done' });
+        replySeconds.observe(labels, sinceStart());
         await send({
           type: 'done',
           messageId,
@@ -313,6 +323,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
         });
       } catch (err) {
+        replies.inc({ think: String(think), outcome: controller.signal.aborted ? 'stopped' : 'error' });
         // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
         if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources });
         if (!controller.signal.aborted) {
@@ -325,7 +336,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         try {
           const title = await deps.titleFor(opts.firstMessage, reply);
           if (title && setAutoTitle(db, conversationId, title)) await send({ type: 'title', title });
+          job('title', 'ok');
         } catch (err) {
+          job('title', isPreempted(err) ? 'preempted' : 'failed');
           // The first-message title stays; a failed or preempted title isn't worth an error.
           if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
         }
@@ -422,6 +435,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const prompt = withTodaysDate(restored, waiting.askedAt, deps.now?.() ?? new Date());
     const pending = { ...waiting, prompt };
     const approved = body.approve === true && !!deps.webSearch;
+    searchCount.inc({ outcome: approved ? 'approved' : 'declined' });
     const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
     return streamReply(c, conversation.id, turn, {
       userMessageId: pending.userMessageId,

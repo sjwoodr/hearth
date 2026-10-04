@@ -220,6 +220,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
+| `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks; served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
 | `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
@@ -273,8 +274,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
   (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default), and the worker
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api). The rest,
-  **not started, don't begin without being asked**: `/metrics`; production images and CI pushing to
-  GHCR. Done in 1.5 so far: trusted proxies, health endpoints, graceful shutdown, JSON logs.
+  **not started, don't begin without being asked**: production images and CI pushing to GHCR.
+  Done in 1.5: trusted proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
   live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:

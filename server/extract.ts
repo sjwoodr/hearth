@@ -1,6 +1,7 @@
 // Memory extraction: reads the unread part of a conversation and records durable facts
 // about the user. Runs in the background once a chat has gone quiet.
 import { every } from './every.ts';
+import { job } from './metrics.ts';
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
@@ -339,14 +340,17 @@ export function createSweep(
         try {
           const r = await extractMemories(db, id, json, embed);
           retryAt.delete(id);
+          job('memory', 'ok');
           console.log(
             `memory: chat ${id} done in ${secs()}: read ${r.read}, added ${r.added}, updated ${r.updated}, skipped ${r.duplicates} duplicate(s)`,
           );
         } catch (err) {
           if (isPreempted(err)) {
+            job('memory', 'preempted');
             console.log(`memory: chat ${id} paused after ${secs()} for a chat reply; will retry`);
             return;
           }
+          job('memory', 'failed');
           retryAt.set(id, now() + 15 * 60_000);
           console.error(`memory: chat ${id} failed after ${secs()}:`, err instanceof Error ? err.message : err);
         }

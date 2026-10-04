@@ -3,6 +3,7 @@
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
 import { every } from './every.ts';
+import { job } from './metrics.ts';
 import type { DB } from './db.ts';
 import { withImageText, type MessageRow } from './images.ts';
 import type { JsonFn } from './ollama.ts';
@@ -77,6 +78,23 @@ third person, under 200 words. Reply with the summary only.`,
   );
 }
 
+/** Summarizes one chat if it's long, logging and counting the outcome. */
+async function summarizeAndRecord(db: DB, conversationId: number, json: JsonFn, numCtx: number): Promise<'done' | 'preempted' | 'failed'> {
+  try {
+    if (await summarizeIfLong(db, conversationId, json, numCtx)) {
+      job('summary', 'ok');
+      console.log(`summary: chat ${conversationId} updated`);
+    }
+    return 'done';
+  } catch (err) {
+    const preempted = isPreempted(err);
+    job('summary', preempted ? 'preempted' : 'failed');
+    if (preempted) console.log(`summary: chat ${conversationId} paused for a chat reply`);
+    else console.error(`summary: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
+    return preempted ? 'preempted' : 'failed';
+  }
+}
+
 /**
  * Runs summaries in the background, one at a time, at most one queued per chat. Failures are
  * logged and retried after the chat's next reply.
@@ -88,14 +106,8 @@ export function createSummarizer(db: DB, json: JsonFn, numCtx = 8192): (conversa
     if (pending.has(conversationId)) return;
     pending.add(conversationId);
     chain = chain.then(async () => {
-      try {
-        if (await summarizeIfLong(db, conversationId, json, numCtx)) console.log(`summary: chat ${conversationId} updated`);
-      } catch (err) {
-        if (isPreempted(err)) console.log(`summary: chat ${conversationId} paused for a chat reply`);
-        else console.error(`summary: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
-      } finally {
-        pending.delete(conversationId);
-      }
+      await summarizeAndRecord(db, conversationId, json, numCtx);
+      pending.delete(conversationId);
     });
   };
 }
@@ -123,16 +135,8 @@ export function createSummarySweep(db: DB, json: JsonFn, numCtx = 8192) {
       for (const row of fresh) lastSeen = Math.max(lastSeen, row.last);
       const chats = new Set([...retry, ...fresh.map((r) => r.id)]);
       retry.clear();
-      for (const id of chats) {
-        try {
-          if (await summarizeIfLong(db, id, json, numCtx)) console.log(`summary: chat ${id} updated`);
-        } catch (err) {
-          if (isPreempted(err)) {
-            retry.add(id);
-            console.log(`summary: chat ${id} paused for a chat reply; will retry`);
-          } else console.error(`summary: chat ${id} failed:`, err instanceof Error ? err.message : err);
-        }
-      }
+      // Preempted ones go round again next pass; failed ones wait for the chat's next reply.
+      for (const id of chats) if ((await summarizeAndRecord(db, id, json, numCtx)) === 'preempted') retry.add(id);
     } finally {
       running = false;
     }

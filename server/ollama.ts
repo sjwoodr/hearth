@@ -1,4 +1,5 @@
 import { PreemptedError } from './busy.ts';
+import { recordModelStats } from './metrics.ts';
 
 /**
  * Where model calls go: Ollama itself (a URL), or the model gateway (URL and token). Calls always
@@ -55,6 +56,10 @@ export type ChatFn = (messages: ChatMessage[], signal: AbortSignal, opts?: ChatO
 
 type StreamLine = {
   error?: string;
+  done?: boolean;
+  eval_count?: number;
+  eval_duration?: number;
+  prompt_eval_duration?: number;
   message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] };
   /** From the gateway only: this reply is waiting for a slot, at this position. */
   hearth?: { queued?: number };
@@ -106,6 +111,7 @@ export function ollamaChat(endpoint: Endpoint, model: string, numCtx: number): C
     const request = { model, messages, think: false, ...withTools(opts), options: { num_ctx: numCtx } };
     const body = await startChat(endpoint, request, signal, opts?.userId);
     for await (const data of readLines(body, opts?.onQueued)) {
+      if (data.done) recordModelStats('reply', data);
       for (const call of data.message?.tool_calls ?? []) opts?.onToolCall?.(call);
       if (data.message?.content) yield data.message.content;
     }
@@ -138,6 +144,7 @@ export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: nu
         opts?.userId,
       );
       for await (const data of readLines(body, opts?.onQueued)) {
+        if (data.done) recordModelStats('reply', data);
         if (data.message?.thinking) {
           notes += data.message.thinking;
           // Counted on its own line: inside `opts?.onThinking?.(…)` the increment would be skipped
@@ -219,7 +226,8 @@ export function ollamaJson(endpoint: Endpoint, model: string, numCtx: number): J
       if (res.status === 409 && text.includes(`"${PREEMPTED}"`)) throw new PreemptedError();
       throw new Error(`Ollama returned ${res.status}: ${text}`);
     }
-    const data = (await res.json()) as { message?: { content?: string }; done_reason?: string };
+    const data = (await res.json()) as { message?: { content?: string }; done_reason?: string } & Parameters<typeof recordModelStats>[1];
+    recordModelStats('background', data);
     if (data.done_reason === 'length') throw new Error(`The model's reply hit the ${JSON_MAX_TOKENS}-token cap.`);
     const content = data.message?.content ?? '';
     return schema ? JSON.parse(content) : content;

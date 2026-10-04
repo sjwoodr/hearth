@@ -2,6 +2,7 @@
 // process, the default), or the model gateway, which schedules every process's calls. Shared by
 // the api (index.ts) and the worker (worker.ts) so both are wired the same way.
 import { createModelScheduler } from './busy.ts';
+import { schedulerHooks, watchScheduler } from './metrics.ts';
 import type { config as appConfig } from './config.ts';
 import { ollamaEmbed, ollamaJson, type ChatFn, type Endpoint, type JsonFn } from './ollama.ts';
 
@@ -34,7 +35,8 @@ export function backgroundJobs(role: string) {
 export function connectModels(config: Config) {
   // With a gateway it schedules every hearth process's calls; without one, this process schedules its own.
   const endpoint: Endpoint = config.gatewayUrl ? { url: config.gatewayUrl, token: config.gatewayToken } : config.ollamaUrl;
-  const scheduler = config.gatewayUrl ? undefined : createModelScheduler({ slots: config.ollamaSlots });
+  const scheduler = config.gatewayUrl ? undefined : createModelScheduler({ slots: config.ollamaSlots, ...schedulerHooks });
+  if (scheduler) watchScheduler(scheduler);
   const asBackground = (fn: JsonFn) => (scheduler ? scheduler.background(fn) : fn);
   return {
     endpoint,

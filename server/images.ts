@@ -3,6 +3,7 @@
 // Ollama's cache), and from then on the description stands in for it everywhere. Until it is
 // described, the image waits in server memory only, so a retry or a re-answer with thinking can
 // still see it. A restart loses undescribed images; the message then says so.
+import { job } from './metrics.ts';
 import { isPreempted } from './busy.ts';
 import { setImageNote } from './conversations.ts';
 import type { DB } from './db.ts';
@@ -156,7 +157,9 @@ export function describeWaitingImages(
         const request = onPrompt ? describeAfterReply(turn.prompt, turn.reply) : describeAlone(p.images);
         setImageNote(db, messageId, await describe(request));
         p.described = true;
+        job('image', 'ok');
       } catch (err) {
+        job('image', isPreempted(err) ? 'preempted' : 'failed');
         if (isPreempted(err)) console.log(`images: message ${messageId} paused for a chat reply`);
         else {
           const gaveUp = pending.failed(messageId);
