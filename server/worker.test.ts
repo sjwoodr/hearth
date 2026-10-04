@@ -162,20 +162,26 @@ describe('starting the api and the worker as separate processes', { timeout: 30_
     expect(noToken.stderr).toContain('HEARTH_GATEWAY_TOKEN is not');
   });
 
-  /** Starts an entry point and resolves with its first output line, then stops it. */
-  function firstLine(file: string, extra: Record<string, string>) {
+  /**
+   * Starts an entry point, resolves with the first line of its output matching `want`, then stops
+   * it. Matching rather than taking the first line: startup can print other lines first (on CI,
+   * with no built front end, a warning about the missing dist/client).
+   */
+  function lineMatching(file: string, extra: Record<string, string>, want: RegExp) {
     return new Promise<string>((resolve, reject) => {
       const child = spawn('node', [file], { cwd: root, env: env(extra) });
       let out = '';
-      const done = (text: string) => {
+      const done = (line: string) => {
         child.kill();
-        resolve(text);
+        resolve(line);
       };
-      child.stdout.on('data', (d) => {
+      const look = (d: Buffer) => {
         out += d;
-        if (out.includes('\n')) done(out.split('\n')[0]!);
-      });
-      child.stderr.on('data', (d) => (out += d));
+        const line = out.split('\n').find((l) => want.test(l));
+        if (line) done(line);
+      };
+      child.stdout.on('data', look);
+      child.stderr.on('data', look);
       child.on('exit', (code) => (code ? reject(new Error(`exited ${code}: ${out}`)) : resolve(out)));
       setTimeout(() => done(out), 10_000);
     });
@@ -183,8 +189,8 @@ describe('starting the api and the worker as separate processes', { timeout: 30_
 
   it('starts both with the gateway: the api says the worker has the background jobs', async () => {
     const gateway = { HEARTH_GATEWAY_URL: 'http://127.0.0.1:1', HEARTH_GATEWAY_TOKEN: 't', HEARTH_WORKER_PORT: '0' };
-    expect(await firstLine('server/worker.ts', gateway)).toMatch(/^hearth worker running: memories after .* via the gateway/);
-    expect(await firstLine('server/index.ts', { ...gateway, HEARTH_ROLE: 'api', HEARTH_PORT: '0' })).toMatch(
+    expect(await lineMatching('server/worker.ts', gateway, /hearth worker running/)).toMatch(/^hearth worker running: memories after .* via the gateway/);
+    expect(await lineMatching('server/index.ts', { ...gateway, HEARTH_ROLE: 'api', HEARTH_PORT: '0' }, /hearth listening/)).toMatch(
       /api only: the worker extracts memories and summarizes/,
     );
   });
