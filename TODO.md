@@ -19,8 +19,10 @@
       tested at desktop width.
 - [x] **Show when a reply is queued.** Only this server's own model calls are visible, not other
       Ollama clients.
-- [ ] **Scheduled backups.** `hearth db backup` is manual. Either a timer, or confirm restic's include
-      list covers `data/`.
+- [x] **Scheduled backups.** The host's nightly restic job (encrypted, off-site) runs
+      `hearth db backup <fixed path>` first, because the repo directory is excluded from it and a
+      live SQLite file can't be copied safely. Restore: `restic restore`, stop hearth, replace
+      `data/hearth.db` and delete its `-wal`/`-shm`.
 
 ## Later, if wanted
 
