@@ -8,7 +8,8 @@
 - [x] Separate worker process for extraction and summaries (titles and image descriptions stay in the api)
 - [x] Health and readiness endpoints, graceful shutdown, JSON logs, a trusted-proxy setting
 - [x] `/metrics` (Prometheus) on the api, worker and gateway
-- [ ] Production images and CI pushing to GHCR
+- [x] Production images (`Dockerfile.prod`: server and web) and the multi-service stack
+- [ ] CI pushing the images to GHCR
 - [ ] Helm chart
 - [ ] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming
 - [x] Push to GitHub (the repo is public; nothing secret is committed)

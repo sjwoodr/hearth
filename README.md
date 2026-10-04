@@ -84,6 +84,32 @@ worker`). `.git` is mounted read-only, so nothing in a container can plant a git
 hook that runs on the host. `pnpm test`, `bin/hearth` and the editor keep using
 the host's `node_modules`. Watch the slots with `curl -s localhost:11435/healthz`.
 
+### Production images and the multi-service stack
+
+`Dockerfile.prod` builds two images: **`hearth`** (`--target server`: Node, production
+dependencies and the code, no compilers, non-root, `tini` as PID 1 so SIGTERM reaches Node; one
+image for every role: the api by default, or `node server/worker.ts`, `node
+server/gateway-main.ts`, `node server/migrate.ts`; the database on a `/data` volume) and
+**`hearth-web`** (`--target web`: the built front end on unprivileged nginx, port 8080, with
+unknown paths answered by `index.html`). An allow-list ignore file
+(`Dockerfile.prod.dockerignore`) keeps tests, `data/` and `.env` out of the images.
+
+`compose.services.yml` runs those images the way the planned k3s deployment splits hearth, on one
+machine, with its own project, network and fresh database:
+
+```
+docker compose -f compose.services.yml up --build -d
+printf 'pw\npw\n' | docker compose -f compose.services.yml run --rm -T --no-deps api bin/hearth users add <you>
+# open http://localhost:8090 (HEARTH_SERVICES_ORIGIN for another address)
+docker compose -f compose.services.yml down        # -v also deletes its database
+```
+
+A `migrate` job runs first; then the gateway (host network, port 11436), two api replicas sharing
+the SQLite volume, the worker, the web image, its own SearXNG (your settings file, read-only), and
+an nginx proxy standing in for the ingress (`deploy/nginx-ingress.conf`: `/` to web, `/api` to the
+api replicas, unbuffered, `X-Forwarded-For` set and trusted). It shares Ollama with the dev stack,
+so run one at a time for real use.
+
 ## Admin console: `bin/hearth`
 
 Everything in the database is managed from the host with `bin/hearth`; there is

@@ -1,0 +1,16 @@
+# For Dockerfile.prod only (./.dockerignore, for the dev image, excludes everything).
+# An allow list, so tests, data/, .env and anything new stay out of the images unless named here.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!vite.config.ts
+!client
+!server
+!shared
+!prompts
+!bin
+!deploy/nginx-web.conf
+**/*.test.ts
+server/testing.ts

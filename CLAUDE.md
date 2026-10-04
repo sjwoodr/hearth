@@ -13,6 +13,7 @@ and what not to undo. Read the README section before changing a feature.
 ```
 pnpm dev:fullstack     # backend (node --watch) + Vite; http://localhost:5180, /api proxied to :8787
 docker compose up      # gateway + hearth (api) + worker in containers (bind mount, host networking; README "In Docker")
+docker compose -f compose.services.yml up --build -d   # the production images as services, on :8090 (README)
 pnpm test              # vitest, server/**/*.test.ts, seconds; fakes stand in for Ollama
 pnpm check-types       # tsc --noEmit
 pnpm migrate           # apply pending migrations and exit (hearth also migrates on start unless HEARTH_AUTO_MIGRATE=0)
@@ -229,6 +230,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
+| `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/src/ConversationView.tsx` | chat UI, Think toggle (per-browser `localStorage` `hearth.think`) |
@@ -274,7 +276,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
   (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default), and the worker
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api). The rest,
-  **not started, don't begin without being asked**: production images and CI pushing to GHCR.
+  **not started, don't begin without being asked**: CI pushing to GHCR. Done since: production
+  images (`Dockerfile.prod`) and the multi-service stack (`compose.services.yml`).
   Done in 1.5: trusted proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
