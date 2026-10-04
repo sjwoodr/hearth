@@ -57,10 +57,6 @@ export type ChatDeps = {
   describeImages?: (messages: ChatMessage[]) => Promise<string>;
   /** Called after each saved reply, for background work such as summarizing long chats. */
   afterReply?: (conversationId: number) => void;
-  /** True while another chat reply is being generated, so this one will queue. */
-  replyActive?: () => boolean;
-  /** Cancels background model work so this reply goes first. */
-  preemptBackground?: () => void;
   /** The search engine behind the web_search tool; without it the model is never offered the tool. */
   webSearch?: SearchFn;
   /** The current time, for the date in the system prompt (tests pin it). */
@@ -234,9 +230,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return stream(c, async (s) => {
       const controller = new AbortController();
       s.onAbort(() => controller.abort());
-      // One queue for every write: thinking progress arrives from a callback while text streams.
+      // One queue for every write: thinking progress arrives from a callback while text streams. A
+      // failed write means the client has gone, which the abort signal already handles.
       let writes: Promise<unknown> = Promise.resolve();
-      const send = (event: object) => (writes = writes.then(() => s.write(`${JSON.stringify(event)}\n`)));
+      const send = (event: object) =>
+        (writes = writes.then(() => s.write(`${JSON.stringify(event)}\n`)).catch(() => undefined));
       const think = opts.decision.think && !!deps.thinkingChat;
       const generate = think ? deps.thinkingChat! : chat;
       let lastReported = 0;
@@ -259,11 +257,6 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       });
       if (opts.searching) await send({ type: 'searching', query: opts.searching });
       const { prompt, sources = [] } = await turnReady;
-      // Background jobs yield to chat; only another reply makes this one wait. Ceiling: other
-      // Ollama clients are invisible here.
-      const queued = deps.replyActive?.() ?? false;
-      deps.preemptBackground?.();
-      if (queued) await send({ type: 'queued' });
       let reply = '';
       let call: { raw: ToolCall; query: string } | undefined;
       const unusable: ToolCall[] = [];
@@ -273,9 +266,16 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         else if (!query) unusable.push(raw);
       };
       try {
-        for await (const text of generate(prompt, controller.signal, { onThinking, tools, onToolCall })) {
+        // The scheduler (in deps.chat) makes room by preempting background work, or, when every slot
+        // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
+        const onQueued = () => void send({ type: 'queued' });
+        const callOpts = { onThinking, tools, onToolCall, userId: user.id, onQueued };
+        for await (const text of generate(prompt, controller.signal, callOpts)) {
           reply += text;
-          await send({ type: 'delta', text });
+          // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
+          // mustn't hold a model slot that other replies are waiting for. The text buffers here
+          // instead; awaiting `done` below flushes it.
+          void send({ type: 'delta', text });
         }
         if (call) {
           // Nothing is searched here. The request waits for the user's tap on the card.

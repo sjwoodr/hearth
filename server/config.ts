@@ -33,6 +33,9 @@ export const config = {
   // on a ~7k-token chat, against ~7 s at 8k). Gemma 4's sliding-window attention makes it nearly free:
   // 14.01 GiB loaded against 13.99 at 8k.
   numCtx: Number(env('HEARTH_NUM_CTX', '16384')),
+  // Requests Ollama runs at once. Must equal Ollama's OLLAMA_NUM_PARALLEL: more than that and Ollama
+  // queues internally, out of the scheduler's sight, so a reply could wait behind background work.
+  ollamaSlots: Number(env('HEARTH_OLLAMA_SLOTS', '1')),
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),

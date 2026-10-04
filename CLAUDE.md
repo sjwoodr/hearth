@@ -34,8 +34,13 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
   Anything that makes the machine swap is out.
 - **Ollama is a systemd service** with drop-ins in `/etc/systemd/system/ollama.service.d/`:
   `OLLAMA_IGPU_ENABLE=1` (without it Ollama ignores the iGPU), `OLLAMA_FLASH_ATTENTION=1`,
-  `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_NUM_PARALLEL=1`.
-  **One slot**: one request at a time, one cached conversation. Much of the design follows from that.
+  `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_NUM_PARALLEL=2` (in `tuning.conf`).
+  **Two slots** (since 2026-10-04; it was one): two requests at once, two cached conversations, and
+  hearth's `HEARTH_OLLAMA_SLOTS=2` must match. Quick measurement (one sample, 16k context): one
+  reply alone 24.8 tok/s; two at once 20.6 + 19.1 = ~40 tok/s combined (each ~20% slower, ~1.6×
+  total), both starting within 0.5 s; `ollama ps` still 15 GB. A fuller benchmark of slot counts
+  is pending. Much of the design (cache-stable prompts, chat first) came from the one-slot days and
+  still holds: a slot is still a single cached conversation.
 - First message after the model has been unloaded takes ~16 s to load it.
 
 ## Models in use
@@ -168,10 +173,15 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   ("learning French" vs "learning Spanish" 0.886). Any failure keeps the memory.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
-- **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler: background jobs
-  use `model.background(...)` and fail with `PreemptedError` when a reply starts; they write nothing
-  and retry later (extraction skips its 15-minute failure backoff for preemption). Add new background
-  model work the same way, never by calling `ollamaJson` directly.
+- **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands
+  out Ollama's slots (`HEARTH_OLLAMA_SLOTS`, which **must equal `OLLAMA_NUM_PARALLEL`**: more and
+  Ollama queues out of sight, so a reply can wait behind background work). A reply takes a free slot,
+  else preempts a background call, else waits (`onQueued` → the `queued` event), with turns between
+  users. Background jobs use `model.background(...)`, only start when no reply is waiting, and fail
+  with `PreemptedError` when preempted; they write nothing and retry later (extraction skips its
+  15-minute failure backoff for preemption). One waiting over 10 minutes runs next, unpreempted.
+  Add new background model work the same way, never by calling `ollamaJson` directly. Reply text is
+  queued to the client, not awaited, so a slow or stalled client can't hold a slot.
 - **Images are never stored** (owner's call): the model sees an image on its own turn, then a
   background job (`describeWaitingImages` in `images.ts`) writes a transcription + description to
   `messages.image_note`, and that stands in for it from then on. Undescribed images live only in

@@ -123,45 +123,216 @@ describe('retry', () => {
   });
 });
 
+/** Waits (briefly) until `ready` holds: for steps that happen inside a streaming request. */
+async function until(ready: () => boolean) {
+  for (let i = 0; i < 200 && !ready(); i++) await new Promise((r) => setTimeout(r, 5));
+  expect(ready()).toBe(true);
+}
+
+/** A promise a test resolves by hand, to hold a model call open. */
+function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((r) => (open = r));
+  return { promise, open };
+}
+
 describe('queued replies', () => {
-  it('tells the client when the model is already busy', async () => {
+  it('says "queued" when every slot holds a reply, and runs the reply once one frees', async () => {
     const ctx = await signedIn();
-    const id = await newChat(ctx.app, ctx.alice);
-    expect((await say(ctx.app, ctx.alice, id, 'a')).map((e) => e.type)).not.toContain('queued');
-    ctx.model.busy = true;
-    expect((await say(ctx.app, ctx.alice, id, 'b'))[1]?.type).toBe('queued');
+    const [a, b] = [await newChat(ctx.app, ctx.alice), await newChat(ctx.app, ctx.bob)];
+    const held = gate();
+    ctx.model.gate = held.promise;
+    const first = say(ctx.app, ctx.alice, a, 'first');
+    await until(() => ctx.model.calls.length === 1);
+    const second = say(ctx.app, ctx.bob, b, 'second');
+    await until(() => ctx.scheduler.stats().waitingReplies === 1);
+    held.open();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one.map((e) => e.type)).not.toContain('queued');
+    expect(two.map((e) => e.type)).toContain('queued');
+    expect((await chatOf(ctx.app, ctx.bob, b)).messages.map((m) => m.role)).toEqual(['user', 'assistant']);
   });
 
-  it('preempts background work for every reply', async () => {
+  it('with two slots, two replies run at once and neither queues', async () => {
+    const ctx = setupApp({ slots: 2 });
+    await createUser(ctx.db, 'alice', 'a good password');
+    const alice = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
+    const [a, b] = [await newChat(ctx.app, alice), await newChat(ctx.app, alice)];
+    const held = gate();
+    ctx.model.gate = held.promise;
+    const first = say(ctx.app, alice, a, 'first');
+    const second = say(ctx.app, alice, b, 'second');
+    await until(() => ctx.model.calls.length === 2);
+    held.open();
+    for (const evs of await Promise.all([first, second])) expect(evs.map((e) => e.type)).not.toContain('queued');
+  });
+
+  it("doesn't let a client that stops reading hold the slot", async () => {
+    const ctx = await signedIn();
+    const [a, b] = [await newChat(ctx.app, ctx.alice), await newChat(ctx.app, ctx.bob)];
+    // Alice's reply streams to a client that never reads it (a stalled phone, say).
+    await call(ctx.app, ctx.alice, 'POST', `/conversations/${a}/messages`, { content: 'never read' });
+    await until(() => ctx.model.calls.length === 1);
+    // Bob still gets his reply: the slot was released when generation finished, not when read.
+    const evs = await say(ctx.app, ctx.bob, b, 'my turn');
+    expect(evs.at(-1)?.type).toBe('done');
+    expect((await chatOf(ctx.app, ctx.alice, a)).messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('preempts running background work so a reply goes first', async () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);
-    await say(ctx.app, ctx.alice, id, 'a');
-    await say(ctx.app, ctx.alice, id, 'b');
-    expect(ctx.model.preempted).toBe(2);
+    const job = ctx.scheduler.background(
+      (_m, _s, signal) => new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted')))),
+    )([], null);
+    const evs = await say(ctx.app, ctx.alice, id, 'hello');
+    await expect(job).rejects.toBeInstanceOf(PreemptedError);
+    expect(evs.map((e) => e.type)).not.toContain('queued');
   });
 });
 
 describe('the model scheduler', () => {
-  it('cancels background calls in flight, and only replies count as busy', async () => {
-    const model = createModelScheduler();
-    let seen: AbortSignal | undefined;
-    const slow = model.background(
-      (_m, _s, signal) =>
-        new Promise((_resolve, reject) => {
-          seen = signal;
-          signal!.addEventListener('abort', () => reject(new Error('aborted by fetch')));
-        }),
-    );
-    const pending = slow([], {});
-    expect(model.replyActive()).toBe(false);
-    model.preemptBackground();
-    await expect(pending).rejects.toBeInstanceOf(PreemptedError);
-    expect(seen!.aborted).toBe(true);
-
-    const failing = model.background(async () => {
-      throw new Error('real failure');
+  // A background call that runs until aborted, and a reply held open by a gate.
+  const hang: JsonFn = (_m, _s, signal) =>
+    new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted by fetch'))));
+  const quick: JsonFn = async () => 'done';
+  function heldReply(model: ReturnType<typeof createModelScheduler>, userId: number, onQueued?: (n: number) => void) {
+    const held = gate();
+    const started = { yes: false };
+    const chat = model.chat(async function* () {
+      started.yes = true;
+      await held.promise;
+      yield 'x';
     });
-    await expect(failing([], {})).rejects.toThrow('real failure');
+    const done = (async () => {
+      const out: string[] = [];
+      for await (const t of chat([], new AbortController().signal, { userId, onQueued })) out.push(t);
+      return out;
+    })();
+    return { started, done, open: held.open };
+  }
+
+  it('preempts a running background call for a reply, and a real failure stays a failure', async () => {
+    const model = createModelScheduler();
+    const job = model.background(hang)([], null);
+    expect(model.replyActive()).toBe(false);
+    const reply = heldReply(model, 1);
+    await expect(job).rejects.toBeInstanceOf(PreemptedError);
+    await until(() => reply.started.yes);
+    reply.open();
+    await reply.done;
+
+    await expect(model.background(async () => { throw new Error('real failure'); })([], null)).rejects.toThrow('real failure');
+  });
+
+  it('with two slots, a reply takes the free slot and leaves background work alone', async () => {
+    const model = createModelScheduler({ slots: 2 });
+    let preempted = false;
+    const job = model.background(hang)([], null).catch((e) => (preempted = e instanceof PreemptedError));
+    const reply = heldReply(model, 1);
+    await until(() => reply.started.yes);
+    expect(preempted).toBe(false);
+    reply.open();
+    await reply.done;
+    expect(preempted).toBe(false);
+    void job;
+  });
+
+  it('with both slots on background work, a reply preempts exactly one', async () => {
+    const model = createModelScheduler({ slots: 2 });
+    const outcomes: string[] = [];
+    const jobs = [1, 2].map(() => model.background(hang)([], null).catch((e) => outcomes.push(e instanceof PreemptedError ? 'preempted' : 'other')));
+    const reply = heldReply(model, 1);
+    await until(() => reply.started.yes);
+    expect(outcomes).toEqual(['preempted']);
+    reply.open();
+    await reply.done;
+    void jobs;
+  });
+
+  it('queues a reply when every slot holds one, and says where it is', async () => {
+    const model = createModelScheduler();
+    const first = heldReply(model, 1);
+    await until(() => first.started.yes);
+    const positions: number[] = [];
+    const second = heldReply(model, 2, (n) => positions.push(n));
+    expect(positions).toEqual([1]);
+    expect(second.started.yes).toBe(false);
+    first.open();
+    await until(() => second.started.yes);
+    second.open();
+    await Promise.all([first.done, second.done]);
+  });
+
+  it('serves a user with nothing running before one who already has a reply going', async () => {
+    const model = createModelScheduler({ slots: 2 });
+    const alice1 = heldReply(model, 1);
+    const bob1 = heldReply(model, 2);
+    await until(() => alice1.started.yes && bob1.started.yes);
+    const alice2 = heldReply(model, 1); // queued first...
+    const carol1 = heldReply(model, 3); // ...but Carol has nothing running
+    alice1.open();
+    await until(() => carol1.started.yes);
+    expect(alice2.started.yes).toBe(false);
+    bob1.open();
+    await until(() => alice2.started.yes);
+    carol1.open();
+    alice2.open();
+    await Promise.all([alice1.done, bob1.done, alice2.done, carol1.done]);
+  });
+
+  it('holds background work back while a reply runs or waits', async () => {
+    const model = createModelScheduler();
+    const reply = heldReply(model, 1);
+    await until(() => reply.started.yes);
+    let ran = false;
+    const job = model.background(async () => ((ran = true), 'ok'))([], null);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ran).toBe(false);
+    expect(model.replyActive()).toBe(true);
+    reply.open();
+    await expect(job).resolves.toBe('ok');
+  });
+
+  it('lets background work that waited too long run next, unpreempted', async () => {
+    let clock = 0;
+    const model = createModelScheduler({ backgroundMaxWaitMs: 1000, now: () => clock });
+    const first = heldReply(model, 1);
+    await until(() => first.started.yes);
+    const held = gate();
+    let ran = false;
+    const job = model.background(async (_m, _s, signal) => {
+      ran = true;
+      await held.promise;
+      if (signal?.aborted) throw new Error('aborted');
+      return 'written';
+    })([], null);
+    clock = 1000; // the memory job has now waited its limit
+    const second = heldReply(model, 2); // a reply arrives meanwhile
+    first.open();
+    await until(() => ran);
+    expect(second.started.yes).toBe(false); // the overdue job went first...
+    held.open();
+    await expect(job).resolves.toBe('written'); // ...and wasn't preempted by the waiting reply
+    await until(() => second.started.yes);
+    second.open();
+    await Promise.all([first.done, second.done]);
+  });
+
+  it('drops a queued reply when the user stops it, without holding a slot', async () => {
+    const model = createModelScheduler();
+    const first = heldReply(model, 1);
+    await until(() => first.started.yes);
+    const stop = new AbortController();
+    const queued = (async () => {
+      for await (const _ of model.chat(async function* () { yield 'never'; })([], stop.signal, { userId: 2 })) void _;
+    })();
+    stop.abort(new Error('stopped'));
+    await expect(queued).rejects.toThrow('stopped');
+    first.open();
+    await first.done;
+    await expect(model.background(quick)([], null)).resolves.toBe('done'); // the slot is free
+    expect(model.replyActive()).toBe(false);
   });
 
   it('counts replies while they stream, including failed ones', async () => {

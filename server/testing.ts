@@ -1,5 +1,6 @@
 // Shared setup for the server tests: an in-memory database and a scripted stand-in for Ollama.
 import { createApp } from './app.ts';
+import { createModelScheduler } from './busy.ts';
 import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions } from './ollama.ts';
 import { createUser } from './users.ts';
@@ -20,9 +21,8 @@ export type FakeModel = {
   title: string | Error | undefined;
   /** Chats afterReply was called for. */
   afterReply: number[];
-  /** Whether another reply is "active", and how many times background work was preempted. */
-  busy: boolean;
-  preempted: number;
+  /** While set, every reply waits for it before streaming: how a test holds a reply open. */
+  gate?: Promise<unknown>;
   /** Prompts sent to the thinking variant; it reports THINKING_TOKENS of reasoning, then replies. */
   thinkingCalls: ChatMessage[][];
   /** Image describe requests, and what the next one answers; an Error makes it fail. */
@@ -54,6 +54,8 @@ export function setupApp(
     webSearch?: boolean;
     db?: DB;
     now?: () => Date;
+    /** Ollama slots for the scheduler that wraps the fake model (default 1, as in production). */
+    slots?: number;
   } = {},
 ) {
   const db = opts.db ?? openDb(':memory:');
@@ -65,8 +67,6 @@ export function setupApp(
     recallQueries: [],
     title: undefined,
     afterReply: [],
-    busy: false,
-    preempted: 0,
     thinkingCalls: [],
     describeCalls: [],
     description: 'A page of French homework.',
@@ -82,8 +82,11 @@ export function setupApp(
     if (query) o?.onToolCall?.({ function: { name: 'web_search', arguments: { query } } });
     return !!query;
   };
+  // The real scheduler wraps the fake model, so route tests exercise real queueing and preemption.
+  const scheduler = createModelScheduler({ slots: opts.slots ?? 1 });
   const chat: ChatFn = async function* (messages, signal, o) {
     model.calls.push(messages);
+    await model.gate;
     if (askedToSearch(o)) return;
     for (const chunk of model.reply) {
       if (signal.aborted) throw new Error('aborted');
@@ -95,7 +98,7 @@ export function setupApp(
     db,
     origin: ORIGIN,
     clientIp: (c) => c.req.header('x-test-ip') ?? '10.0.0.1',
-    chat,
+    chat: scheduler.chat(chat),
     systemPrompt: () => opts.systemPrompt ?? 'You are hearth.',
     numCtx: opts.numCtx ?? 8192,
     thinkingReserve: opts.thinkingReserve,
@@ -103,12 +106,12 @@ export function setupApp(
       model.recallQueries.push({ userId: user.id, message });
       return { stable: model.memory, recalled: model.recalled };
     },
-    thinkingChat: async function* (messages, _signal, o) {
+    thinkingChat: scheduler.chat(async function* (messages, _signal, o) {
       model.thinkingCalls.push(messages);
       for (let t = 1; t <= THINKING_TOKENS; t++) o?.onThinking?.(t);
       if (askedToSearch(o)) return;
       yield 'Considered answer.';
-    },
+    }),
     titleFor: async () => {
       if (model.title instanceof Error) throw model.title;
       return model.title;
@@ -119,10 +122,6 @@ export function setupApp(
       return model.description;
     },
     afterReply: (id) => model.afterReply.push(id),
-    replyActive: () => model.busy,
-    preemptBackground: () => {
-      model.preempted++;
-    },
     ...(opts.webSearch
       ? {
           webSearch: async (query: string) => {
@@ -134,7 +133,7 @@ export function setupApp(
         }
       : {}),
   });
-  return { db, app, model };
+  return { db, app, model, scheduler };
 }
 
 export type TestApp = ReturnType<typeof setupApp>['app'];

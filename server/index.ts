@@ -20,7 +20,7 @@ const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
 const webSearch = config.searxngUrl === 'off' ? undefined : searxngSearch(config.searxngUrl);
 const embed = ollamaEmbed(config.ollamaUrl, config.embedModel);
 // Every chat-model call goes through the scheduler: replies go first, background work yields.
-const model = createModelScheduler();
+const model = createModelScheduler({ slots: config.ollamaSlots });
 const json = model.background(ollamaJson(config.ollamaUrl, config.model, config.numCtx));
 const app = createApp({
   db,
@@ -40,8 +40,6 @@ const app = createApp({
   titleFor: makeTitler(json),
   describeImages: makeImageDescriber(json),
   afterReply: createSummarizer(db, json, config.numCtx),
-  replyActive: model.replyActive,
-  preemptBackground: model.preemptBackground,
   webSearch,
 });
 startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: model.replyActive });
@@ -56,6 +54,7 @@ serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => 
   console.log(
     `hearth listening on http://${info.address}:${info.port} (origin ${config.origin}, model ${config.model}, ` +
       `thinking ${config.thinkingModel} ≤${config.thinkingTokenBudget} tokens, ` +
-      `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'})`,
+      `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'}, ` +
+      `${config.ollamaSlots} Ollama slot${config.ollamaSlots === 1 ? '' : 's'})`,
   );
 });

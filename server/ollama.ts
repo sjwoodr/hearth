@@ -21,6 +21,10 @@ export type ChatOptions = {
   onThinking?: (tokens: number) => void;
   tools?: object[];
   onToolCall?: (call: ToolCall) => void;
+  /** For the scheduler: whose reply this is, so waiting replies take turns between users. */
+  userId?: number;
+  /** The scheduler calls this if the reply has to wait for a slot (position 1 = next). */
+  onQueued?: (position: number) => void;
 };
 
 /** Streams a reply as text chunks. Aborting the signal stops generation. */
