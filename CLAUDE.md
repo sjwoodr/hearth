@@ -215,7 +215,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
 | `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
-| `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed` |
+| `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`; each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary, model titles, history fitting (char estimate, ~3.5/token) |
@@ -267,9 +267,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   follow it. Done: waiting searches in SQLite (`pending_searches`: one row per chat, image bytes
   refused, a day's expiry, the date refreshed on approval) and migrations as their own step
   (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema), the slot-aware
-  scheduler (`busy.ts`) and the gateway service (`gateway.ts`). Next: hearth as a gateway client
-  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process). The rest, **not started, don't begin
-  without being asked**: a separate worker process; health checks, graceful
+  scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
+  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default). The rest, **not started,
+  don't begin without being asked**: a separate worker process; health checks, graceful
   shutdown, opt-in JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
   Every step keeps today's single-process setup working by default.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a

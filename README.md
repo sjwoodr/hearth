@@ -41,7 +41,9 @@ schedules `/api/chat` and `/api/generate` by `X-Hearth-Priority: reply|backgroun
 and `X-Hearth-User`, tells a waiting streamed reply its place with
 `{"hearth":{"queued":n}}` lines, answers a preempted background call with
 `{"error":"preempted"}`, and passes embeddings and everything else straight
-through. hearth can't use it yet; that's the next step.
+through. Point hearth at it with `HEARTH_GATEWAY_URL` (plus the same token): every
+model call, embeddings included, then goes through the gateway, and hearth stops
+scheduling in-process. Unset, hearth talks to Ollama directly, as before.
 
 **Migrations** (`server/migrations/NNN_name.sql`) apply on start by default. A
 deployment can make them a separate step instead: run `pnpm migrate` (or

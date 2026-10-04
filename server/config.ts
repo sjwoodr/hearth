@@ -41,6 +41,9 @@ export const config = {
   gatewayHost: env('HEARTH_GATEWAY_HOST', '127.0.0.1'),
   gatewayPort: Number(env('HEARTH_GATEWAY_PORT', '11435')),
   gatewayToken: env('HEARTH_GATEWAY_TOKEN', ''),
+  // Set, hearth sends every model call (embeddings too) to the gateway instead of Ollama and leaves
+  // scheduling to it; unset (one process), hearth schedules in-process and talks to Ollama directly.
+  gatewayUrl: env('HEARTH_GATEWAY_URL', ''),
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),

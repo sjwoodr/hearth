@@ -1,3 +1,26 @@
+import { PreemptedError } from './busy.ts';
+
+/**
+ * Where model calls go: Ollama itself (a URL), or the model gateway (URL and token). Calls always
+ * carry X-Hearth-Priority and X-Hearth-User; Ollama ignores them, the gateway schedules by them.
+ */
+export type Endpoint = string | { url: string; token?: string };
+
+const urlOf = (e: Endpoint) => (typeof e === 'string' ? e : e.url);
+
+function headersFor(e: Endpoint, priority: 'reply' | 'background', userId?: number): Record<string, string> {
+  const token = typeof e === 'string' ? undefined : e.token;
+  return {
+    'Content-Type': 'application/json',
+    'X-Hearth-Priority': priority,
+    ...(userId !== undefined ? { 'X-Hearth-User': String(userId) } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/** The gateway's answer for a background call a reply preempted: 409 `{"error":"preempted"}`. */
+const PREEMPTED = 'preempted';
+
 /** A tool the model asked to use, as Ollama reports it. */
 export type ToolCall = { id?: string; function: { name: string; arguments: Record<string, unknown> } };
 
@@ -30,10 +53,25 @@ export type ChatOptions = {
 /** Streams a reply as text chunks. Aborting the signal stops generation. */
 export type ChatFn = (messages: ChatMessage[], signal: AbortSignal, opts?: ChatOptions) => AsyncIterable<string>;
 
-type StreamLine = { error?: string; message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] } };
+type StreamLine = {
+  error?: string;
+  message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] };
+  /** From the gateway only: this reply is waiting for a slot, at this position. */
+  hearth?: { queued?: number };
+};
+
+// One line of a stream: the data to use, or nothing for a line that's only the gateway saying the
+// reply is queued (reported to onQueued instead).
+function parseLine(line: string, onQueued?: (position: number) => void): StreamLine | undefined {
+  const data = JSON.parse(line) as StreamLine;
+  if (data.error) throw new Error(`Ollama: ${data.error}`);
+  if (!data.hearth) return data;
+  if (data.hearth.queued) onQueued?.(data.hearth.queued);
+  return undefined;
+}
 
 /** Ollama streams one JSON object per line. */
-async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamLine> {
+async function* readLines(body: ReadableStream<Uint8Array>, onQueued?: (position: number) => void): AsyncGenerator<StreamLine> {
   const decoder = new TextDecoder();
   let buffer = '';
   for await (const chunk of body) {
@@ -42,18 +80,16 @@ async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<Stre
     while ((newline = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, newline).trim();
       buffer = buffer.slice(newline + 1);
-      if (!line) continue;
-      const data = JSON.parse(line) as StreamLine;
-      if (data.error) throw new Error(`Ollama: ${data.error}`);
-      yield data;
+      const data = line ? parseLine(line, onQueued) : undefined;
+      if (data) yield data;
     }
   }
 }
 
-function startChat(baseUrl: string, body: object, signal: AbortSignal) {
-  return fetch(`${baseUrl}/api/chat`, {
+function startChat(endpoint: Endpoint, body: object, signal: AbortSignal, userId?: number) {
+  return fetch(`${urlOf(endpoint)}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headersFor(endpoint, 'reply', userId),
     body: JSON.stringify({ stream: true, ...body }),
     signal,
   }).then(async (res) => {
@@ -64,11 +100,12 @@ function startChat(baseUrl: string, body: object, signal: AbortSignal) {
 
 const withTools = (opts?: ChatOptions) => (opts?.tools?.length ? { tools: opts.tools } : {});
 
-export function ollamaChat(baseUrl: string, model: string, numCtx: number): ChatFn {
+export function ollamaChat(endpoint: Endpoint, model: string, numCtx: number): ChatFn {
   return async function* (messages, signal, opts) {
     // think: false keeps chat snappy; the model otherwise reasons before every reply.
-    const body = await startChat(baseUrl, { model, messages, think: false, ...withTools(opts), options: { num_ctx: numCtx } }, signal);
-    for await (const data of readLines(body)) {
+    const request = { model, messages, think: false, ...withTools(opts), options: { num_ctx: numCtx } };
+    const body = await startChat(endpoint, request, signal, opts?.userId);
+    for await (const data of readLines(body, opts?.onQueued)) {
       for (const call of data.message?.tool_calls ?? []) opts?.onToolCall?.(call);
       if (data.message?.content) yield data.message.content;
     }
@@ -82,7 +119,7 @@ export function ollamaChat(baseUrl: string, model: string, numCtx: number): Chat
  * straight away, with its reasoning so far passed back as notes. The reasoning itself is never
  * shown or stored.
  */
-export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: number, budget: number): ChatFn {
+export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: number, budget: number): ChatFn {
   return async function* (messages, signal, opts) {
     const thinking = new AbortController();
     const stop = () => thinking.abort();
@@ -95,11 +132,12 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
     let answered = false;
     try {
       const body = await startChat(
-        baseUrl,
+        endpoint,
         { model, messages, think: true, ...withTools(opts), options: { num_ctx: numCtx } },
         thinking.signal,
+        opts?.userId,
       );
-      for await (const data of readLines(body)) {
+      for await (const data of readLines(body, opts?.onQueued)) {
         if (data.message?.thinking) {
           notes += data.message.thinking;
           // Counted on its own line: inside `opts?.onThinking?.(…)` the increment would be skipped
@@ -135,7 +173,13 @@ export function ollamaThinkingChat(baseUrl: string, model: string, numCtx: numbe
       role: 'user',
       content: `(Your private reasoning so far, not shown to me:)\n${notes}\n\nThinking time is up. Reply to my last message now${orTool}.`,
     };
-    yield* ollamaChat(baseUrl, model, numCtx)([...messages, answerNow], signal, { tools: opts?.tools, onToolCall: opts?.onToolCall });
+    // Through the gateway this is a second request, so it can wait for a slot again.
+    yield* ollamaChat(endpoint, model, numCtx)([...messages, answerNow], signal, {
+      tools: opts?.tools,
+      onToolCall: opts?.onToolCall,
+      userId: opts?.userId,
+      onQueued: opts?.onQueued,
+    });
   };
 }
 
@@ -154,11 +198,11 @@ export const JSON_MAX_TOKENS = 2048;
  */
 export type JsonFn = (messages: ChatMessage[], schema: object | null, signal?: AbortSignal) => Promise<unknown>;
 
-export function ollamaJson(baseUrl: string, model: string, numCtx: number): JsonFn {
+export function ollamaJson(endpoint: Endpoint, model: string, numCtx: number): JsonFn {
   return async (messages, schema, signal) => {
-    const res = await fetch(`${baseUrl}/api/chat`, {
+    const res = await fetch(`${urlOf(endpoint)}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headersFor(endpoint, 'background'),
       body: JSON.stringify({
         model,
         messages,
@@ -169,7 +213,12 @@ export function ollamaJson(baseUrl: string, model: string, numCtx: number): Json
       }),
       signal,
     });
-    if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const text = await res.text();
+      // The gateway preempted this for a reply: the same outcome as the in-process scheduler's.
+      if (res.status === 409 && text.includes(`"${PREEMPTED}"`)) throw new PreemptedError();
+      throw new Error(`Ollama returned ${res.status}: ${text}`);
+    }
     const data = (await res.json()) as { message?: { content?: string }; done_reason?: string };
     if (data.done_reason === 'length') throw new Error(`The model's reply hit the ${JSON_MAX_TOKENS}-token cap.`);
     const content = data.message?.content ?? '';
@@ -180,12 +229,12 @@ export function ollamaJson(baseUrl: string, model: string, numCtx: number): Json
 /** Embeds each text; vectors come back in input order. */
 export type EmbedFn = (texts: string[]) => Promise<number[][]>;
 
-export function ollamaEmbed(baseUrl: string, model: string): EmbedFn {
+export function ollamaEmbed(endpoint: Endpoint, model: string): EmbedFn {
   return async (texts) => {
     if (texts.length === 0) return [];
-    const res = await fetch(`${baseUrl}/api/embed`, {
+    const res = await fetch(`${urlOf(endpoint)}/api/embed`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headersFor(endpoint, 'background'),
       body: JSON.stringify({ model, input: texts }),
     });
     if (!res.ok) throw new Error(`Ollama embed returned ${res.status}: ${await res.text()}`);
