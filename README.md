@@ -110,6 +110,15 @@ an nginx proxy standing in for the ingress (`deploy/nginx-ingress.conf`: `/` to 
 api replicas, unbuffered, `X-Forwarded-For` set and trusted). It shares Ollama with the dev stack,
 so run one at a time for real use.
 
+### CI
+
+`.github/workflows/ci.yml` runs `pnpm check-types` and `pnpm test` on every push and pull request,
+then builds both images (proof `Dockerfile.prod` still builds) and, on `main` only, pushes them to
+GHCR as `ghcr.io/sjwoodr/hearth` and `ghcr.io/sjwoodr/hearth-web`, tagged `sha-<short commit>`
+(what a deployment pins) and `main`. It logs in with the built-in `GITHUB_TOKEN`; no secrets to
+set up. **A new GHCR package starts private** even though the repo is public: after the first push
+of each, set it to public under the package's settings, or pulls without credentials fail with 401.
+
 ## Admin console: `bin/hearth`
 
 Everything in the database is managed from the host with `bin/hearth`; there is

@@ -230,6 +230,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
+| `.github/workflows/ci.yml` | tests + types on every push/PR; images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`) |
 | `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
@@ -270,16 +271,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   real chats vary more.
 - **Deployment is planned on the owner's home k3s cluster**, as a learning project; the plan lives in
   a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
-  follow it. Done: waiting searches in SQLite (`pending_searches`: one row per chat, image bytes
-  refused, a day's expiry, the date refreshed on approval) and migrations as their own step
-  (`pnpm migrate`; `HEARTH_AUTO_MIGRATE=0` makes the app only check the schema), the slot-aware
-  scheduler (`busy.ts`), the gateway service (`gateway.ts`), and hearth as its client
-  (`HEARTH_GATEWAY_URL`; unset keeps scheduling in-process, the default), and the worker
-  (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api). The rest,
-  **not started, don't begin without being asked**: CI pushing to GHCR. Done since: production
-  images (`Dockerfile.prod`) and the multi-service stack (`compose.services.yml`).
-  Done in 1.5: trusted proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`.
-  Every step keeps today's single-process setup working by default.
+  follow it. **Phase 1 (this repo) is done** except the slot-count benchmark: waiting searches in
+  SQLite, migrations as a step (`pnpm migrate`, `HEARTH_AUTO_MIGRATE=0`), the slot-aware scheduler
+  (`busy.ts`), the gateway (`gateway.ts`) and hearth as its client (`HEARTH_GATEWAY_URL`), the worker
+  (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api), trusted
+  proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`, production images
+  (`Dockerfile.prod`), the multi-service stack (`compose.services.yml`) and CI pushing to GHCR.
+  Every step keeps today's single-process setup working by default. The cluster phases happen in
+  the private repo; don't start cluster work in this repo without being asked.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
   live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:
   see `TODO.md`.
