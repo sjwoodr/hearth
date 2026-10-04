@@ -54,15 +54,23 @@ newer hearth or restore a backup; migrations only go forward).
 
 ### In Docker
 
-`docker compose up --build` runs `pnpm dev:fullstack` in a container (Linux only).
-The repo is bind-mounted, so edits on the host still restart the backend and
-hot-reload Vite, and the database stays in `data/`. The container uses host
-networking, so every address is the same as on the host (Ollama and SearXNG on
-127.0.0.1, Vite on :5180); stop any host dev server first. It keeps its own
-`node_modules` in a volume and runs `pnpm install` on each start, so lockfile
-changes land on the next `docker compose restart`. `.git` is mounted read-only, so
-nothing in the container can plant a git hook that runs on the host. `pnpm test`, `bin/hearth` and
-the editor keep using the host's `node_modules`.
+`docker compose up --build` runs the dev setup in two containers (Linux only), the
+way a deployment splits it: **gateway** (`pnpm gateway`, the model gateway on
+:11435, owning Ollama's slots) and **hearth** (`pnpm dev:fullstack`), which sends
+every model call through the gateway. Both read `HEARTH_GATEWAY_TOKEN` from `.env`
+(generate one with `openssl rand -hex 32`); hearth's `HEARTH_GATEWAY_URL` is set
+in the compose file, so `pnpm dev:fullstack` on the host stays single-process.
+
+The repo is bind-mounted, so edits on the host still restart the backend (and
+the gateway) and hot-reload Vite, and the database stays in `data/`. The
+containers use host networking, so every address is the same as on the host
+(Ollama and SearXNG on 127.0.0.1, Vite on :5180); stop any host dev server
+first. They share their own `node_modules` volume: the gateway runs `pnpm
+install` on each start and hearth waits until the gateway is healthy, so the two
+never install at once, and lockfile changes land on the next `docker compose
+restart`. `.git` is mounted read-only, so nothing in a container can plant a git
+hook that runs on the host. `pnpm test`, `bin/hearth` and the editor keep using
+the host's `node_modules`. Watch the slots with `curl -s localhost:11435/healthz`.
 
 ## Admin console: `bin/hearth`
 
