@@ -223,15 +223,20 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   anything new. Unscoped queries belong in `server/cli/` only.
 - **Public repo.** The real domain, hostnames, Cloudflare token and `.env` stay local. `data/` (the
   database) is gitignored.
-- **Ollama stays on 127.0.0.1:11434**; the backend listens on 127.0.0.1 behind Caddy (deployment is
-  still TODO, see `TODO.md`).
+- **Ollama stays on 127.0.0.1:11434**; the backend listens on 127.0.0.1 behind a reverse proxy.
+  `resolveClientIp` (`server/client-ip.ts`) trusts `X-Forwarded-For` only from loopback, so the
+  login throttle sees real client IPs behind a proxy on the same host. Any other proxy setup (a
+  container network, Kubernetes ingress) needs a trusted-proxy setting first, or every client
+  shares one throttle bucket.
 
 ## Testing practice
 
 - Unit/route tests use fakes (`server/testing.ts`, a fake Ollama HTTP server in `thinking.test.ts`),
   so every edge case is scriptable: mid-stream failure, preemption, cross-user reads.
 - **Mutation-check important guarantees**: sabotage the code on purpose and confirm the suite fails.
-  More than one test here was found passing for the wrong reason that way.
+  More than one test here was found passing for the wrong reason that way. **Do it in a `git
+  worktree`, never in the working tree**: the owner's dev server runs `node --watch` on it, and a
+  restart wipes in-memory state (waiting searches, undescribed images) mid-use.
 - **Real-model checks in a headless browser**, not just unit tests. They caught finished replies
   vanishing from the screen (a React state-update ordering bug). There is no committed front-end test
   harness yet; the browser checks so far were ad hoc playwright-core scripts.
@@ -244,8 +249,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   register, translation, correcting a paragraph with planted mistakes, and a clean control paragraph
   to catch invented "mistakes". Bench runs are temperature 0; hearth chats at Ollama's default, so
   real chats vary more.
-- Deployment (Caddy + DNS-01, systemd), phone layout check, scheduled backups, 2FA before any internet
-  exposure: see `TODO.md`.
+- **Deployment is planned on the owner's home k3s cluster**, as a learning project; the plan lives in
+  a private repo outside this one, because it holds real hostnames. The deployment items in `TODO.md`
+  follow it. Changes it asks of this repo, **none started, don't begin without being asked**:
+  waiting searches into SQLite (expire after a day, refresh the date on approval); migrations as
+  their own step; an Ollama-compatible **model gateway** (slots, reply priority, preemption, user
+  turns, bearer token) that takes over `busy.ts`'s job; a separate worker process; health checks,
+  graceful shutdown, JSON logs and a trusted-proxy setting; production images and CI pushing to GHCR.
+- Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
+  live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:
+  see `TODO.md`.
 - Bench models no longer needed are still pulled in Ollama (Mistral Small/Nemo, Ministral, Qwen 3,
   Aya, Gemma 12B, Nemotron); remove them if disk matters.
 - **Grading French from a photo is unmeasured.** In the first real run (2026-10-01, typed homework

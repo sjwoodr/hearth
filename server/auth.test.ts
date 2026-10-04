@@ -195,7 +195,7 @@ describe('login throttling', () => {
   });
 });
 
-describe('client IP behind Caddy', () => {
+describe('client IP behind a reverse proxy', () => {
   it('trusts X-Forwarded-For only from localhost', () => {
     expect(resolveClientIp('127.0.0.1', '192.168.1.50')).toBe('192.168.1.50');
     expect(resolveClientIp('::1', 'spoofed, 100.64.0.7')).toBe('100.64.0.7');

@@ -94,30 +94,32 @@ Multi-user, with no sign-up from the web interface; accounts come from
 ## Network and TLS
 
 ```
-LAN / tailnet ──► Caddy 0.0.0.0:443 (TLS) ──► hearth backend 127.0.0.1 ──► Ollama 127.0.0.1:11434
+LAN / tailnet ──► reverse proxy :443 (TLS) ──► hearth backend ──► Ollama 127.0.0.1:11434
 ```
 
-- **Caddy** terminates TLS on `0.0.0.0:443` (80 redirects to HTTPS) and
-  reverse-proxies to the backend. The backend listens only on `127.0.0.1` and
-  never handles TLS. It trusts `X-Forwarded-For` only from localhost, so login
-  throttling sees real client addresses.
-- **Certificates:** Let's Encrypt via the ACME **DNS-01** challenge, so no inbound
-  route is needed. The domain's DNS is on Cloudflare; Caddy needs the
-  `caddy-dns/cloudflare` module (a custom build from caddyserver.com or
-  `xcaddy`, redone on each Caddy upgrade) and a Cloudflare API token scoped to
-  `Zone:DNS:Edit` on that one zone.
-- The real domain, hostnames and token live only in local config (`.env`,
-  the Caddyfile on the host), never in the repo. `example.com` below is a placeholder.
-- **Names** (one certificate, both names; Cloudflare records set to DNS only,
-  not proxied):
-  - `hearth.example.com` → this machine's LAN IP (home devices)
-  - `hearth-ts.example.com` → its Tailscale IP (tailnet devices anywhere)
+Today hearth runs as the dev server (Vite on `:5180`, plain HTTP on the LAN). This is the shape of a
+deployment; the planned one is a home k3s cluster with Traefik as the ingress and cert-manager for
+certificates, but any reverse proxy fits.
+
+- **A reverse proxy terminates TLS** and forwards to the backend, which never handles TLS. On a
+  plain host the backend listens only on `127.0.0.1`.
+- **Client addresses:** the backend trusts `X-Forwarded-For` only from localhost, so login
+  throttling sees real client addresses when the proxy runs on the same host. Behind a proxy
+  elsewhere (a container network, a Kubernetes ingress) every client would share one throttle
+  bucket until a trusted-proxy setting exists (planned).
+- **Certificates:** Let's Encrypt via the ACME **DNS-01** challenge, so no inbound route is needed
+  and LAN-only names still get real certificates. A wildcard certificate (`*.example.com`) also keeps
+  individual hostnames out of the public Certificate Transparency logs.
+- The real domain, hostnames and tokens live only in local config, never in the repo.
+  `example.com` is a placeholder.
+- **Names:** `hearth.example.com` → the machine's LAN IP, with DNS only (not proxied). Away from
+  home, Tailscale reaches the same name.
 - **Ollama stays on `127.0.0.1:11434`.** Never expose it.
-- **Opening to the internet later:** point `hearth.example.com` at the public IP and
-  forward only 443 on the router. Add two-factor login before doing this.
+- **Opening to the internet later:** add two-factor login first, and expose hearth only through a
+  separate public entry point on the proxy, so nothing else becomes reachable.
 - The session cookie is `Secure`, since every client connects over HTTPS.
-- Replies stream as NDJSON; the Caddy `reverse_proxy` block should set
-  `flush_interval -1` so chunks pass straight through instead of being buffered.
+- **Replies stream as NDJSON**, so the proxy must pass chunks straight through rather than buffer
+  responses.
 
 ## Memory
 

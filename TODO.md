@@ -1,22 +1,23 @@
 # TODO
 
-## Deployment (deferred milestone 4)
+## Deployment (planned: home k3s cluster; the detailed plan is kept privately)
 
-- [ ] Custom Caddy build with the `caddy-dns/cloudflare` module (caddyserver.com download or `xcaddy`)
-- [ ] Cloudflare API token scoped to `Zone:DNS:Edit` on the one zone, in Caddy's own environment file
-- [ ] `Caddyfile`: one certificate for the LAN and Tailscale names, `reverse_proxy 127.0.0.1:8787`
-      with `flush_interval -1` so streamed replies aren't buffered
-- [ ] DNS records (DNS only, not proxied): LAN name → LAN IP, `-ts` name → Tailscale IP
-- [ ] systemd units for Caddy and hearth (`pnpm build`, then `pnpm start` with a production `.env`)
+- [ ] Waiting searches in SQLite, so an approval survives a restart and any replica can answer it
+- [ ] Migrations as their own step (a Job), with the app checking the schema version on start
+- [ ] Model gateway: Ollama-compatible, slots, reply priority, preemption, user turns, bearer token
+- [ ] Separate worker process for extraction, summaries and titles
+- [ ] Health and readiness endpoints, graceful shutdown, JSON logs, a trusted-proxy setting
+- [ ] Production images and CI pushing to GHCR
+- [ ] Helm chart
 - [ ] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming
-- [ ] Push to GitHub (the repo is public; nothing secret is committed)
+- [x] Push to GitHub (the repo is public; nothing secret is committed)
 
 ## Gaps worth closing
 
 - [x] **Search past chats.** SQLite FTS5 over messages, from the sidebar and `hearth chats search`.
 - [x] **Retry a failed reply.** Regenerate / Retry under the last message.
-- [ ] **Check the phone layout in a real browser.** The slide-over chat list is written but was only
-      tested at desktop width.
+- [x] **Check the phone layout in a real browser.** Checked on an iPhone: the slide-over chat list
+      works, and the composer got a full-width text box on narrow screens.
 - [x] **Show when a reply is queued.** Only this server's own model calls are visible, not other
       Ollama clients.
 - [x] **Scheduled backups.** The host's nightly restic job (encrypted, off-site) runs
@@ -41,4 +42,5 @@
 
 - [ ] Two-factor login
 - [ ] Persist login lockouts in SQLite (they're in memory and reset on restart)
-- [ ] Forward only 443 on the router; point the public name at the public IP
+- [ ] Expose hearth only through a separate public entry point on the proxy; internal routes stay
+      unreachable from outside
