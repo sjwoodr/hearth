@@ -1,11 +1,12 @@
 # The Helm chart (deploy/charts/hearth): lint, render and validate every object against the
 # Kubernetes schemas, and run the chart's own unit tests (placement on the data node, host
 # networking only for the gateway, no floating image tags, no chart-owned database volume).
-# Runs only when the chart or this workflow changes.
+# Runs only when the chart or this workflow changes: on pull requests, and on main after a merge.
 name: Chart
 
 on:
   push:
+    branches: [main]
     paths: [deploy/charts/**, .github/workflows/chart.yml]
   pull_request:
     paths: [deploy/charts/**, .github/workflows/chart.yml]
