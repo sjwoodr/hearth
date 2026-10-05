@@ -23,7 +23,8 @@ conversations, memories, one real chat reply through the model, and cleanup. 27 
    - `cluster`: through the ingress at `HEARTH_URL`. Health is at `healthUrl`, the api pod itself,
      because the ingress routes only `/` and `/api`:
      `kubectl -n hearth port-forward deploy/hearth-api 18787:8787` (18787, so it doesn't clash with a
-     local dev server on 8787).
+     local dev server on 8787). Without it, the Health requests stop with that command
+     as the error.
 
 ## Run
 
