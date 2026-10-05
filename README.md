@@ -220,7 +220,9 @@ certificates, but any reverse proxy fits.
   token there): reply time and time to first word, outcomes (done, search, error, stopped),
   Ollama's own tokens per second and prompt reading time (short when its cache held the chat),
   slot waits, preemptions, searches asked/approved/declined/failed, background jobs by outcome,
-  and Node's process metrics. Every series carries `service` (hearth, worker, gateway).
+  whether Ollama answers (`hearth_ollama_up`, from the gateway, or from hearth on its own), and
+  Node's process metrics. Every series carries `service` (hearth, worker, gateway). Counters start
+  at 0 for every outcome, so "none yet" reads as 0 rather than a missing series.
 - **Logs:** plain lines by default; `HEARTH_LOG_FORMAT=json` writes one JSON object per line
   (`time`, `level`, `service`, `msg`, and `chat` when a message names one) for a log store.
 - **Certificates:** Let's Encrypt via the ACME **DNS-01** challenge, so no inbound route is needed

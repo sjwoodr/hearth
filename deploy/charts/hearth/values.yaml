@@ -105,6 +105,12 @@ metrics:
   dashboard:
     enabled: false
     labels: {grafana_dashboard: "1"}   # values merge into this; drop the default with grafana_dashboard: null
+  # Alert rules (a PrometheusRule): Ollama down, replies failing, the backup gone stale. Only
+  # what kube-prometheus-stack's default rules don't cover (targets down, failed Jobs, node
+  # memory and disk). The backup rule reads kube-state-metrics.
+  rules:
+    enabled: false
+    backupMaxAgeHours: 36   # nightly backups, so a day and a half without one
 
 backup:
   enabled: true

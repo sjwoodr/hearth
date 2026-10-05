@@ -136,6 +136,35 @@ export function watchScheduler(scheduler: ModelScheduler) {
   byKind('hearth_model_waiting', 'Model calls waiting for a slot.', (s) => [s.waitingReplies, s.waitingBackground]);
 }
 
+/**
+ * Starts every known label combination of the counters at 0, so "none yet" is a 0, not a missing
+ * series: a panel shows zeros instead of "No data", and `increase()` counts the first event after
+ * a restart (from a missing series to 1 it sees no increase). For the api and the worker; the
+ * gateway counts none of these.
+ */
+export function zeroCounters() {
+  for (const outcome of ['done', 'search', 'error', 'stopped'])
+    for (const think of ['true', 'false']) replies.inc({ outcome, think }, 0);
+  for (const outcome of ['asked', 'approved', 'declined', 'failed']) searches.inc({ outcome }, 0);
+  for (const name of ['memory', 'summary', 'title', 'image'] as const)
+    for (const outcome of ['ok', 'preempted', 'failed'] as const) backgroundJobs.inc({ job: name, outcome }, 0);
+}
+
+/**
+ * hearth_ollama_up: 1 when Ollama answers, 0 when not, probed at each scrape. Registered by the
+ * process that talks to Ollama itself: the gateway, or hearth on its own without one.
+ */
+export function watchOllama(probe: () => Promise<string | undefined>) {
+  new Gauge({
+    name: 'hearth_ollama_up',
+    help: 'Whether Ollama answered at the last scrape (1) or not (0).',
+    registers,
+    async collect() {
+      this.set((await probe()) === undefined ? 1 : 0);
+    },
+  });
+}
+
 /** The /metrics response. */
 export async function metricsResponse(c: Context) {
   return c.body(await registry.metrics(), 200, { 'Content-Type': registry.contentType });

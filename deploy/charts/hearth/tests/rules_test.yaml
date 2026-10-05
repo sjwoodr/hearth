@@ -1,0 +1,43 @@
+suite: Prometheus alert rules
+values: [../ci/test-values.yaml]
+templates: [rules.yaml]
+release: {name: hearth, namespace: hearth}
+tests:
+  - it: renders nothing unless asked for
+    set: {metrics.rules.enabled: false}
+    asserts:
+      - hasDocuments: {count: 0}
+  - it: renders nothing without metrics (no Prometheus Operator to read it)
+    set: {metrics.enabled: false, metrics.rules.enabled: true}
+    asserts:
+      - hasDocuments: {count: 0}
+  - it: alerts on Ollama down, failing replies and a stale backup, scoped to the release's namespace
+    set: {metrics.rules.enabled: true}
+    asserts:
+      - isKind: {of: PrometheusRule}
+      - equal: {path: "spec.groups[0].rules[0].alert", value: HearthOllamaDown}
+      - equal: {path: "spec.groups[0].rules[0].expr", value: 'max by (namespace) (hearth_ollama_up{namespace="hearth"}) == 0'}
+      - equal: {path: "spec.groups[0].rules[0].labels.severity", value: critical}
+      - equal: {path: "spec.groups[0].rules[1].alert", value: HearthRepliesFailing}
+      - matchRegex: {path: "spec.groups[0].rules[1].expr", pattern: 'hearth_replies_total\{namespace="hearth",outcome="error"\}'}
+      - equal: {path: "spec.groups[0].rules[2].alert", value: HearthBackupStale}
+      - equal:
+          path: "spec.groups[0].rules[2].expr"
+          value: 'time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{namespace="hearth",cronjob="hearth-backup"}) > 129600'
+  - it: leaves Prometheus's template syntax for Prometheus to fill in
+    set: {metrics.rules.enabled: true}
+    asserts:
+      - equal: {path: "spec.groups[0].rules[2].annotations.description", value: 'The last successful backup was {{ $value | humanizeDuration }} ago.'}
+  - it: takes the backup age from values
+    set: {metrics.rules.enabled: true, metrics.rules.backupMaxAgeHours: 48}
+    asserts:
+      - matchRegex: {path: "spec.groups[0].rules[2].expr", pattern: '> 172800$'}
+  - it: drops the backup rule when there is no backup CronJob
+    set: {metrics.rules.enabled: true, backup.enabled: false}
+    asserts:
+      - lengthEqual: {path: "spec.groups[0].rules", count: 2}
+      - notContains: {path: "spec.groups[0].rules", content: {alert: HearthBackupStale}, any: true}
+  - it: carries the extra labels a Prometheus may select rules by
+    set: {metrics.rules.enabled: true, metrics.labels: {release: prometheus}}
+    asserts:
+      - equal: {path: metadata.labels.release, value: prometheus}
