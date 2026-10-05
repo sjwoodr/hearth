@@ -1,0 +1,15 @@
+name: cluster
+variables:
+  # Through the ingress: set both to your hearth's address (its HEARTH_ORIGIN).
+  - name: baseUrl
+    value: https://hearth.example.com
+  - name: origin
+    value: https://hearth.example.com
+  # The ingress doesn't route /healthz, /readyz or /metrics; reach the api pod with
+  # kubectl -n hearth port-forward deploy/hearth-api 8787
+  - name: healthUrl
+    value: http://localhost:8787
+  - name: username
+    value: bruno
+  - name: password
+    secret: true

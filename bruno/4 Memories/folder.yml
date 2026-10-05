@@ -1,0 +1,7 @@
+info:
+  name: Memories
+  type: folder
+  seq: 4
+
+docs: |-
+  Adds one memory, edits it, and deletes it again.

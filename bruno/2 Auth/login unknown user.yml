@@ -1,0 +1,32 @@
+info:
+  name: login (unknown user)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/login"
+  body:
+    type: json
+    data: |-
+      {"username": "{{nobody}}", "password": "not-the-password"}
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        // A fresh unknown name each run: the login throttle counts misses per name (5) and per
+        // address (20) in 15 minutes, so this never locks the real test user.
+        bru.setVar("nobody", "nobody-" + Date.now());
+    - type: tests
+      code: |-
+        test("401, the same message as a wrong password", () => {
+          expect(res.status).to.equal(401);
+          expect(res.body.error).to.equal("Invalid username or password.");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

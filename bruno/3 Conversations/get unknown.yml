@@ -1,0 +1,25 @@
+info:
+  name: get (unknown id)
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/conversations/999999999"
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("404", () => {
+          expect(res.status).to.equal(404);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Another user's conversation answers the same 404: every query is scoped to the signed-in user.

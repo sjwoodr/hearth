@@ -29,6 +29,9 @@ pnpm test                    # vitest
 pnpm check-types
 ```
 
+API tests you can run by hand against a running hearth (local or deployed) are a
+[Bruno](https://www.usebruno.com/) collection in [`bruno/`](bruno/README.md).
+
 `pnpm build` puts the front end in `dist/client`, and `pnpm start` serves it
 and the API from one process.
 

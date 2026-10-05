@@ -1,0 +1,27 @@
+info:
+  name: rename (empty title)
+  type: http
+  seq: 4
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/api/conversations/{{conversationId}}"
+  body:
+    type: json
+    data: |-
+      {"title": "   "}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("400 with the limits", () => {
+          expect(res.status).to.equal(400);
+          expect(res.body.error).to.match(/^Title must be 1-\d+ characters\.$/);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

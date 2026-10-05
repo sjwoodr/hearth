@@ -1,0 +1,15 @@
+name: local
+variables:
+  # The backend directly (pnpm dev:fullstack runs it on :8787; Vite's :5180 proxies /api to it).
+  - name: baseUrl
+    value: http://localhost:8787
+  # Must equal HEARTH_ORIGIN.
+  - name: origin
+    value: http://localhost:5180
+  # /healthz, /readyz, /metrics: the backend itself.
+  - name: healthUrl
+    value: http://localhost:8787
+  - name: username
+    value: bruno
+  - name: password
+    secret: true

@@ -1,0 +1,41 @@
+info:
+  name: send message
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/conversations/{{conversationId}}/messages"
+  body:
+    type: json
+    data: |-
+      {"content": "Reply with exactly one word: the French for hello.", "think": false}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        // The reply streams as NDJSON: one JSON event per line.
+        const events = String(typeof res.body === "string" ? res.body : JSON.stringify(res.body))
+          .trim().split("\n").map((line) => JSON.parse(line));
+        const types = events.map((e) => e.type);
+        test("200, streamed as NDJSON", () => {
+          expect(res.status).to.equal(200);
+          expect(res.headers["content-type"]).to.contain("application/x-ndjson");
+        });
+        test("starts, streams text, and finishes", () => {
+          expect(types[0]).to.equal("start");
+          expect(types).to.include("delta");
+          expect(types).to.include("done");
+          expect(types).to.not.include("error");
+        });
+        test("the reply answers the question", () => {
+          const text = events.filter((e) => e.type === "delta").map((e) => e.text).join("");
+          expect(text.toLowerCase()).to.contain("bonjour");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

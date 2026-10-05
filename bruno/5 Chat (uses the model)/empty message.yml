@@ -1,0 +1,27 @@
+info:
+  name: send (empty message)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/conversations/{{conversationId}}/messages"
+  body:
+    type: json
+    data: |-
+      {"content": "   "}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("400 before any model call", () => {
+          expect(res.status).to.equal(400);
+          expect(res.body.error).to.equal("Message is empty.");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
