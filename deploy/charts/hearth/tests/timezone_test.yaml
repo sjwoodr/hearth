@@ -1,0 +1,34 @@
+# Without TZ the pods run in UTC and, in the evening, hearth tells the model it's already
+# tomorrow (found in the first evening after moving to the cluster).
+suite: time zone
+values: [../ci/test-values.yaml]
+tests:
+  - it: sets TZ on every hearth container
+    templates: [api.yaml, worker.yaml, gateway.yaml]
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: TZ, value: America/New_York}
+  - it: sets TZ on the migrate Job
+    template: migrate-job.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: TZ, value: America/New_York}
+  - it: runs the backup schedule and container in that zone
+    template: backup-cronjob.yaml
+    asserts:
+      - equal: {path: spec.timeZone, value: America/New_York}
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: {name: TZ, value: America/New_York}
+  - it: leaves TZ out when no zone is set (UTC)
+    template: api.yaml
+    documentSelector: {path: kind, value: Deployment}
+    set: {timezone: ""}
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: TZ}
+          any: true

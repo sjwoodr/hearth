@@ -36,6 +36,7 @@ spec:
             - {name: OLLAMA_URL, value: {{ .Values.ollama.url | quote }}}
             - {name: HEARTH_OLLAMA_SLOTS, value: {{ .Values.ollama.slots | quote }}}
             - {name: HEARTH_LOG_FORMAT, value: json}
+            {{- include "hearth.tzEnv" . | nindent 12 }}
             - name: HEARTH_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
