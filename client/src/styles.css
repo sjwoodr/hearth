@@ -30,7 +30,10 @@
 body { margin: 0; background: var(--bg); }
 h1 { margin: 0; font-size: 1.4rem; color: var(--accent); }
 /* The app icon beside the name (sidebar) and above it (login). */
-.brand { display: flex; align-items: center; gap: 0.5rem; }
+.brand button {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; cursor: pointer;
+}
 .brand img { flex: none; }
 button {
   font: inherit; padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--accent);
@@ -91,6 +94,9 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .chat-top { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 16px; border-bottom: 1px solid var(--border); }
 .chat-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-toggle { display: none; }
+/* Reload: only as a Home Screen app, where there's no browser toolbar (CSS display-mode). */
+.reload { display: none; margin-left: auto; padding: 0.2rem 0.5rem; font-size: 1.3rem; line-height: 1; color: var(--muted); }
+@media (display-mode: standalone) { .reload { display: inline-block; } }
 .banner { padding: 0.5rem 16px; }
 
 .conversation { flex: 1; display: flex; flex-direction: column; min-height: 0; }
