@@ -17,8 +17,10 @@ conversations, memories, one real chat reply through the model, and cleanup. 27 
 3. **Pick an environment** (top right) and set `password` to the test user's password. It's a
    secret: Bruno keeps the value locally and never writes it into these files.
    - `local`: `pnpm dev:fullstack` (backend on :8787, `origin` = `HEARTH_ORIGIN`).
-   - `cluster`: set `baseUrl` and `origin` to your hearth's address. Health is at `healthUrl`, the
-     api pod itself, because the ingress routes only `/` and `/api`:
+   - `cluster`: copy `.env.example` to `.env` here and set `HEARTH_URL` to your hearth's address
+     (its `HEARTH_ORIGIN`). `.env` is gitignored, so the address stays out of the repo; Bruno reads
+     it when it opens the collection (reopen it after editing). Health is at `healthUrl`, the api
+     pod itself, because the ingress routes only `/` and `/api`:
      `kubectl -n hearth port-forward deploy/hearth-api 8787`.
 
 ## Run
@@ -35,6 +37,7 @@ A single request works on its own once you have signed in (Auth → login).
 - From the command line, with Bruno's CLI (`npm i -g @usebruno/cli`):
   ```
   cd bruno && bru run --env local --env-var password=...
+  cd bruno && bru run --env cluster --env-var password=...    # reads .env too
   ```
 
 ## What it checks
