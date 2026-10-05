@@ -1,4 +1,7 @@
 // Shared setup for the server tests: an in-memory database and a scripted stand-in for Ollama.
+import type { AddressInfo } from 'node:net';
+import { serve } from '@hono/node-server';
+import type { Hono } from 'hono';
 import { createApp } from './app.ts';
 import { createModelScheduler } from './busy.ts';
 import { openDb, type DB } from './db.ts';
@@ -32,6 +35,10 @@ export type FakeModel = {
   asks: string[];
   /** Whether each reply was offered the web_search tool. */
   toolsOffered: boolean[];
+  /** The model-loaded checks the app made, by `think`. */
+  loadedChecks: boolean[];
+  /** A pause between reply chunks, for a reply that streams over time (default none). */
+  chunkDelayMs?: number;
   /** Queries the search engine actually ran, and what it returns; an Error makes it fail. */
   searched: string[];
   results: SearchResult[] | Error;
@@ -46,6 +53,31 @@ export const THINKING_TOKENS = 25;
  * `db` reuses another app's database: a second app on it behaves like hearth after a restart (or
  * a second server process), with the database intact and server memory empty. `now` moves the clock.
  */
+/** Waits `ms`, or not at all (no timer, so tests without a delay keep their timing). */
+const pauseFor = (ms?: number) => (ms ? new Promise((r) => setTimeout(r, ms)) : undefined);
+
+type LoadedCheck = { answer: boolean | undefined; delayMs?: number };
+
+/** The app's model-loaded check, answering as scripted and recording each ask; none when not scripted. */
+function scriptedLoadedCheck(model: FakeModel, check: LoadedCheck | undefined) {
+  if (!check) return {};
+  return {
+    modelLoaded: async (think: boolean) => {
+      model.loadedChecks.push(think);
+      if (check.delayMs) await new Promise((r) => setTimeout(r, check.delayMs));
+      return check.answer;
+    },
+  };
+}
+
+/** Serves `app` on a free loopback port for a test; push `servers` entries' close() in afterEach. */
+export async function listen(app: Hono, servers: { close: () => void }[]): Promise<string> {
+  const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+  servers.push(server);
+  await new Promise<void>((r) => (server.listening ? r() : server.once('listening', () => r())));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
 export function setupApp(
   opts: {
     numCtx?: number;
@@ -56,6 +88,8 @@ export function setupApp(
     now?: () => Date;
     /** Ollama slots for the scheduler that wraps the fake model (default 1, as in production). */
     slots?: number;
+    /** What the model-loaded check answers (undefined: can't tell); omitted, the app has no check. */
+    modelLoaded?: LoadedCheck;
   } = {},
 ) {
   const db = opts.db ?? openDb(':memory:');
@@ -72,6 +106,7 @@ export function setupApp(
     description: 'A page of French homework.',
     asks: [],
     toolsOffered: [],
+    loadedChecks: [],
     searched: [],
     results: [{ title: 'Fishbach tour', url: 'https://example.com/tour', snippet: 'Le Havre, 16 October.' }],
   };
@@ -89,6 +124,7 @@ export function setupApp(
     await model.gate;
     if (askedToSearch(o)) return;
     for (const chunk of model.reply) {
+      await pauseFor(model.chunkDelayMs);
       if (signal.aborted) throw new Error('aborted');
       if (chunk instanceof Error) throw chunk;
       yield chunk;
@@ -122,6 +158,7 @@ export function setupApp(
       return model.description;
     },
     afterReply: (id) => model.afterReply.push(id),
+    ...scriptedLoadedCheck(model, opts.modelLoaded),
     ...(opts.webSearch
       ? {
           webSearch: async (query: string) => {

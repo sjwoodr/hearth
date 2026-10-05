@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
+import { pendingText } from '../../shared/pending-text.ts';
 
 type Props = {
   id: number | undefined;
@@ -73,6 +74,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   const [now, setNow] = useState(0);
   const [streamText, setStreamText] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [think, setThink] = useState<ThinkSetting>(loadThink);
   const [thinkingTokens, setThinkingTokens] = useState(0);
   // Why Auto chose to think for the reply in progress, if it did.
@@ -162,6 +164,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           reason = event.reason;
           setAutoReason(event.reason ?? null);
         } else if (event.type === 'queued') setQueued(true);
+        else if (event.type === 'loading') setLoading(true);
         else if (event.type === 'searching') setSearchingFor(event.query);
         else if (event.type === 'search') {
           // The model wants to search: the reply waits for the user's answer on the card.
@@ -171,9 +174,11 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         }
         else if (event.type === 'thinking') {
           setQueued(false);
+          setLoading(false);
           setThinkingTokens(event.tokens);
         } else if (event.type === 'delta') {
           setQueued(false);
+          setLoading(false);
           reply += event.text;
           setStreamText(reply);
         } else if (event.type === 'done') {
@@ -210,6 +215,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setQueued(false);
+      setLoading(false);
       setThinkingTokens(0);
       setAutoReason(null);
       setSearchingFor(null);
@@ -349,13 +355,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             </>
           ) : (
             <div className="message assistant pending">
-              {searchingFor
-                ? `Searching the web for “${searchingFor}”…`
-                : queued
-                ? 'Waiting for the model to finish another reply…'
-                : thinkingTokens > 0
-                  ? `Thinking… ${thinkingTokens}${autoReason ? ` · auto: ${autoReason}` : ''}`
-                  : '…'}
+              {pendingText({ searchingFor, queued, loading, thinkingTokens, autoReason, waitedMs: now - (startedAt ?? now) })}
               {/* Hidden from screen readers: a number changing ten times a second would drown them out. */}
               <span className="elapsed" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s

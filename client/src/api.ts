@@ -69,6 +69,8 @@ export type Memory = {
 export type StreamEvent =
   | { type: 'start'; userMessageId: number; think?: boolean; reason?: string }
   | { type: 'queued' }
+  /** Ollama had unloaded the model; this reply waits while it loads (~15 s). */
+  | { type: 'loading' }
   | { type: 'thinking'; tokens: number }
   | { type: 'title'; title: string }
   | { type: 'delta'; text: string }

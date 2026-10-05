@@ -1,22 +1,15 @@
-import type { AddressInfo } from 'node:net';
-import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from './db.ts';
 import { probeModels, registerHealthRoutes } from './health.ts';
-import { setupApp } from './testing.ts';
+import { listen, setupApp } from './testing.ts';
 
 const servers: { close: () => void }[] = [];
 afterEach(() => {
   for (const s of servers.splice(0)) s.close();
 });
 
-async function listen(app: Hono) {
-  const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
-  servers.push(server);
-  await new Promise<void>((r) => (server.listening ? r() : server.once('listening', () => r())));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-}
+const serveFake = (app: Hono) => listen(app, servers);
 
 describe('health endpoints', () => {
   it('need no login: /healthz says the process is up, /readyz checks the database', async () => {
@@ -53,12 +46,12 @@ describe('probing the models', () => {
     const fake = new Hono();
     fake.get('/healthz', (c) => c.json({ ok: true }));
     fake.get('/api/version', (c) => c.json({ version: 'x' }));
-    const url = await listen(fake);
+    const url = await serveFake(fake);
     expect(await probeModels(url, true)()).toBeUndefined();
     expect(await probeModels(url, false)()).toBeUndefined();
     const onlyOllama = new Hono();
     onlyOllama.get('/api/version', (c) => c.json({ version: 'x' }));
-    expect(await probeModels(await listen(onlyOllama), true)()).toBe('gateway returned 404');
+    expect(await probeModels(await serveFake(onlyOllama), true)()).toBe('gateway returned 404');
   });
 
   it("says when nothing answers, and doesn't hang on a dependency that never replies", async () => {
@@ -66,7 +59,7 @@ describe('probing the models', () => {
     const hung = new Hono();
     hung.get('/healthz', () => new Promise<Response>(() => {}));
     const started = Date.now();
-    expect(await probeModels(await listen(hung), true, 200)()).toMatch(/^gateway unreachable/);
+    expect(await probeModels(await serveFake(hung), true, 200)()).toMatch(/^gateway unreachable/);
     expect(Date.now() - started).toBeLessThan(2000);
   });
 });

@@ -226,8 +226,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
-| `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`; each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
+| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
+| `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
@@ -239,6 +239,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
+| `shared/pending-text.ts` | what the chat shows before a reply's first word (search, queue, thinking, loading, still working); tested in `server/pending-text.test.ts` |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
 | `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
 | `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
