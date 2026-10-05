@@ -1,10 +1,11 @@
 name: cluster
 variables:
-  # Through the ingress: set both to your hearth's address (its HEARTH_ORIGIN).
+  # Your hearth's address (its HEARTH_ORIGIN), from bruno/.env: copy .env.example to .env and set
+  # HEARTH_URL. .env is gitignored, so the real address stays out of the repo.
   - name: baseUrl
-    value: https://hearth.example.com
+    value: "{{process.env.HEARTH_URL}}"
   - name: origin
-    value: https://hearth.example.com
+    value: "{{process.env.HEARTH_URL}}"
   # The ingress doesn't route /healthz, /readyz or /metrics; reach the api pod with
   # kubectl -n hearth port-forward deploy/hearth-api 8787
   - name: healthUrl
