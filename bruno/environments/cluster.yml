@@ -7,9 +7,10 @@ variables:
   - name: origin
     value: "{{process.env.HEARTH_URL}}"
   # The ingress doesn't route /healthz, /readyz or /metrics; reach the api pod with
-  # kubectl -n hearth port-forward deploy/hearth-api 8787
+  # kubectl -n hearth port-forward deploy/hearth-api 18787:8787
+  # (18787, so it doesn't clash with a local dev server on 8787).
   - name: healthUrl
-    value: http://localhost:8787
+    value: http://localhost:18787
   # The test user, from bruno/.env (gitignored): HEARTH_USERNAME and HEARTH_PASSWORD.
   - name: username
     value: "{{process.env.HEARTH_USERNAME}}"
