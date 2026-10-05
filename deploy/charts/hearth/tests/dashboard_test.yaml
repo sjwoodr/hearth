@@ -14,6 +14,10 @@ tests:
     asserts:
       - matchRegex: {path: 'data["hearth.json"]', pattern: '"uid": "hearth"'}
       - matchRegex: {path: 'data["hearth.json"]', pattern: 'hearth_reply_first_token_seconds_bucket'}
+  - it: marks each api start (a deploy or a restart) from hearth's own metrics
+    asserts:
+      - matchRegex: {path: 'data["hearth.json"]', pattern: '"name": "hearth started"'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'process_start_time_seconds\{namespace=\\"\$namespace\\",service=\\"hearth\\"\}'}
   - it: takes the sidecar's label from values (Helm merges maps, so the default goes with null)
     set:
       metrics.dashboard.labels: {my_dashboards: "yes", grafana_dashboard: null}

@@ -55,8 +55,9 @@ runs one; it has to search hearth's namespace, e.g. `searchNamespace: ALL`). Row
 the time range, replies (first word and whole reply by Think, outcomes, searches), the model
 (tokens/s, prompt reading as the cache-hit signal, tokens), the scheduler (slots, waits,
 preemptions) and background jobs next to the node's memory. A **Window** selector sets the range
-for rates and percentiles; with a few replies an hour, 1h or wider reads better than 15m. To change
-it, edit in Grafana, export the JSON (Share → Export), and replace the file.
+for rates and percentiles; with a few replies an hour, 1h or wider reads better than 15m. Orange
+markers show where the api started: each deploy (every merge restarts the pods) or a crash. To change
+the dashboard, edit it in Grafana, export the JSON (Share → Export), and replace the file.
 
 `metrics.rules.enabled: true` adds alert rules (a PrometheusRule), only for what
 kube-prometheus-stack's default rules don't already catch (a target down, crash loops, a failed

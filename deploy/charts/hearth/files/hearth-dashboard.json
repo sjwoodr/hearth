@@ -96,7 +96,22 @@
     ]
   },
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "name": "hearth started",
+        "enable": true,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "iconColor": "orange",
+        "expr": "(time() - max by (pod) (process_start_time_seconds{namespace=\"$namespace\",service=\"hearth\"})) < 120",
+        "step": "60s",
+        "titleFormat": "hearth started (deploy or restart)",
+        "textFormat": "{{pod}}",
+        "useValueForTime": false
+      }
+    ]
   },
   "panels": [
     {
