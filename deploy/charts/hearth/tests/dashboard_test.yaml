@@ -1,0 +1,22 @@
+suite: Grafana dashboard
+values: [../ci/test-values.yaml]
+templates: [dashboard.yaml]
+tests:
+  - it: renders nothing by default
+    set: {metrics.dashboard.enabled: false}
+    asserts:
+      - hasDocuments: {count: 0}
+  - it: is a ConfigMap labelled for Grafana's dashboard sidecar
+    asserts:
+      - isKind: {of: ConfigMap}
+      - equal: {path: metadata.labels.grafana_dashboard, value: "1"}
+  - it: carries the dashboard file
+    asserts:
+      - matchRegex: {path: 'data["hearth.json"]', pattern: '"uid": "hearth"'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'hearth_reply_first_token_seconds_bucket'}
+  - it: takes the sidecar's label from values (Helm merges maps, so the default goes with null)
+    set:
+      metrics.dashboard.labels: {my_dashboards: "yes", grafana_dashboard: null}
+    asserts:
+      - equal: {path: metadata.labels.my_dashboards, value: "yes"}
+      - notExists: {path: metadata.labels.grafana_dashboard}

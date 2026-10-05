@@ -17,5 +17,6 @@ ingress:
   annotations: {traefik.ingress.kubernetes.io/router.tls: "true"}
 metrics:
   enabled: true
+  dashboard: {enabled: true}
 systemPrompt: |
   You are hearth.

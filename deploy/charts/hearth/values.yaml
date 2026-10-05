@@ -99,6 +99,12 @@ metrics:
   enabled: false
   interval: ""   # empty: Prometheus's own scrape interval
   labels: {}     # extra labels on the monitors, if your Prometheus selects them by label
+  # A Grafana dashboard for those metrics (files/hearth-dashboard.json), as a ConfigMap for
+  # Grafana's dashboard sidecar (kube-prometheus-stack runs one, looking for this label). Its
+  # sidecar must search hearth's namespace (e.g. searchNamespace: ALL).
+  dashboard:
+    enabled: false
+    labels: {grafana_dashboard: "1"}   # values merge into this; drop the default with grafana_dashboard: null
 
 backup:
   enabled: true

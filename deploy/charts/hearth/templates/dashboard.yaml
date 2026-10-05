@@ -1,0 +1,14 @@
+{{- if .Values.metrics.dashboard.enabled }}
+# The Grafana dashboard as code: edit files/hearth-dashboard.json (or export it from Grafana after
+# editing there), not this ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hearth.fullname" . }}-dashboard
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    {{- with .Values.metrics.dashboard.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+data:
+  hearth.json: |-
+    {{- .Files.Get "files/hearth-dashboard.json" | nindent 4 }}
+{{- end }}
