@@ -10,7 +10,8 @@
 - [x] `/metrics` (Prometheus) on the api, worker and gateway
 - [x] Production images (`Dockerfile.prod`: server and web) and the multi-service stack
 - [x] CI pushing the images to GHCR
-- [ ] Helm chart
+- [x] Helm chart (`deploy/charts/hearth`; checked in CI)
+- [ ] Running in the cluster (install, data moved over, then Argo CD)
 - [ ] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming
 - [x] Push to GitHub (the repo is public; nothing secret is committed)
 

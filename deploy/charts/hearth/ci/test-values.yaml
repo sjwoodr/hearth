@@ -1,0 +1,18 @@
+# Complete values for lint/template checks in CI (placeholders, not a real deployment).
+image:
+  tag: sha-0000000
+origin: https://hearth.example.com
+placement:
+  nodeSelector: {hearth.dev/ollama: "true"}
+  tolerations:
+    - {key: hearth.dev/inference, operator: Exists, effect: NoSchedule}
+persistence:
+  hostPath: /srv/hearth
+gateway:
+  tokenSecret: {name: hearth-gateway}
+searxngUrl: http://searxng.searxng.svc:8080
+ingress:
+  host: hearth.example.com
+  annotations: {traefik.ingress.kubernetes.io/router.tls: "true"}
+systemPrompt: |
+  You are hearth.

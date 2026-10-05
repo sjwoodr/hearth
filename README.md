@@ -110,6 +110,16 @@ an nginx proxy standing in for the ingress (`deploy/nginx-ingress.conf`: `/` to 
 api replicas, unbuffered, `X-Forwarded-For` set and trusted). It shares Ollama with the dev stack,
 so run one at a time for real use.
 
+### Helm chart
+
+`deploy/charts/hearth` runs the same services on Kubernetes: the gateway (host networking, so it
+reaches Ollama on its node), the api, the worker, the web image, a migrate hook before every
+install and upgrade, and a nightly backup CronJob. It needs a commit image tag, the URL people
+open, the node with Ollama and the data, a database folder or a PVC you created (the chart never
+creates the data volume, so uninstalling can't delete it) and a Secret with the gateway token. Its
+README has the values and an install example. `.github/workflows/chart.yml` lints it, validates
+the render with kubeconform and runs its unit tests (`helm unittest`) whenever the chart changes.
+
 ### CI
 
 `.github/workflows/ci.yml` runs `pnpm check-types` and `pnpm test` on every push and pull request,

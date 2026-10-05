@@ -1,0 +1,43 @@
+suite: required values and safety
+# The failure tests name no template: Helm charges a failed render to whichever file it was
+# rendering when the error fired (often another one), so a per-template check would miss it.
+values: [../ci/test-values.yaml]
+tests:
+  - it: refuses a floating image tag
+    set: {image.tag: latest}
+    asserts:
+      - failedTemplate: {errorPattern: "floats"}
+  - it: refuses to run without a database volume
+    set: {persistence.hostPath: ""}
+    asserts:
+      - failedTemplate: {errorPattern: "never creates the database volume"}
+  - it: refuses two database volumes
+    set: {persistence.existingClaim: data}
+    asserts:
+      - failedTemplate: {errorPattern: "only one"}
+  - it: never creates a PersistentVolumeClaim (uninstalling must not delete the database)
+    templates: [api.yaml, worker.yaml, gateway.yaml, web.yaml, migrate-job.yaml, backup-cronjob.yaml]
+    asserts:
+      - notEqual: {path: kind, value: PersistentVolumeClaim}
+  - it: uses an existing claim when given one
+    template: api.yaml
+    documentSelector: {path: kind, value: Deployment}
+    set: {persistence.hostPath: "", persistence.existingClaim: hearth-data}
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: {name: data, persistentVolumeClaim: {claimName: hearth-data}}
+  - it: runs migrations as a pre-install/pre-upgrade hook (Argo CD runs it as PreSync)
+    template: migrate-job.yaml
+    asserts:
+      - equal: {path: "metadata.annotations[\"helm.sh/hook\"]", value: "pre-install,pre-upgrade"}
+  - it: tells api and worker not to migrate on their own
+    template: configmap-env.yaml
+    asserts:
+      - equal: {path: data.HEARTH_AUTO_MIGRATE, value: "0"}
+      - equal: {path: data.HEARTH_ORIGIN, value: https://hearth.example.com}
+  - it: rolls api pods when the settings change
+    template: api.yaml
+    documentSelector: {path: kind, value: Deployment}
+    asserts:
+      - exists: {path: "spec.template.metadata.annotations[\"checksum/env\"]"}

@@ -1,0 +1,68 @@
+# The model gateway: owns Ollama's slots for every hearth process (chat first, background
+# preempted). Host networking so it reaches Ollama on the node's 127.0.0.1; one replica, replaced
+# (not surged) because a second one would double the slot count and fight for the port.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hearth.fullname" . }}-gateway
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hearth.selector" (dict "ctx" . "component" "gateway") | nindent 8 }}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "hearth.placement" . | nindent 6 }}
+      containers:
+        - name: gateway
+          image: {{ include "hearth.serverImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "server/gateway-main.ts"]
+          env:
+            - {name: HEARTH_GATEWAY_HOST, value: "0.0.0.0"}
+            - {name: HEARTH_GATEWAY_PORT, value: {{ .Values.gateway.port | quote }}}
+            - {name: OLLAMA_URL, value: {{ .Values.ollama.url | quote }}}
+            - {name: HEARTH_OLLAMA_SLOTS, value: {{ .Values.ollama.slots | quote }}}
+            - {name: HEARTH_LOG_FORMAT, value: json}
+            - name: HEARTH_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hearth.tokenSecret" . }}
+                  key: {{ .Values.gateway.tokenSecret.key }}
+          ports:
+            - {name: http, containerPort: {{ .Values.gateway.port }}}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          securityContext:
+            {{- include "hearth.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hearth.fullname" . }}-gateway
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    {{- include "hearth.selector" (dict "ctx" . "component" "gateway") | nindent 4 }}
+  ports:
+    - {name: http, port: {{ .Values.gateway.port }}, targetPort: http}

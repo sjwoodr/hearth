@@ -1,0 +1,10 @@
+apiVersion: v2
+name: hearth
+description: hearth, a private chat companion with long-term memory, as Kubernetes services (gateway, api, worker, web)
+type: application
+version: 0.1.0
+# The images are tagged by commit (sha-<short>), so the chart doesn't pin one: set image.tag.
+appVersion: "main"
+home: https://github.com/sjwoodr/hearth
+sources:
+  - https://github.com/sjwoodr/hearth

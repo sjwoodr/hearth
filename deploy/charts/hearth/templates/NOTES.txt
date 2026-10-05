@@ -1,0 +1,9 @@
+hearth {{ .Values.image.tag }} is installed in namespace {{ .Release.Namespace }}.
+
+Open: {{ .Values.origin }}
+
+Add a user (there is no web sign-up):
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "hearth.fullname" . }}-api -- bin/hearth users add <name>
+
+Watch the pods:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
