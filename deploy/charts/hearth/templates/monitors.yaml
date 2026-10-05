@@ -1,0 +1,71 @@
+{{- if .Values.metrics.enabled }}
+{{- /* honorLabels: hearth labels every metric with its own `service` (hearth, worker, gateway);
+       without it, Prometheus would rename that to exported_service on the ServiceMonitor targets,
+       whose own `service` label is the Kubernetes Service's name. */}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "hearth.fullname" . }}-api
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    {{- with .Values.metrics.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "api") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      honorLabels: true
+      {{- with .Values.metrics.interval }}
+      interval: {{ . }}
+      {{- end }}
+---
+# The gateway's /metrics is behind its bearer token (its port is on the node's network).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "hearth.fullname" . }}-gateway
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+    {{- with .Values.metrics.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "gateway") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      honorLabels: true
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "hearth.tokenSecret" . }}
+          key: {{ .Values.gateway.tokenSecret.key }}
+      {{- with .Values.metrics.interval }}
+      interval: {{ . }}
+      {{- end }}
+---
+# The worker has no Service (nothing calls it), so a PodMonitor on its health port.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "hearth.fullname" . }}-worker
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+    {{- with .Values.metrics.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "worker") | nindent 6 }}
+  podMetricsEndpoints:
+    - port: health
+      path: /metrics
+      honorLabels: true
+      {{- with .Values.metrics.interval }}
+      interval: {{ . }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,48 @@
+suite: Prometheus monitors
+values: [../ci/test-values.yaml]
+templates: [monitors.yaml]
+tests:
+  - it: renders nothing by default (a cluster without the operator's CRDs would reject it)
+    set: {metrics.enabled: false}
+    asserts:
+      - hasDocuments: {count: 0}
+  - it: monitors the api's Service on its http port, keeping hearth's own service label
+    documentSelector: {path: metadata.name, value: RELEASE-NAME-hearth-api}
+    asserts:
+      - isKind: {of: ServiceMonitor}
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: hearth
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/component: api
+      - equal: {path: "spec.endpoints[0].port", value: http}
+      - equal: {path: "spec.endpoints[0].path", value: /metrics}
+      - equal: {path: "spec.endpoints[0].honorLabels", value: true}
+  - it: sends the gateway's bearer token from its Secret
+    documentSelector: {path: metadata.name, value: RELEASE-NAME-hearth-gateway}
+    asserts:
+      - isKind: {of: ServiceMonitor}
+      - equal: {path: 'spec.selector.matchLabels["app.kubernetes.io/component"]', value: gateway}
+      - equal:
+          path: spec.endpoints[0].authorization
+          value: {type: Bearer, credentials: {name: hearth-gateway, key: token}}
+  - it: watches the worker's pods on their health port (it has no Service)
+    documentSelector: {path: metadata.name, value: RELEASE-NAME-hearth-worker}
+    asserts:
+      - isKind: {of: PodMonitor}
+      - equal: {path: 'spec.selector.matchLabels["app.kubernetes.io/component"]', value: worker}
+      - equal: {path: "spec.podMetricsEndpoints[0].port", value: health}
+      - equal: {path: "spec.podMetricsEndpoints[0].honorLabels", value: true}
+  - it: applies the interval and extra labels to every monitor
+    set:
+      metrics.interval: 30s
+      metrics.labels: {release: prometheus}
+    documentSelector: {path: kind, value: ServiceMonitor, matchMany: true}
+    asserts:
+      - equal: {path: "spec.endpoints[0].interval", value: 30s}
+      - equal: {path: metadata.labels.release, value: prometheus}
+  - it: leaves the interval to Prometheus when unset
+    documentSelector: {path: kind, value: PodMonitor}
+    asserts:
+      - notExists: {path: "spec.podMetricsEndpoints[0].interval"}

@@ -32,5 +32,11 @@ jobs:
           # Helm 4 verifies plugin signatures; helm-unittest's releases aren't signed.
           helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}" --verify=false
       - run: helm lint "$CHART" -f "$CHART/ci/test-values.yaml" --strict
-      - run: helm template ci "$CHART" -f "$CHART/ci/test-values.yaml" | kubeconform -strict -summary -kubernetes-version 1.36.0
+      # CRD kinds (the Prometheus Operator's ServiceMonitor/PodMonitor) validate against the
+      # community CRD schema catalog, so they're checked, not skipped.
+      - run: >-
+          helm template ci "$CHART" -f "$CHART/ci/test-values.yaml"
+          | kubeconform -strict -summary -kubernetes-version 1.36.0
+          -schema-location default
+          -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
       - run: helm unittest "$CHART"
