@@ -3,5 +3,33 @@ info:
   type: folder
   seq: 1
 
+request:
+  scripts:
+    - type: before-request
+      code: |-
+        // On the cluster these go through a port-forward to the api pod (the ingress routes only
+        // / and /api). If nothing listens on healthUrl, fail with the command to start it.
+        if (bru.getEnvName() === "cluster") {
+          const url = bru.interpolate("{{healthUrl}}/healthz");
+          try {
+            await bru.sendRequest({ method: "GET", url, timeout: 2000 });
+          } catch (err) {
+            const why = String(err?.code || err?.message || err);
+            if (/ECONNREFUSED|ECONNRESET|socket hang up/i.test(why)) {
+              throw new Error(`Nothing at ${url}. Start the port-forward and leave it running: kubectl -n hearth port-forward deploy/hearth-api 18787:8787`);
+            }
+          }
+        }
+
 docs: |-
-  Probes and metrics, no login, at healthUrl: the backend itself. An ingress routes only / and /api, so through it these paths return the web app.
+  Probes and metrics, no login, at `healthUrl`: the backend itself, because an ingress routes only
+  `/` and `/api` (through it these paths return the web app).
+
+  **cluster:** start a port-forward to the api pod first and leave it running (it ends whenever the
+  pod is replaced, i.e. on every deploy):
+
+  ```
+  kubectl -n hearth port-forward deploy/hearth-api 18787:8787
+  ```
+
+  **local:** nothing to start; `healthUrl` is the dev server on :8787.
