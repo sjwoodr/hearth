@@ -29,6 +29,9 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
 h1 { margin: 0; font-size: 1.4rem; color: var(--accent); }
+/* The app icon beside the name (sidebar) and above it (login). */
+.brand { display: flex; align-items: center; gap: 0.5rem; }
+.brand img { flex: none; }
 button {
   font: inherit; padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--accent);
   background: var(--accent); color: var(--accent-text); cursor: pointer;
@@ -51,6 +54,8 @@ button.icon:hover, button.link:hover { color: var(--accent); }
   width: min(360px, 100%); display: grid; gap: 1rem; padding: 2rem;
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
 }
+.login-logo { justify-self: center; border-radius: 16px; }
+.login h1 { text-align: center; }
 .login label { display: grid; gap: 0.35rem; font-size: 0.9rem; color: var(--muted); }
 .login input {
   font: inherit; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border);
