@@ -1,0 +1,21 @@
+# Settings for api, worker, migrate and backup. A change rolls their pods (checksum annotation).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hearth.fullname" . }}-env
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+data:
+  HEARTH_DB_PATH: /data/hearth.db
+  HEARTH_ORIGIN: {{ required "origin is required (the URL people open)" .Values.origin | quote }}
+  HEARTH_AUTO_MIGRATE: "0"
+  HEARTH_LOG_FORMAT: json
+  HEARTH_SEARXNG_URL: {{ .Values.searxngUrl | quote }}
+  HEARTH_TRUSTED_PROXIES: {{ .Values.api.trustedProxies | quote }}
+  HEARTH_SHUTDOWN_GRACE_MS: {{ .Values.api.shutdownGraceMs | quote }}
+  {{- if .Values.systemPrompt }}
+  HEARTH_SYSTEM_PROMPT: /config/system.md
+  {{- end }}
+  {{- range $k, $v := .Values.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

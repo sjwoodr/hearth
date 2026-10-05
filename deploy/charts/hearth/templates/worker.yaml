@@ -1,0 +1,57 @@
+# The worker: memory extraction and summaries, through the gateway (so a reply preempts it).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hearth.fullname" . }}-worker
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hearth.selector" (dict "ctx" . "component" "worker") | nindent 8 }}
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "hearth.placement" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "hearth.serverImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "server/worker.ts"]
+          envFrom:
+            - configMapRef: {name: {{ include "hearth.fullname" . }}-env}
+          env:
+            {{- include "hearth.gatewayClientEnv" . | nindent 12 }}
+          ports:
+            - {name: health, containerPort: 8788}
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            periodSeconds: 30
+          securityContext:
+            {{- include "hearth.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            {{- if .Values.systemPrompt }}
+            - {name: prompt, mountPath: /config, readOnly: true}
+            {{- end }}
+      volumes:
+        {{- include "hearth.dataVolume" . | nindent 8 }}
+        {{- if .Values.systemPrompt }}
+        - name: prompt
+          configMap: {name: {{ include "hearth.fullname" . }}-prompt}
+        {{- end }}

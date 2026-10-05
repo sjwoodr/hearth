@@ -1,0 +1,35 @@
+# The Helm chart (deploy/charts/hearth): lint, render and validate every object against the
+# Kubernetes schemas, and run the chart's own unit tests (placement on the data node, host
+# networking only for the gateway, no floating image tags, no chart-owned database volume).
+# Runs only when the chart or this workflow changes.
+name: Chart
+
+on:
+  push:
+    paths: [deploy/charts/**, .github/workflows/chart.yml]
+  pull_request:
+    paths: [deploy/charts/**, .github/workflows/chart.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    env:
+      CHART: deploy/charts/hearth
+      KUBECONFORM_VERSION: v0.8.0
+      HELM_UNITTEST_VERSION: v1.2.1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+      - name: Install kubeconform and helm-unittest
+        run: |
+          curl -sfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz -C /usr/local/bin kubeconform
+          # Helm 4 verifies plugin signatures; helm-unittest's releases aren't signed.
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}" --verify=false
+      - run: helm lint "$CHART" -f "$CHART/ci/test-values.yaml" --strict
+      - run: helm template ci "$CHART" -f "$CHART/ci/test-values.yaml" | kubeconform -strict -summary -kubernetes-version 1.36.0
+      - run: helm unittest "$CHART"

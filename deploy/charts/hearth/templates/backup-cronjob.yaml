@@ -1,0 +1,47 @@
+{{- if .Values.backup.enabled }}
+# A consistent copy of the live database (SQLite's online backup, via `hearth db backup`) into
+# <data>/backups/, keeping backup.keepDays days. Copy those files offsite, never the live
+# hearth.db (copying it while hearth writes can produce a broken file).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "hearth.fullname" . }}-backup
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "hearth.selector" (dict "ctx" . "component" "backup") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          {{- include "hearth.placement" . | nindent 10 }}
+          containers:
+            - name: backup
+              image: {{ include "hearth.serverImage" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  bin/hearth db backup
+                  find /data/backups -name 'hearth-*.db' -mtime +{{ .Values.backup.keepDays }} -print -delete
+              env:
+                - {name: HEARTH_DB_PATH, value: /data/hearth.db}
+              securityContext:
+                {{- include "hearth.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - {name: data, mountPath: /data}
+          volumes:
+            {{- include "hearth.dataVolume" . | nindent 12 }}
+{{- end }}

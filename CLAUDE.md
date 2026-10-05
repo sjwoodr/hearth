@@ -240,8 +240,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
-| `.github/workflows/ci.yml` | tests + types on every push/PR; images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`) |
+| `.github/workflows/ci.yml` | tests + types on every push/PR; images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
 | `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
+| `deploy/charts/hearth/` | the Helm chart: gateway (hostNetwork), api, worker, web, migrate hook, backup CronJob; `tests/` (helm-unittest), `ci/test-values.yaml`; never creates the data volume |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/src/ConversationView.tsx` | chat UI, Think toggle (per-browser `localStorage` `hearth.think`) |
@@ -287,6 +288,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api), trusted
   proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`, production images
   (`Dockerfile.prod`), the multi-service stack (`compose.services.yml`) and CI pushing to GHCR.
+  Phase 5 has started: the Helm chart (`deploy/charts/hearth`, checked in CI).
   Every step keeps today's single-process setup working by default. The cluster phases happen in
   the private repo; don't start cluster work in this repo without being asked.
 - Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a

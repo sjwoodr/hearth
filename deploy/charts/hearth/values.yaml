@@ -1,0 +1,98 @@
+# hearth chart defaults. Required: image.tag, origin, ingress.host (if ingress is on), and one of
+# persistence.hostPath / persistence.existingClaim, plus the gateway token Secret.
+
+image:
+  server:
+    repository: ghcr.io/sjwoodr/hearth
+  web:
+    repository: ghcr.io/sjwoodr/hearth-web
+  # Required: a commit tag CI pushed (sha-<short>). `main` and `latest` are refused.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The URL people open, e.g. https://hearth.example.com. CSRF checks and secure cookies depend on it.
+origin: ""
+
+# Where every pod that touches SQLite or Ollama runs: the gateway (Ollama on the node's
+# 127.0.0.1), api, worker, migrate and backup (one SQLite file, one kernel). Set a nodeSelector for
+# the machine with Ollama and the data, and a toleration if that node is tainted.
+placement:
+  nodeSelector: {}
+  tolerations: []
+
+# The database lives outside the chart, so uninstalling can never delete it. Set exactly one:
+persistence:
+  hostPath: ""        # a folder on the node in `placement` (must exist; owned by uid 1000)
+  existingClaim: ""   # or a PVC you created (ReadWriteOnce, on that node)
+
+ollama:
+  url: http://127.0.0.1:11434   # as seen from the node (the gateway uses host networking)
+  slots: 2                      # must equal Ollama's OLLAMA_NUM_PARALLEL
+
+gateway:
+  # Host networking so it reaches Ollama on the node's loopback. It then listens on the node's
+  # addresses too, so pick a port nothing else uses; the bearer token is what protects it.
+  port: 11436
+  # A Secret with the bearer token (any long random string), shared by gateway, api and worker.
+  tokenSecret:
+    name: ""
+    key: token
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+api:
+  replicas: 1
+  # Longer than a reply: a pod being replaced finishes its streams first (thinking replies ~15 s).
+  terminationGracePeriodSeconds: 60
+  shutdownGraceMs: 55000
+  # Proxies allowed to name the client in X-Forwarded-For: the pod network, where Traefik runs.
+  trustedProxies: "10.42.0.0/16"
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+worker:
+  resources:
+    requests: {cpu: 50m, memory: 192Mi}
+    limits: {memory: 768Mi}
+
+web:
+  replicas: 1
+  # Static files only: may run on any node.
+  nodeSelector: {}
+  tolerations: []
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+# Web search through SearXNG, e.g. http://searxng.searxng.svc:8080; "off" disables the tool.
+searxngUrl: "off"
+
+# Extra HEARTH_* settings for api and worker (models, num_ctx, ...); the app's defaults apply
+# otherwise. Example: {HEARTH_MODEL: "gemma4:26b-a4b-it-qat"}
+env: {}
+
+# A replacement system prompt, mounted as a file (edits apply on the next message, no restart).
+# Empty: the prompt built into the image.
+systemPrompt: ""
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""
+  # e.g. {traefik.ingress.kubernetes.io/router.tls: "true"} for Traefik with a default certificate
+  annotations: {}
+  # Set when the ingress isn't given a default certificate: [{secretName: ..., hosts: [...]}]
+  tls: []
+
+backup:
+  enabled: true
+  schedule: "15 3 * * *"   # nightly; a consistent SQLite copy into <data>/backups/
+  keepDays: 14
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true

@@ -1,0 +1,40 @@
+# Applies pending migrations before the new version starts (api and worker run with
+# HEARTH_AUTO_MIGRATE=0 and refuse an old schema). A Helm hook, which Argo CD runs as a PreSync
+# hook. The data volume isn't the chart's, so it exists before this runs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "hearth.fullname" . }}-migrate
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "hearth.selector" (dict "ctx" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "hearth.placement" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "hearth.serverImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "server/migrate.ts"]
+          env:
+            - {name: HEARTH_DB_PATH, value: /data/hearth.db}
+            - {name: HEARTH_LOG_FORMAT, value: json}
+          securityContext:
+            {{- include "hearth.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        {{- include "hearth.dataVolume" . | nindent 8 }}

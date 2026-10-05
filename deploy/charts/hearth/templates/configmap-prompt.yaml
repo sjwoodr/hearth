@@ -1,0 +1,13 @@
+{{- if .Values.systemPrompt }}
+# Mounted as a whole directory (not subPath) so an edit reaches the running pods; hearth re-reads
+# the prompt on every message.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hearth.fullname" . }}-prompt
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+data:
+  system.md: |
+    {{- .Values.systemPrompt | nindent 4 }}
+{{- end }}

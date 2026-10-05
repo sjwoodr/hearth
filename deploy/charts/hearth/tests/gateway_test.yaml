@@ -1,0 +1,28 @@
+suite: host networking
+values: [../ci/test-values.yaml]
+tests:
+  - it: gives the gateway host networking (to reach Ollama on the node's loopback), one replica, Recreate
+    template: gateway.yaml
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - equal: {path: spec.template.spec.hostNetwork, value: true}
+      - equal: {path: spec.template.spec.dnsPolicy, value: ClusterFirstWithHostNet}
+      - equal: {path: spec.replicas, value: 1}
+      - equal: {path: spec.strategy.type, value: Recreate}
+  - it: gives no other pod host networking
+    templates: [api.yaml, worker.yaml, web.yaml]
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - notExists: {path: spec.template.spec.hostNetwork}
+  - it: points api and worker at the gateway Service with the token from the Secret
+    templates: [api.yaml, worker.yaml]
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: HEARTH_GATEWAY_URL, value: "http://RELEASE-NAME-hearth-gateway:11436"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HEARTH_GATEWAY_TOKEN
+            valueFrom: {secretKeyRef: {name: hearth-gateway, key: token}}

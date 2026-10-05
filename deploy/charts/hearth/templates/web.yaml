@@ -1,0 +1,54 @@
+# The built front end on nginx (unprivileged, port 8080).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hearth.fullname" . }}-web
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "hearth.selector" (dict "ctx" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hearth.selector" (dict "ctx" . "component" "web") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "hearth.webImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          securityContext:
+            {{- include "hearth.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hearth.fullname" . }}-web
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "hearth.selector" (dict "ctx" . "component" "web") | nindent 4 }}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

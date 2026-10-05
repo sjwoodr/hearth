@@ -1,0 +1,26 @@
+# Every pod that opens the SQLite file or reaches Ollama must land on the one node that has both
+# (PLAN 5.2): the gateway, api, worker, migrate Job and backup CronJob. web may run anywhere.
+suite: placement on the Ollama/data node
+values: [../ci/test-values.yaml]
+tests:
+  - it: puts the gateway, api and worker on the node with the selector and toleration
+    templates: [gateway.yaml, api.yaml, worker.yaml]
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - equal: {path: spec.template.spec.nodeSelector, value: {hearth.dev/ollama: "true"}}
+      - contains:
+          path: spec.template.spec.tolerations
+          content: {key: hearth.dev/inference, operator: Exists, effect: NoSchedule}
+  - it: puts the migrate Job there too
+    template: migrate-job.yaml
+    asserts:
+      - equal: {path: spec.template.spec.nodeSelector, value: {hearth.dev/ollama: "true"}}
+  - it: puts the backup CronJob there too
+    template: backup-cronjob.yaml
+    asserts:
+      - equal: {path: spec.jobTemplate.spec.template.spec.nodeSelector, value: {hearth.dev/ollama: "true"}}
+  - it: leaves web free to run on any node
+    template: web.yaml
+    documentSelector: {path: kind, value: Deployment, matchMany: true}
+    asserts:
+      - notExists: {path: spec.template.spec.nodeSelector}
