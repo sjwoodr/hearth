@@ -14,7 +14,7 @@ import { probeModels } from './health.ts';
 import { makeImageDescriber } from './images.ts';
 import { memoryContext } from './memories.ts';
 import { backgroundJobs, connectModels, modelSetupProblem } from './models.ts';
-import { ollamaChat, ollamaThinkingChat } from './ollama.ts';
+import { ollamaChat, ollamaModelLoaded, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { makeTitler } from './titles.ts';
 import { closeGracefully } from './shutdown.ts';
@@ -47,6 +47,7 @@ const webSearch = config.searxngUrl === 'off' ? undefined : searxngSearch(config
 // Every chat-model call goes through a scheduler: replies go first, background work yields.
 const models = connectModels(config);
 const { embed, json } = models;
+const modelLoaded = ollamaModelLoaded(models.endpoint);
 const app = createApp({
   db,
   origin: config.origin,
@@ -66,6 +67,8 @@ const app = createApp({
   afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.numCtx) : undefined,
   webSearch,
   checkModels: probeModels(config.gatewayUrl || config.ollamaUrl, !!config.gatewayUrl),
+  // Says "loading the model" when Ollama has unloaded it (asked alongside each reply).
+  modelLoaded: (think) => modelLoaded(think ? config.thinkingModel : config.model),
 });
 const stopMemories = jobs.memories
   ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: models.replyActive })

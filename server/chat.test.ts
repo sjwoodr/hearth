@@ -180,3 +180,49 @@ describe('titles', () => {
     expect(long.endsWith('…')).toBe(true);
   });
 });
+
+describe('the "loading the model" notice', () => {
+  // The fake model's first word waits briefly, as a real model's does, so the check (answered at
+  // once) lands first, deterministically.
+  const slowStart = (ctx: ReturnType<typeof setupApp>) => (ctx.model.gate = new Promise((r) => setTimeout(r, 30)));
+  const types = (events: { type: string }[]) => events.map((e) => e.type);
+
+  it('says the model is loading, before the first word, when Ollama has unloaded it', async () => {
+    const ctx = setupApp({ modelLoaded: { answer: false } });
+    const cookie = await signIn(ctx, 'alice');
+    slowStart(ctx);
+    const { events } = await say(ctx.app, cookie, await newChat(ctx.app, cookie), 'Bonjour');
+    expect(types(events).slice(0, 3)).toEqual(['start', 'loading', 'delta']);
+    expect(types(events).at(-1)).toBe('done');
+  });
+
+  it('says nothing when the model is loaded, or when it can\'t tell', async () => {
+    for (const answer of [true, undefined]) {
+      const ctx = setupApp({ modelLoaded: { answer } });
+      const cookie = await signIn(ctx, 'alice');
+      slowStart(ctx);
+      const { events } = await say(ctx.app, cookie, await newChat(ctx.app, cookie), 'Bonjour');
+      expect(types(events)).not.toContain('loading');
+      expect(ctx.model.loadedChecks).toEqual([false]);
+    }
+  });
+
+  it('never says it once words are arriving (a slow check landing mid-reply)', async () => {
+    // Words every 40 ms; the check answers at 50 ms, after the first word and before the last.
+    const ctx = setupApp({ modelLoaded: { answer: false, delayMs: 50 } });
+    const cookie = await signIn(ctx, 'alice');
+    ctx.model.reply = ['Bon', 'jour', ' !', ' Ça', ' va ?'];
+    ctx.model.chunkDelayMs = 40;
+    const { events } = await say(ctx.app, cookie, await newChat(ctx.app, cookie), 'Bonjour');
+    expect(types(events).filter((t) => t === 'delta')).toHaveLength(5);
+    expect(types(events)).not.toContain('loading');
+  });
+
+  it('asks about the thinking model when the reply thinks', async () => {
+    const ctx = setupApp({ modelLoaded: { answer: true } });
+    const cookie = await signIn(ctx, 'alice');
+    const id = await newChat(ctx.app, cookie);
+    await (await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'Bonjour', think: true })).text();
+    expect(ctx.model.loadedChecks).toEqual([true]);
+  });
+});

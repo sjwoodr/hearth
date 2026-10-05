@@ -235,6 +235,26 @@ export function ollamaJson(endpoint: Endpoint, model: string, numCtx: number): J
   };
 }
 
+/**
+ * Whether Ollama has `model` in memory, from its /api/ps (the gateway passes it through). Ollama
+ * unloads an idle model after OLLAMA_KEEP_ALIVE, and loading it again takes ~15 s. Undefined when
+ * it can't tell (no answer within a second, an error): callers then say nothing.
+ */
+export function ollamaModelLoaded(endpoint: Endpoint): (model: string) => Promise<boolean | undefined> {
+  // Ollama lists "name:tag"; a configured name without a tag means ":latest".
+  const tagged = (name: string) => (name.includes(':') ? name : `${name}:latest`);
+  return async (model) => {
+    try {
+      const res = await fetch(`${urlOf(endpoint)}/api/ps`, { headers: headersFor(endpoint, 'reply'), signal: AbortSignal.timeout(1000) });
+      if (!res.ok) return undefined;
+      const { models = [] } = (await res.json()) as { models?: { name?: string; model?: string }[] };
+      return models.some((m) => m.name === tagged(model) || m.model === tagged(model));
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 /** Embeds each text; vectors come back in input order. */
 export type EmbedFn = (texts: string[]) => Promise<number[][]>;
 

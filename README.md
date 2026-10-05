@@ -179,6 +179,11 @@ Multi-user, with no sign-up from the web interface; accounts come from
   [docs/ollama-slots.md](docs/ollama-slots.md)). Replies go before background work, which is
   paused and retried. When every slot holds a reply, the next one waits ("queued"), and waiting
   replies take turns between users.
+- Before a reply's first word, the chat says why it's waiting: a search running, the queue, the
+  model thinking, or **"Loading the model…"** when Ollama had unloaded it (it does after
+  `OLLAMA_KEEP_ALIVE`, and loading takes ~15 s; hearth asks Ollama's `/api/ps` alongside the reply,
+  so a loaded model costs nothing). After 5 seconds with none of those, it says it's still working
+  (usually a long chat being read again).
 
 ## Network and TLS
 

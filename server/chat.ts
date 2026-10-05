@@ -62,7 +62,19 @@ export type ChatDeps = {
   webSearch?: SearchFn;
   /** The current time, for the date in the system prompt (tests pin it). */
   now?: () => Date;
+  /** Whether the reply's model (the thinking one when `think`) is in Ollama's memory; undefined: can't tell. */
+  modelLoaded?: (think: boolean) => Promise<boolean | undefined>;
 };
+
+/**
+ * Sends `loading` when the model isn't in memory and the reply has shown nothing yet. The check runs
+ * alongside the reply, never before it, so a loaded model costs nothing.
+ */
+function noticeLoading(loaded: Promise<boolean | undefined> | undefined, quiet: () => boolean, send: (event: object) => void) {
+  void loaded?.then((isLoaded) => {
+    if (isLoaded === false && quiet()) send({ type: 'loading' });
+  });
+}
 
 // Context tokens held back for the reply itself.
 const REPLY_RESERVE = 1024;
@@ -218,7 +230,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return fitHistory(system, history, numCtx - reserve);
   }
 
-  // Streams a reply as NDJSON: start, optional searching and queued, delta..., then done or error,
+  // Streams a reply as NDJSON: start, optional searching, queued and loading, delta..., then done or error,
   // and after a chat's first reply, title. If the model asks to search instead, it ends with search
   // (the query for the card) and the reply continues from POST /search once the user answers.
   function streamReply(c: Context<Env>, conversationId: number, turnReady: Turn | Promise<Turn>, opts: ReplyOpts) {
@@ -241,7 +253,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       const generate = think ? deps.thinkingChat! : chat;
       let lastReported = 0;
       let thoughtTokens = 0;
+      // Anything from the model (a word, a thought) or the end of the reply: a loading notice would be stale.
+      let heard = false;
       const onThinking = (tokens: number) => {
+        heard = true;
         thoughtTokens = tokens;
         // Enough to show progress without an event per token.
         if (tokens === 1 || tokens - lastReported >= 10) {
@@ -259,6 +274,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       });
       if (opts.searching) await send({ type: 'searching', query: opts.searching });
       const { prompt, sources = [] } = await turnReady;
+      noticeLoading(deps.modelLoaded?.(think), () => !heard, send);
       let reply = '';
       let call: { raw: ToolCall; query: string } | undefined;
       const unusable: ToolCall[] = [];
@@ -275,6 +291,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         const labels = { think: String(think) };
         const sinceStart = () => (performance.now() - startedAt) / 1000;
         for await (const text of generate(prompt, controller.signal, callOpts)) {
+          heard = true;
           if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
           reply += text;
           // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
@@ -282,6 +299,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           // instead; awaiting `done` below flushes it.
           void send({ type: 'delta', text });
         }
+        heard = true; // over, even with no words (a search request, or nothing)
         if (call) {
           // Nothing is searched here. The request waits for the user's tap on the card.
           const saved = withoutImages([...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }], imageSource);
@@ -323,6 +341,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
         });
       } catch (err) {
+        heard = true;
         replies.inc({ think: String(think), outcome: controller.signal.aborted ? 'stopped' : 'error' });
         // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
         if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources });
