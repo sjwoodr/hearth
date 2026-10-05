@@ -1,6 +1,7 @@
 # Tests and type checks on every push and pull request; images built on pull requests (proof the
-# Dockerfile still builds) and pushed to GHCR from main only. Deploying is not CI's job: a new
-# image tag reaches the cluster through the GitOps repo.
+# Dockerfile still builds) and pushed to GHCR from main only. After a push from main, the deploy
+# job writes the new image tag into the private GitOps repo, and Argo CD rolls it out from there:
+# CI never talks to the cluster.
 name: CI
 
 # push only for main (to publish images); branches are covered by pull_request, so a PR branch
@@ -72,3 +73,38 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  # Deploy = commit the new tag to the GitOps repo's values file. Only from main, only once both
+  # images are on GHCR. The key and the repo's name are secrets of the `gitops` environment, which
+  # only main may use, so a workflow edited on a PR branch can't reach them (repository secrets
+  # would be readable there). The repo's name is a secret because this repo's logs are public.
+  deploy:
+    needs: images
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: gitops
+    concurrency:
+      group: gitops-deploy # one at a time, in merge order; a newer merge's tag lands last
+      cancel-in-progress: false
+    env:
+      VALUES: values/hearth.yaml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ secrets.GITOPS_REPO }}
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+      - name: Set image.tag and push
+        run: |
+          tag="sha-${GITHUB_SHA::7}"
+          sed -i -E "s/^(  tag: )sha-[0-9a-f]+/\1${tag}/" "$VALUES"
+          grep -q "^  tag: ${tag}" "$VALUES" || { echo "no image.tag line in $VALUES"; exit 1; }
+          if git diff --quiet; then echo "already at ${tag}"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "hearth: deploy ${tag}" -m "From ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          # Someone may have pushed to the GitOps repo since the checkout: rebase onto it and retry.
+          for _ in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          exit 1
