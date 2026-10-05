@@ -14,6 +14,13 @@ tests:
     asserts:
       - matchRegex: {path: 'data["hearth.json"]', pattern: '"uid": "hearth"'}
       - matchRegex: {path: 'data["hearth.json"]', pattern: 'hearth_reply_first_token_seconds_bucket'}
+  - it: has an alerts timeline for hearth's namespace, with a row for each of the chart's rules
+    asserts:
+      - matchRegex: {path: 'data["hearth.json"]', pattern: '"type": "state-timeline"'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'ALERTS\{namespace=\\"\$namespace\\",alertstate=\\"firing\\"\}'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'vector\(0\), \\"alertname\\", \\"HearthOllamaDown\\"'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'vector\(0\), \\"alertname\\", \\"HearthRepliesFailing\\"'}
+      - matchRegex: {path: 'data["hearth.json"]', pattern: 'vector\(0\), \\"alertname\\", \\"HearthBackupStale\\"'}
   - it: marks each api start (a deploy or a restart) from hearth's own metrics
     asserts:
       - matchRegex: {path: 'data["hearth.json"]', pattern: '"name": "hearth started"'}

@@ -493,7 +493,7 @@
     },
     {
       "type": "row",
-      "title": "Replies",
+      "title": "Alerts",
       "id": 8,
       "collapsed": false,
       "gridPos": {
@@ -505,10 +505,118 @@
       "panels": []
     },
     {
+      "type": "state-timeline",
+      "title": "Alerts",
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Each alert about hearth's namespace over the time range: green OK, yellow pending (the condition holds, waiting out the rule's `for`), red firing. hearth's rules (chart value metrics.rules.enabled) always have a row; cluster rules (TargetDown, KubePodCrashLooping, ...) appear when they were active.",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (alertname) ((ALERTS{namespace=\"$namespace\",alertstate=\"firing\"} * 2) or ALERTS{namespace=\"$namespace\",alertstate=\"pending\"} or label_replace(vector(0), \"alertname\", \"HearthOllamaDown\", \"\", \"\") or label_replace(vector(0), \"alertname\", \"HearthRepliesFailing\", \"\", \"\") or label_replace(vector(0), \"alertname\", \"HearthBackupStale\", \"\", \"\"))",
+          "legendFormat": "{{alertname}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 0
+                },
+                "1": {
+                  "text": "Pending",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "2": {
+                  "text": "Firing",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "rowHeight": 0.8,
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Replies",
+      "id": 10,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "panels": []
+    },
+    {
       "type": "timeseries",
       "title": "Time to first word",
       "description": "From sending to the first word, over the selected window. Thinking replies count their reasoning here.",
-      "id": 9,
+      "id": 11,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -517,7 +625,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 6
+        "y": 12
       },
       "targets": [
         {
@@ -577,7 +685,7 @@
       "type": "timeseries",
       "title": "Whole reply",
       "description": "From sending to the last word (or the search card).",
-      "id": 10,
+      "id": 12,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -586,7 +694,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 6
+        "y": 12
       },
       "targets": [
         {
@@ -646,7 +754,7 @@
       "type": "timeseries",
       "title": "Replies by outcome",
       "description": "Per window: done, search (a card was shown), error, stopped.",
-      "id": 11,
+      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -655,7 +763,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 14
+        "y": 20
       },
       "targets": [
         {
@@ -706,7 +814,7 @@
       "type": "timeseries",
       "title": "Searches",
       "description": "Per window: asked by the model, approved or declined by the user, failed.",
-      "id": 12,
+      "id": 14,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -715,7 +823,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 14
+        "y": 20
       },
       "targets": [
         {
@@ -765,13 +873,13 @@
     {
       "type": "row",
       "title": "Model",
-      "id": 13,
+      "id": 15,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 28
       },
       "panels": []
     },
@@ -779,7 +887,7 @@
       "type": "timeseries",
       "title": "Generation speed",
       "description": "Tokens per second from Ollama's eval_count / eval_duration. The GPU's total is fixed (~33-36 tok/s); slots split it.",
-      "id": 14,
+      "id": 16,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -788,7 +896,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 23
+        "y": 29
       },
       "targets": [
         {
@@ -839,7 +947,7 @@
       "type": "timeseries",
       "title": "Prompt reading",
       "description": "Time Ollama spent reading the prompt: ~1 s when its cache held the conversation, several seconds when it reread it. The cache-hit signal.",
-      "id": 15,
+      "id": 17,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -848,7 +956,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 23
+        "y": 29
       },
       "targets": [
         {
@@ -908,7 +1016,7 @@
       "type": "timeseries",
       "title": "Tokens generated",
       "description": "Per window, replies vs background work (titles, summaries, memories, image notes).",
-      "id": 16,
+      "id": 18,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -917,7 +1025,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 23
+        "y": 29
       },
       "targets": [
         {
@@ -967,13 +1075,13 @@
     {
       "type": "row",
       "title": "Scheduler",
-      "id": 17,
+      "id": 19,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 37
       },
       "panels": []
     },
@@ -981,7 +1089,7 @@
       "type": "timeseries",
       "title": "Slots",
       "description": "Read at each scrape (every minute), so short bursts can fall between samples.",
-      "id": 18,
+      "id": 20,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -990,7 +1098,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 32
+        "y": 38
       },
       "targets": [
         {
@@ -1059,7 +1167,7 @@
       "type": "timeseries",
       "title": "Wait for a slot",
       "description": "How long a model call queued before it got a slot. Replies should stay near zero; background work waits for them.",
-      "id": 19,
+      "id": 21,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1068,7 +1176,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 32
+        "y": 38
       },
       "targets": [
         {
@@ -1128,7 +1236,7 @@
       "type": "timeseries",
       "title": "Preempted and overdue",
       "description": "Per window. Overdue: background work that waited past its limit and ran ahead of replies.",
-      "id": 20,
+      "id": 22,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1137,7 +1245,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 32
+        "y": 38
       },
       "targets": [
         {
@@ -1196,13 +1304,13 @@
     {
       "type": "row",
       "title": "Background work and the machine",
-      "id": 21,
+      "id": 23,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 46
       },
       "panels": []
     },
@@ -1210,7 +1318,7 @@
       "type": "timeseries",
       "title": "Background jobs",
       "description": "Per window, by job (memory, summary, title, image) and outcome (ok, preempted, failed).",
-      "id": 22,
+      "id": 24,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1219,7 +1327,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 47
       },
       "targets": [
         {
@@ -1270,7 +1378,7 @@
       "type": "timeseries",
       "title": "Node memory",
       "description": "The node hearth and Ollama run on. A model load is a ~15 GB step up; it drops when Ollama unloads it (OLLAMA_KEEP_ALIVE).",
-      "id": 23,
+      "id": 25,
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1279,7 +1387,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 41
+        "y": 47
       },
       "targets": [
         {

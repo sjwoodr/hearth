@@ -1,5 +1,7 @@
 {{- if and .Values.metrics.enabled .Values.metrics.rules.enabled }}
-{{- /* Only what kube-prometheus-stack's default rules don't already cover. Those catch a scrape
+{{- /* The dashboard's Alerts panel (files/hearth-dashboard.json) gives each alert named here a row:
+       rename one, and rename it there too.
+       Only what kube-prometheus-stack's default rules don't already cover. Those catch a scrape
        target down (TargetDown: the api, worker or gateway), crash loops, a failed backup Job
        (KubeJobFailed), node memory and disk. */}}
 {{- $ns := printf "namespace=%q" .Release.Namespace }}

@@ -52,7 +52,8 @@ monitors with certain labels, add them in `metrics.labels`.
 `metrics.dashboard.enabled: true` adds a Grafana dashboard (`files/hearth-dashboard.json`) as a
 ConfigMap labelled `grafana_dashboard: "1"`, for Grafana's dashboard sidecar (kube-prometheus-stack
 runs one; it has to search hearth's namespace, e.g. `searchNamespace: ALL`). Rows: an overview of
-the time range, replies (first word and whole reply by Think, outcomes, searches), the model
+the time range, alerts (a timeline per alert about hearth's namespace: green OK, yellow pending,
+red firing; the `metrics.rules` alerts always have a row), replies (first word and whole reply by Think, outcomes, searches), the model
 (tokens/s, prompt reading as the cache-hit signal, tokens), the scheduler (slots, waits,
 preemptions) and background jobs next to the node's memory. A **Window** selector sets the range
 for rates and percentiles; with a few replies an hour, 1h or wider reads better than 15m. Orange
