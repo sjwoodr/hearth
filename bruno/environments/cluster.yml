@@ -10,7 +10,8 @@ variables:
   # kubectl -n hearth port-forward deploy/hearth-api 8787
   - name: healthUrl
     value: http://localhost:8787
+  # The test user, from bruno/.env (gitignored): HEARTH_USERNAME and HEARTH_PASSWORD.
   - name: username
-    value: bruno
+    value: "{{process.env.HEARTH_USERNAME}}"
   - name: password
-    secret: true
+    value: "{{process.env.HEARTH_PASSWORD}}"

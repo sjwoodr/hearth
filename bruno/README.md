@@ -13,14 +13,15 @@ conversations, memories, one real chat reply through the model, and cleanup. 27 
    bin/hearth users add bruno                                            # local (dev database)
    kubectl -n hearth exec -it deploy/hearth-api -- bin/hearth users add bruno   # the cluster
    ```
-2. **Open the collection** in Bruno: Open Collection → this `bruno/` folder.
-3. **Pick an environment** (top right) and set `password` to the test user's password. It's a
-   secret: Bruno keeps the value locally and never writes it into these files.
+2. **`bruno/.env`.** Copy `.env.example` to `.env` here and fill it in: `HEARTH_USERNAME` and
+   `HEARTH_PASSWORD` for the test user, `HEARTH_URL` for the cluster's address (its
+   `HEARTH_ORIGIN`). `.env` is gitignored, so none of it reaches the repo. Bruno reads it when it
+   opens the collection: reopen the collection after editing it.
+3. **Open the collection** in Bruno (Open Collection → this `bruno/` folder) and pick an
+   environment (top right):
    - `local`: `pnpm dev:fullstack` (backend on :8787, `origin` = `HEARTH_ORIGIN`).
-   - `cluster`: copy `.env.example` to `.env` here and set `HEARTH_URL` to your hearth's address
-     (its `HEARTH_ORIGIN`). `.env` is gitignored, so the address stays out of the repo; Bruno reads
-     it when it opens the collection (reopen it after editing). Health is at `healthUrl`, the api
-     pod itself, because the ingress routes only `/` and `/api`:
+   - `cluster`: through the ingress at `HEARTH_URL`. Health is at `healthUrl`, the api pod itself,
+     because the ingress routes only `/` and `/api`:
      `kubectl -n hearth port-forward deploy/hearth-api 8787`.
 
 ## Run
@@ -36,8 +37,8 @@ A single request works on its own once you have signed in (Auth → login).
   but 20 runs in 15 minutes from one address will lock that address until the window passes.
 - From the command line, with Bruno's CLI (`npm i -g @usebruno/cli`):
   ```
-  cd bruno && bru run --env local --env-var password=...
-  cd bruno && bru run --env cluster --env-var password=...    # reads .env too
+  cd bruno && bru run --env local      # reads bruno/.env too
+  cd bruno && bru run --env cluster
   ```
 
 ## What it checks

@@ -14,8 +14,8 @@ docs: |-
   API tests for hearth. Run the whole collection: Auth signs in, the session cookie carries
   through the folders after it, and Cleanup deletes what the run created and signs out.
   "Chat (uses the model)" sends one real message, so Ollama must be up.
-  Pick an environment and set the test user's password (a secret: Bruno keeps it, never these
-  files). See bruno/README.md.
+  The test user and the cluster's address come from bruno/.env (gitignored; copy .env.example).
+  See bruno/README.md.
 
 bundled: false
 extensions:
