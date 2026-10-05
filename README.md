@@ -126,9 +126,16 @@ the render with kubeconform and runs its unit tests (`helm unittest`) whenever t
 `main`,
 then builds both images (proof `Dockerfile.prod` still builds) and, on `main` only, pushes them to
 GHCR as `ghcr.io/sjwoodr/hearth` and `ghcr.io/sjwoodr/hearth-web`, tagged `sha-<short commit>`
-(what a deployment pins) and `main`. It logs in with the built-in `GITHUB_TOKEN`; no secrets to
-set up. **A new GHCR package starts private** even though the repo is public: after the first push
+(what a deployment pins) and `main`. It logs in with the built-in `GITHUB_TOKEN`. **A new GHCR package starts private** even though the repo is public: after the first push
 of each, set it to public under the package's settings, or pulls without credentials fail with 401.
+
+After the images are pushed, the `deploy` job commits `image.tag: sha-<short commit>` to a
+GitOps repo (Argo CD or similar rolls it out from there; CI never talks to a cluster). It needs a
+GitHub environment named `gitops`, limited to the `main` branch, with two secrets:
+`GITOPS_REPO` (`owner/name`) and `GITOPS_DEPLOY_KEY` (the private half of an SSH deploy key that
+has write access to that repo). The values file is `values/hearth.yaml`, and its tag line must
+look like `  tag: sha-…`. Without the environment the job fails and nothing else is affected;
+delete the job if you don't deploy this way.
 
 ## Admin console: `bin/hearth`
 

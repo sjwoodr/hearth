@@ -241,7 +241,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `shared/pending-text.ts` | what the chat shows before a reply's first word (search, queue, thinking, loading, still working); tested in `server/pending-text.test.ts` |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
-| `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
+| `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`); then `deploy` commits the tag to the GitOps repo (environment `gitops`, main only: deploy key + repo name as secrets). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
 | `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
 | `deploy/charts/hearth/` | the Helm chart: gateway (hostNetwork), api, worker, web, migrate hook, backup CronJob; `tests/` (helm-unittest), `ci/test-values.yaml`; never creates the data volume |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
@@ -296,7 +296,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   `pnpm dev:fullstack`, the dev compose stack and `bin/hearth` on the host all work on the dev
   copy; admin tasks for the real instance run in the cluster
   (`kubectl -n hearth exec -it deploy/hearth-api -- bin/hearth ...`). A new version reaches the
-  cluster by changing the image tag in the private repo's values, not by anything in this repo.
+  cluster when CI's `deploy` job (after a merge to main) commits the new image tag to the private
+  repo's values; Argo CD rolls it out. Merging a PR is the deploy.
   Every step keeps today's single-process setup working by default. The cluster phases happen in
   the private repo; don't start cluster work in this repo without being asked.
 - Backups: the chart's nightly CronJob writes consistent copies next to the cluster's database, and
