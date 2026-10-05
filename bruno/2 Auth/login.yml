@@ -13,6 +13,16 @@ http:
 
 runtime:
   scripts:
+    - type: before-request
+      code: |-
+        // Unset {{process.env.X}} stays literal: stop here, before a doomed login counts against
+        // the login throttle.
+        for (const name of ["username", "password"]) {
+          const value = String(bru.getEnvVar(name) ?? "");
+          if (!value || value.startsWith("{{")) {
+            throw new Error(`${name} is not set: add HEARTH_${name.toUpperCase()} to bruno/.env (copy .env.example), then reopen the collection.`);
+          }
+        }
     - type: tests
       code: |-
         test("200 and the user", () => {
