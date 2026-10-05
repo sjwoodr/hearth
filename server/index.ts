@@ -7,7 +7,7 @@ import { createApp } from './app.ts';
 import { parseTrustedProxies, resolveClientIp } from './client-ip.ts';
 import { config } from './config.ts';
 import { setLogFormat } from './logging.ts';
-import { startMetrics } from './metrics.ts';
+import { startMetrics, watchOllama, zeroCounters } from './metrics.ts';
 import { openDbOrExit } from './db.ts';
 import { startMemorySweeper } from './extract.ts';
 import { probeModels } from './health.ts';
@@ -22,6 +22,9 @@ import { searxngSearch } from './web-search.ts';
 
 setLogFormat(config.logFormat, 'hearth');
 startMetrics('hearth');
+zeroCounters();
+// Through a gateway, the gateway reports Ollama; on its own, hearth does.
+if (!config.gatewayUrl) watchOllama(probeModels(config.ollamaUrl, false));
 
 if (config.role !== 'all' && config.role !== 'api') {
   console.error(`HEARTH_ROLE must be "all" or "api" (the worker is \`pnpm worker\`), not "${config.role}".`);

@@ -7,7 +7,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { config } from './config.ts';
 import { setLogFormat } from './logging.ts';
-import { startMetrics } from './metrics.ts';
+import { startMetrics, zeroCounters } from './metrics.ts';
 import { openDbOrExit } from './db.ts';
 import { probeModels, registerHealthRoutes } from './health.ts';
 import { startMemorySweeper } from './extract.ts';
@@ -17,6 +17,7 @@ import { startSummarySweeper } from './summarize.ts';
 
 setLogFormat(config.logFormat, 'worker');
 startMetrics('worker');
+zeroCounters();
 
 const problem = modelSetupProblem(config, true);
 if (problem) {

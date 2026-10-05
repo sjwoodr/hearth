@@ -18,5 +18,6 @@ ingress:
 metrics:
   enabled: true
   dashboard: {enabled: true}
+  rules: {enabled: true}
 systemPrompt: |
   You are hearth.

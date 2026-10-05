@@ -58,6 +58,16 @@ preemptions) and background jobs next to the node's memory. A **Window** selecto
 for rates and percentiles; with a few replies an hour, 1h or wider reads better than 15m. To change
 it, edit in Grafana, export the JSON (Share → Export), and replace the file.
 
+`metrics.rules.enabled: true` adds alert rules (a PrometheusRule), only for what
+kube-prometheus-stack's default rules don't already catch (a target down, crash loops, a failed
+Job, node memory and disk):
+
+| Alert | Fires when |
+|---|---|
+| `HearthOllamaDown` (critical) | Ollama hasn't answered for 5 minutes (`hearth_ollama_up`) |
+| `HearthRepliesFailing` (warning) | two or more replies ended in an error in 15 minutes |
+| `HearthBackupStale` (warning) | no successful backup for `metrics.rules.backupMaxAgeHours` (36); needs kube-state-metrics |
+
 ## Checks
 
 `ci/test-values.yaml` holds complete placeholder values. CI runs:

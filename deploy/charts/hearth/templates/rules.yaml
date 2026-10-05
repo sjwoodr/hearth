@@ -1,0 +1,44 @@
+{{- if and .Values.metrics.enabled .Values.metrics.rules.enabled }}
+{{- /* Only what kube-prometheus-stack's default rules don't already cover. Those catch a scrape
+       target down (TargetDown: the api, worker or gateway), crash loops, a failed backup Job
+       (KubeJobFailed), node memory and disk. */}}
+{{- $ns := printf "namespace=%q" .Release.Namespace }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "hearth.fullname" . }}
+  labels:
+    {{- include "hearth.labels" . | nindent 4 }}
+    {{- with .Values.metrics.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  groups:
+    - name: hearth
+      rules:
+        # From the gateway (or hearth on its own), probed at each scrape. If the gateway itself is
+        # down the series goes missing, and TargetDown fires instead.
+        - alert: HearthOllamaDown
+          expr: max by (namespace) (hearth_ollama_up{ {{- $ns -}} }) == 0
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: Ollama is not answering
+            description: hearth has not reached Ollama for 5 minutes, so no replies or background work can run.
+        # Two or more (increase() extrapolates, so one error can read a little over 1).
+        - alert: HearthRepliesFailing
+          expr: sum by (namespace) (increase(hearth_replies_total{ {{- $ns -}} ,outcome="error"}[15m])) > 1.5
+          labels: {severity: warning}
+          annotations:
+            summary: hearth replies are failing
+            description: '{{`{{ $value | printf "%.0f" }}`}} replies ended in an error in the last 15 minutes.'
+        {{- if .Values.backup.enabled }}
+        # KubeJobFailed catches a backup that failed; this one also catches one that stopped running
+        # (a suspended CronJob, a broken schedule). Needs kube-state-metrics.
+        - alert: HearthBackupStale
+          expr: time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{ {{- $ns -}} ,cronjob="{{ include "hearth.fullname" . }}-backup"}) > {{ mul .Values.metrics.rules.backupMaxAgeHours 3600 }}
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: hearth's database backup is stale
+            description: '{{`The last successful backup was {{ $value | humanizeDuration }} ago.`}}'
+        {{- end }}
+{{- end }}

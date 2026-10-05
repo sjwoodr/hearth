@@ -5,7 +5,8 @@ import { createModelScheduler } from './busy.ts';
 import { config } from './config.ts';
 import { setLogFormat } from './logging.ts';
 import { createGateway } from './gateway.ts';
-import { schedulerHooks, startMetrics, watchScheduler } from './metrics.ts';
+import { probeModels } from './health.ts';
+import { schedulerHooks, startMetrics, watchOllama, watchScheduler } from './metrics.ts';
 import { closeGracefully } from './shutdown.ts';
 
 setLogFormat(config.logFormat, 'gateway');
@@ -18,6 +19,7 @@ if (!config.gatewayToken) {
 startMetrics('gateway');
 const scheduler = createModelScheduler({ slots: config.ollamaSlots, ...schedulerHooks });
 watchScheduler(scheduler);
+watchOllama(probeModels(config.ollamaUrl, false));
 const app = createGateway({ upstream: config.ollamaUrl, token: config.gatewayToken, scheduler });
 
 const server = serve({ fetch: app.fetch, hostname: config.gatewayHost, port: config.gatewayPort }, (info) => {
