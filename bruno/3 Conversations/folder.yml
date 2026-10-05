@@ -1,0 +1,7 @@
+info:
+  name: Conversations
+  type: folder
+  seq: 3
+
+docs: |-
+  Creates one conversation (kept in the conversationId variable) and works on it; Cleanup deletes it.

@@ -1,0 +1,34 @@
+info:
+  name: login (cross-site form post)
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/login"
+  headers:
+    - name: Origin
+      value: "https://evil.example"
+    - name: Content-Type
+      value: "text/plain"
+  body:
+    type: json
+    data: |-
+      {"username": "{{username}}", "password": "{{password}}"}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("403: a form post from another site is refused", () => {
+          expect(res.status).to.equal(403);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  What a CSRF attack looks like: a form-type request from a foreign origin (this request's Origin overrides the collection's).

@@ -1,0 +1,23 @@
+info:
+  name: healthz
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{healthUrl}}/healthz"
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("200 and ok", () => {
+          expect(res.status).to.equal(200);
+          expect(res.body.ok).to.equal(true);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

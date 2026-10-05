@@ -1,0 +1,25 @@
+opencollection: 1.0.0
+
+info:
+  name: hearth API
+
+request:
+  headers:
+    # hearth's CSRF check compares Origin with HEARTH_ORIGIN on form-type POSTs; JSON requests
+    # pass either way, but sending it keeps every request shaped like the browser's.
+    - name: Origin
+      value: "{{origin}}"
+
+docs: |-
+  API tests for hearth. Run the whole collection: Auth signs in, the session cookie carries
+  through the folders after it, and Cleanup deletes what the run created and signs out.
+  "Chat (uses the model)" sends one real message, so Ollama must be up.
+  Pick an environment and set the test user's password (a secret: Bruno keeps it, never these
+  files). See bruno/README.md.
+
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

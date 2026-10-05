@@ -1,0 +1,49 @@
+# API tests (Bruno)
+
+A [Bruno](https://www.usebruno.com/) collection that exercises hearth's HTTP API end to end:
+health and metrics, sign-in (including the login throttle's message and the CSRF check),
+conversations, memories, one real chat reply through the model, and cleanup. 27 requests,
+32 tests. Bruno 4 format (OpenCollection YAML), so each request is a readable `.yml` file here.
+
+## Set up
+
+1. **A test user.** The run signs in, creates a conversation and a memory, and deletes them again.
+   Use a user of its own, not yours:
+   ```
+   bin/hearth users add bruno                                            # local (dev database)
+   kubectl -n hearth exec -it deploy/hearth-api -- bin/hearth users add bruno   # the cluster
+   ```
+2. **Open the collection** in Bruno: Open Collection → this `bruno/` folder.
+3. **Pick an environment** (top right) and set `password` to the test user's password. It's a
+   secret: Bruno keeps the value locally and never writes it into these files.
+   - `local`: `pnpm dev:fullstack` (backend on :8787, `origin` = `HEARTH_ORIGIN`).
+   - `cluster`: set `baseUrl` and `origin` to your hearth's address. Health is at `healthUrl`, the
+     api pod itself, because the ingress routes only `/` and `/api`:
+     `kubectl -n hearth port-forward deploy/hearth-api 8787`.
+
+## Run
+
+Run the whole collection (collection menu → Run). The order matters: **Auth** signs in and the
+session cookie carries the folders after it; **Cleanup** deletes the conversation and signs out.
+A single request works on its own once you have signed in (Auth → login).
+
+- **Chat (uses the model)** sends one real message with thinking off, so Ollama must be up. If
+  the model was unloaded, that reply also waits ~16 s for it to load.
+- **The login throttle:** misses count per user name (5) and per address (20) in 15 minutes.
+  "login (unknown user)" uses a new made-up name each run, so it never locks the test user,
+  but 20 runs in 15 minutes from one address will lock that address until the window passes.
+- From the command line, with Bruno's CLI (`npm i -g @usebruno/cli`):
+  ```
+  cd bruno && bru run --env local --env-var password=...
+  ```
+
+## What it checks
+
+| Folder | Requests |
+|---|---|
+| Health | `/healthz`, `/readyz` (database and models), `/metrics` (counters present, starting at 0) |
+| Auth | signed out → 401; login without a password → 400; unknown user → 401 with the same message as a wrong password; a cross-site form post → 403 (CSRF); login → 200 with an httpOnly, SameSite=Lax cookie; `/api/me` |
+| Conversations | create, list, rename (and an empty title → 400), get, an unknown id → 404 |
+| Memories | add, a bad kind → 400, list, edit (whitespace tidied), delete |
+| Chat (uses the model) | a message streams as NDJSON (`start`, `delta`, `done`, no `error`) and answers; both messages saved; an empty message → 400 |
+| Cleanup | delete the conversation → then 404; logout → `/api/me` is 401 again |

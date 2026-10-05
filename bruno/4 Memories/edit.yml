@@ -1,0 +1,28 @@
+info:
+  name: edit
+  type: http
+  seq: 4
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/api/memories/{{memoryId}}"
+  body:
+    type: json
+    data: |-
+      {"kind": "profile", "content": "  Bruno test memory:   likes sourdough. "}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("200 with the change, whitespace tidied", () => {
+          expect(res.status).to.equal(200);
+          expect(res.body.kind).to.equal("profile");
+          expect(res.body.content).to.equal("Bruno test memory: likes sourdough.");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

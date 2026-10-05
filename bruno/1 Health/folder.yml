@@ -1,0 +1,7 @@
+info:
+  name: Health
+  type: folder
+  seq: 1
+
+docs: |-
+  Probes and metrics, no login, at healthUrl: the backend itself. An ingress routes only / and /api, so through it these paths return the web app.

@@ -1,0 +1,28 @@
+info:
+  name: me (signed out)
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/me"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        // A previous run's session cookie would sign this request in. Clears only this URL's
+        // cookies (bru.cookies.jar().clear() would clear every cookie Bruno has).
+        await bru.cookies.clear();
+    - type: tests
+      code: |-
+        test("401 without a session", () => {
+          expect(res.status).to.equal(401);
+          expect(res.body.error).to.equal("Not signed in.");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

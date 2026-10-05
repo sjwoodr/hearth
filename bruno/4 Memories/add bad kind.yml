@@ -1,0 +1,27 @@
+info:
+  name: add (bad kind)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/memories"
+  body:
+    type: json
+    data: |-
+      {"kind": "secret", "content": "x"}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("400", () => {
+          expect(res.status).to.equal(400);
+          expect(res.body.error).to.equal('Kind must be "profile" or "fact".');
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

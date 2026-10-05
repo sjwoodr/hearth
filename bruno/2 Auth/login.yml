@@ -1,0 +1,32 @@
+info:
+  name: login
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/login"
+  body:
+    type: json
+    data: |-
+      {"username": "{{username}}", "password": "{{password}}"}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("200 and the user", () => {
+          expect(res.status).to.equal(200);
+          expect(res.body.username).to.equal(bru.getEnvVar("username"));
+        });
+        test("sets an httpOnly session cookie", () => {
+          const cookie = [].concat(res.headers["set-cookie"] || []).join("; ");
+          expect(cookie).to.match(/HttpOnly/i);
+          expect(cookie).to.match(/SameSite=Lax/i);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

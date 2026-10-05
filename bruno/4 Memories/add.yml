@@ -1,0 +1,31 @@
+info:
+  name: add
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/memories"
+  body:
+    type: json
+    data: |-
+      {"kind": "fact", "content": "Bruno test memory: likes rye bread."}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        bru.setVar("memoryId", res.body.id);
+    - type: tests
+      code: |-
+        test("201 with the memory", () => {
+          expect(res.status).to.equal(201);
+          expect(res.body.id).to.be.a("number");
+          expect(res.body.kind).to.equal("fact");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

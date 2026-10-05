@@ -1,0 +1,27 @@
+info:
+  name: login (missing fields)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/login"
+  body:
+    type: json
+    data: |-
+      {"username": "{{username}}"}
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("400 with a message", () => {
+          expect(res.status).to.equal(400);
+          expect(res.body.error).to.equal("Username and password are required.");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

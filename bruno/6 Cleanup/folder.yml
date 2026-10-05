@@ -1,0 +1,7 @@
+info:
+  name: Cleanup
+  type: folder
+  seq: 6
+
+docs: |-
+  Deletes the conversation, checks it is gone, signs out.

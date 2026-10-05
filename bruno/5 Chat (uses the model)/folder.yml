@@ -1,0 +1,7 @@
+info:
+  name: Chat (uses the model)
+  type: folder
+  seq: 5
+
+docs: |-
+  One real message through Ollama, thinking off. If Ollama has unloaded the model, the first reply also waits ~16 s for it to load.
