@@ -288,11 +288,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`pnpm worker` with `HEARTH_ROLE=api`; titles and image descriptions stay in the api), trusted
   proxies, health endpoints, graceful shutdown, JSON logs, `/metrics`, production images
   (`Dockerfile.prod`), the multi-service stack (`compose.services.yml`) and CI pushing to GHCR.
-  Phase 5 has started: the Helm chart (`deploy/charts/hearth`, checked in CI).
+  **Phase 5: hearth now runs in the cluster** (from this chart, deployed by Argo CD from the private
+  repo), and that instance is the live one with the real data since 2026-10-04. **The local
+  database is a development copy** (`.env` points `HEARTH_DB_PATH` at `data/dev.db`), so
+  `pnpm dev:fullstack`, the dev compose stack and `bin/hearth` on the host all work on the dev
+  copy; admin tasks for the real instance run in the cluster
+  (`kubectl -n hearth exec -it deploy/hearth-api -- bin/hearth ...`). A new version reaches the
+  cluster by changing the image tag in the private repo's values, not by anything in this repo.
   Every step keeps today's single-process setup working by default. The cluster phases happen in
   the private repo; don't start cluster work in this repo without being asked.
-- Backups: done on the host (a nightly encrypted restic job runs `hearth db backup` first, because a
-  live SQLite file can't be copied safely). Phone layout check and 2FA before any internet exposure:
+- Backups: the chart's nightly CronJob writes consistent copies next to the cluster's database, and
+  the host's encrypted restic job snapshots that live database (`hearth db backup`, SQLite's online
+  backup) before each run, because a live SQLite file can't be copied safely. Phone layout check and 2FA before any internet exposure:
   see `TODO.md`.
 - Bench models no longer needed are still pulled in Ollama (Mistral Small/Nemo, Ministral, Qwen 3,
   Aya, Gemma 12B, Nemotron); remove them if disk matters.
