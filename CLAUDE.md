@@ -240,7 +240,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
-| `.github/workflows/ci.yml` | tests + types on every push/PR; images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
+| `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
 | `Dockerfile.prod`, `compose.services.yml`, `deploy/` | production images (server, web), the multi-service stack, nginx configs for web and the ingress stand-in |
 | `deploy/charts/hearth/` | the Helm chart: gateway (hostNetwork), api, worker, web, migrate hook, backup CronJob; `tests/` (helm-unittest), `ci/test-values.yaml`; never creates the data volume |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |

@@ -3,8 +3,11 @@
 # image tag reaches the cluster through the GitOps repo.
 name: CI
 
+# push only for main (to publish images); branches are covered by pull_request, so a PR branch
+# runs once per push instead of twice (push + pull_request).
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:

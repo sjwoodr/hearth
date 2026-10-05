@@ -122,7 +122,8 @@ the render with kubeconform and runs its unit tests (`helm unittest`) whenever t
 
 ### CI
 
-`.github/workflows/ci.yml` runs `pnpm check-types` and `pnpm test` on every push and pull request,
+`.github/workflows/ci.yml` runs `pnpm check-types` and `pnpm test` on every pull request and on
+`main`,
 then builds both images (proof `Dockerfile.prod` still builds) and, on `main` only, pushes them to
 GHCR as `ghcr.io/sjwoodr/hearth` and `ghcr.io/sjwoodr/hearth-web`, tagged `sha-<short commit>`
 (what a deployment pins) and `main`. It logs in with the built-in `GITHUB_TOKEN`; no secrets to
