@@ -246,6 +246,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `deploy/charts/hearth/` | the Helm chart: gateway (hostNetwork), api, worker, web, migrate hook, backup CronJob; `tests/` (helm-unittest), `ci/test-values.yaml`; never creates the data volume |
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
+| `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
 | `client/src/ConversationView.tsx` | chat UI, Think toggle (per-browser `localStorage` `hearth.think`) |
 
 ## Invariants
