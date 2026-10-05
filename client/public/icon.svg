@@ -1,0 +1,21 @@
+<!-- hearth app icon: a fireplace arch in hearth's lavender with a warm flame inside, on the dark UI background. The source for every large size (apple-touch-icon, icon-192/512). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="fo" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#ff6a1a"/>
+<stop offset="0.55" stop-color="#ff9a1f"/>
+<stop offset="1" stop-color="#ffc83d"/>
+</linearGradient>
+<linearGradient id="fi" x1="0" y1="1" x2="0" y2="0">
+<stop offset="0" stop-color="#ffd25e"/>
+<stop offset="1" stop-color="#fff3c4"/>
+</linearGradient>
+</defs>
+<rect width="512" height="512" fill="#1d1625"/>
+<path d="M96 448 V232 A160 160 0 0 1 416 232 V448" fill="#2e2340" stroke="#b68cf2" stroke-width="28" stroke-linejoin="round"/>
+<g transform="translate(256 262) scale(0.62) translate(-256 -256)">
+<path fill="url(#fo)" d="M256 92 C300 160 372 210 372 300 C372 372 320 420 256 420 C192 420 140 372 140 300 C140 250 168 214 196 184 C200 230 214 256 238 262 C226 206 236 146 256 92 Z"/>
+<path fill="url(#fi)" d="M256 236 C284 276 316 300 316 344 C316 384 290 408 256 408 C222 408 196 384 196 346 C196 312 222 290 256 236 Z"/>
+</g>
+<rect x="72" y="436" width="368" height="30" rx="10" fill="#b68cf2"/>
+</svg>
