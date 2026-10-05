@@ -119,9 +119,13 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
       <aside className="sidebar" aria-label="Chats">
         <div className="sidebar-head">
           <h1 className="brand">
-            {/* Decorative next to the name: the favicon's small-size version of the app icon. */}
-            <img src="/favicon.svg" alt="" width="28" height="28" />
-            hearth
+            {/* Tapping the name reloads (the open chat is in the URL hash, so it stays open): the only
+                way to reload in the Home Screen app, which has no browser toolbar. */}
+            <button type="button" title="Reload hearth" onClick={() => location.reload()}>
+              {/* Decorative next to the name: the favicon's small-size version of the app icon. */}
+              <img src="/favicon.svg" alt="" width="28" height="28" />
+              hearth
+            </button>
           </h1>
           <button type="button" onClick={() => open(undefined)}>
             New chat
@@ -219,6 +223,11 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             ☰
           </button>
           <span className="chat-title">{showMemories ? 'Memories' : (active?.title ?? 'New chat')}</span>
+          {/* Shown only when hearth runs as a Home Screen app (no browser toolbar, so no reload); the
+              name at the top of the chat list reloads too. */}
+          <button type="button" className="icon reload" aria-label="Reload hearth" title="Reload" onClick={() => location.reload()}>
+            ↻
+          </button>
         </header>
         {error && (
           <p className="error banner" role="alert">
