@@ -28,6 +28,7 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   return (
     <main className="login">
       <form onSubmit={submit}>
+        <img className="login-logo" src="/icon.svg" alt="" width="72" height="72" />
         <h1>hearth</h1>
         <label>
           Username

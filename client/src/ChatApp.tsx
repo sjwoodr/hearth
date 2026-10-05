@@ -118,7 +118,11 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     <div className={`chat-app${sidebarOpen ? ' sidebar-open' : ''}`}>
       <aside className="sidebar" aria-label="Chats">
         <div className="sidebar-head">
-          <h1>hearth</h1>
+          <h1 className="brand">
+            {/* Decorative next to the name: the favicon's small-size version of the app icon. */}
+            <img src="/favicon.svg" alt="" width="28" height="28" />
+            hearth
+          </h1>
           <button type="button" onClick={() => open(undefined)}>
             New chat
           </button>
