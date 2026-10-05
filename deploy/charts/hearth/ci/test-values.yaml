@@ -15,5 +15,7 @@ searxngUrl: http://searxng.searxng.svc:8080
 ingress:
   host: hearth.example.com
   annotations: {traefik.ingress.kubernetes.io/router.tls: "true"}
+metrics:
+  enabled: true
 systemPrompt: |
   You are hearth.

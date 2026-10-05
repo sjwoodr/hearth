@@ -91,6 +91,15 @@ ingress:
   # Set when the ingress isn't given a default certificate: [{secretName: ..., hosts: [...]}]
   tls: []
 
+# Prometheus Operator monitors for hearth's /metrics: ServiceMonitors for the api and the gateway
+# (which sends the gateway's bearer token), a PodMonitor for the worker (it has no Service). Needs
+# the operator's CRDs (e.g. kube-prometheus-stack); off by default, since a cluster without them
+# rejects the objects.
+metrics:
+  enabled: false
+  interval: ""   # empty: Prometheus's own scrape interval
+  labels: {}     # extra labels on the monitors, if your Prometheus selects them by label
+
 backup:
   enabled: true
   schedule: "15 3 * * *"   # nightly; a consistent SQLite copy into <data>/backups/

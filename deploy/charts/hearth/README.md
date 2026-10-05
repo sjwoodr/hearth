@@ -39,12 +39,24 @@ stops the rollout instead of running new code on an old database.
 The CronJob writes consistent copies (SQLite's online backup) to `<data>/backups/hearth-*.db` and
 keeps `backup.keepDays` days. Copy those files offsite, not the live `hearth.db`.
 
+## Metrics
+
+Every process serves Prometheus metrics on `/metrics` (reply and first-word times, tokens/s,
+queue waits, preemptions, cache hits, searches, background jobs; see `server/metrics.ts`). With
+the Prometheus Operator installed (e.g. kube-prometheus-stack), `metrics.enabled: true` adds
+ServiceMonitors for the api and the gateway and a PodMonitor for the worker. The gateway's
+`/metrics` needs its bearer token, which its monitor reads from `gateway.tokenSecret`. Metrics keep
+hearth's own `service` label (`hearth`, `worker`, `gateway`). If your Prometheus only picks up
+monitors with certain labels, add them in `metrics.labels`.
+
 ## Checks
 
 `ci/test-values.yaml` holds complete placeholder values. CI runs:
 
 ```sh
 helm lint deploy/charts/hearth -f deploy/charts/hearth/ci/test-values.yaml --strict
-helm template ci deploy/charts/hearth -f deploy/charts/hearth/ci/test-values.yaml | kubeconform -strict -summary
-helm unittest deploy/charts/hearth      # tests/: placement, host networking, required values
+helm template ci deploy/charts/hearth -f deploy/charts/hearth/ci/test-values.yaml \
+  | kubeconform -strict -summary -schema-location default \
+    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+helm unittest deploy/charts/hearth      # tests/: placement, host networking, required values, monitors
 ```
