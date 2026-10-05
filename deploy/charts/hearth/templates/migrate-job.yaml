@@ -32,6 +32,7 @@ spec:
           env:
             - {name: HEARTH_DB_PATH, value: /data/hearth.db}
             - {name: HEARTH_LOG_FORMAT, value: json}
+            {{- include "hearth.tzEnv" . | nindent 12 }}
           securityContext:
             {{- include "hearth.containerSecurity" . | nindent 12 }}
           volumeMounts:

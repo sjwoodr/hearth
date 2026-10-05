@@ -11,6 +11,9 @@ metadata:
     app.kubernetes.io/component: backup
 spec:
   schedule: {{ .Values.backup.schedule | quote }}
+  {{- with .Values.timezone }}
+  timeZone: {{ . | quote }}   # the schedule is in hearth's time zone, not the node's
+  {{- end }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -38,6 +41,7 @@ spec:
                   find /data/backups -name 'hearth-*.db' -mtime +{{ .Values.backup.keepDays }} -print -delete
               env:
                 - {name: HEARTH_DB_PATH, value: /data/hearth.db}
+                {{- include "hearth.tzEnv" . | nindent 16 }}
               securityContext:
                 {{- include "hearth.containerSecurity" . | nindent 16 }}
               volumeMounts:

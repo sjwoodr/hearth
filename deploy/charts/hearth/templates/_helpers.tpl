@@ -74,3 +74,11 @@ capabilities:
       name: {{ include "hearth.tokenSecret" . }}
       key: {{ .Values.gateway.tokenSecret.key }}
 {{- end -}}
+
+{{/* TZ for every hearth container, when a time zone is set. */}}
+{{- define "hearth.tzEnv" -}}
+{{- with .Values.timezone }}
+- name: TZ
+  value: {{ . | quote }}
+{{- end }}
+{{- end -}}

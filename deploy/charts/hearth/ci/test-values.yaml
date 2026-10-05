@@ -2,6 +2,7 @@
 image:
   tag: sha-0000000
 origin: https://hearth.example.com
+timezone: America/New_York
 placement:
   nodeSelector: {hearth.dev/ollama: "true"}
   tolerations:

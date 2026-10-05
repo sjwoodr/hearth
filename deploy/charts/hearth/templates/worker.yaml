@@ -32,6 +32,7 @@ spec:
             - configMapRef: {name: {{ include "hearth.fullname" . }}-env}
           env:
             {{- include "hearth.gatewayClientEnv" . | nindent 12 }}
+            {{- include "hearth.tzEnv" . | nindent 12 }}
           ports:
             - {name: health, containerPort: 8788}
           readinessProbe:

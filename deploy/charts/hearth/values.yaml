@@ -66,6 +66,11 @@ web:
     requests: {cpu: 10m, memory: 32Mi}
     limits: {memory: 128Mi}
 
+# The time zone hearth lives in, e.g. America/New_York. hearth tells the model today's date (for
+# web search) and stamps memories with local dates; without this the pods run in UTC, so in the
+# evening the model is told it's already tomorrow. Empty: UTC.
+timezone: ""
+
 # Web search through SearXNG, e.g. http://searxng.searxng.svc:8080; "off" disables the tool.
 searxngUrl: "off"
 

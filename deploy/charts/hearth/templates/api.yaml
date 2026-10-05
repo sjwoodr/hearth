@@ -32,6 +32,7 @@ spec:
           env:
             - {name: HEARTH_ROLE, value: api}
             {{- include "hearth.gatewayClientEnv" . | nindent 12 }}
+            {{- include "hearth.tzEnv" . | nindent 12 }}
           ports:
             - {name: http, containerPort: 8787}
           readinessProbe:
