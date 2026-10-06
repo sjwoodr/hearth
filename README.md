@@ -43,8 +43,11 @@ server in front of Ollama on `HEARTH_GATEWAY_PORT` (11435). It requires
 schedules `/api/chat` and `/api/generate` by `X-Hearth-Priority: reply|background`
 and `X-Hearth-User`, tells a waiting streamed reply its place with
 `{"hearth":{"queued":n}}` lines, answers a preempted background call with
-`{"error":"preempted"}`, and passes embeddings and everything else straight
-through. Point hearth at it with `HEARTH_GATEWAY_URL` (plus the same token): every
+`{"error":"preempted"}`, and passes embeddings (`/api/embed`) and the read-only
+`ps`, `tags`, `show` and `version` straight through. The rest of Ollama's API
+(`pull`, `push`, `create`, `copy`, `delete`) is a 404: the token reaches models,
+never their management, so whoever holds it can't remove models or make Ollama
+contact an outside registry. Point hearth at it with `HEARTH_GATEWAY_URL` (plus the same token): every
 model call, embeddings included, then goes through the gateway, and hearth stops
 scheduling in-process. Unset, hearth talks to Ollama directly, as before.
 
