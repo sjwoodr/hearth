@@ -13,7 +13,7 @@
 - [x] CI deploying: commits the new image tag to the GitOps repo after a merge
 - [x] Helm chart (`deploy/charts/hearth`; checked in CI)
 - [x] Running in the cluster (install, data moved over, then Argo CD)
-- [ ] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming
+- [x] Check from a phone on the LAN and one on Tailscale: valid certificate, login, streaming (2026-10-05, iPhone, also over LTE)
 - [x] Push to GitHub (the repo is public; nothing secret is committed)
 
 ## Gaps worth closing

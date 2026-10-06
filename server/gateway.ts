@@ -11,8 +11,9 @@
 // Differences from plain Ollama:
 //   - a streamed reply waiting for a slot first gets lines {"hearth":{"queued":<position>}}
 //   - a preempted background call gets {"error":"preempted"} (HTTP 409, or as a stream line)
-// Embeddings and other endpoints pass straight through: the embedding model runs apart from the
-// chat slots. Only /api/chat and /api/generate are scheduled.
+// Only /api/chat and /api/generate are scheduled. Embeddings and a few read-only endpoints pass
+// straight through (the embedding model runs apart from the chat slots); everything else is 404,
+// so the token can't manage Ollama's models (see PASS_THROUGH).
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
@@ -20,6 +21,20 @@ import type { ModelScheduler } from './busy.ts';
 import { metricsResponse } from './metrics.ts';
 
 export const PREEMPTED = 'preempted';
+
+/**
+ * Ollama endpoints the gateway forwards besides chat and generate: what hearth calls (embed, ps)
+ * and read-only lookups. Not pull, push, create, copy or delete: whoever holds the token (the api
+ * pod) could otherwise remove models, or `/api/pull` "registry.example/<anything>/x", which makes
+ * Ollama on the host contact any server: a way out that the cluster's NetworkPolicies can't see.
+ */
+const PASS_THROUGH: [method: 'GET' | 'POST', path: string][] = [
+  ['POST', '/api/embed'],
+  ['GET', '/api/ps'],
+  ['GET', '/api/tags'],
+  ['POST', '/api/show'],
+  ['GET', '/api/version'],
+];
 
 export type GatewayOptions = {
   /** Ollama's base URL, e.g. http://127.0.0.1:11434. */
@@ -150,8 +165,8 @@ export function createGateway(opts: GatewayOptions) {
   app.post('/api/chat', scheduled);
   app.post('/api/generate', scheduled);
 
-  // Everything else (embeddings, tags, version, show) goes straight through, unscheduled.
-  app.all('/api/*', async (c) => {
+  // Straight through, unscheduled; the rest of Ollama's API is refused below.
+  const passThrough = async (c: Context) => {
     const body = c.req.method === 'GET' || c.req.method === 'HEAD' ? undefined : await c.req.text();
     try {
       const res = await forward(c, new URL(c.req.url).pathname, body, c.req.raw.signal);
@@ -161,7 +176,9 @@ export function createGateway(opts: GatewayOptions) {
     } catch (err) {
       return c.json({ error: `The gateway couldn't reach Ollama: ${message(err)}` }, 502);
     }
-  });
+  };
+  for (const [method, path] of PASS_THROUGH) app.on(method, path, passThrough);
+  app.all('/api/*', (c) => c.json({ error: `${c.req.method} ${new URL(c.req.url).pathname} is not offered by the gateway` }, 404));
 
   return app;
 }

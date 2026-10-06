@@ -57,6 +57,11 @@ function fakeOllama() {
     return c.json({ embeddings: [[0.1, 0.2]] });
   });
   app.get('/api/version', (c) => c.json({ version: '0.0-test' }));
+  // Anything else reaching "Ollama" is recorded too, so a refusal can't pass for a forwarded 404.
+  app.all('*', async (c) => {
+    seen.push({ path: new URL(c.req.url).pathname, body: {}, auth: c.req.header('authorization') });
+    return c.json({ error: 'not found' }, 404);
+  });
   return { app, seen, aborted, state };
 }
 
@@ -69,9 +74,12 @@ function setup(slots = 1) {
     scheduler,
     fetch: ((url: string, init?: RequestInit) => ollama.app.request(url, init)) as typeof fetch,
   });
-  const send = (path: string, opts: { body?: object; priority?: string; user?: number; token?: string | null; signal?: AbortSignal } = {}) =>
+  const send = (
+    path: string,
+    opts: { body?: object; method?: string; priority?: string; user?: number; token?: string | null; signal?: AbortSignal } = {},
+  ) =>
     gateway.request(path, {
-      method: opts.body ? 'POST' : 'GET',
+      method: opts.method ?? (opts.body ? 'POST' : 'GET'),
       headers: {
         ...(opts.token === null ? {} : { Authorization: `Bearer ${opts.token ?? TOKEN}` }),
         ...(opts.priority ? { 'X-Hearth-Priority': opts.priority } : {}),
@@ -164,6 +172,48 @@ describe('proxying', () => {
     expect(await (await send('/api/version')).json()).toEqual({ version: '0.0-test' });
     held.open();
     await (await busy).text();
+  });
+});
+
+describe('what the gateway offers', () => {
+  const offered = (path: string, method = 'POST') => ({ error: `${method} ${path} is not offered by the gateway` });
+
+  it("refuses Ollama's model management, even with the token", async () => {
+    const { send, ollama } = setup();
+    const refused = [
+      ['POST', '/api/pull', { model: 'registry.example/stolen-data/x' }],
+      ['POST', '/api/push', { model: 'm' }],
+      ['POST', '/api/create', { model: 'm', from: 'm' }],
+      ['POST', '/api/copy', { source: 'm', destination: 'n' }],
+      ['DELETE', '/api/delete', { model: 'm' }],
+      ['POST', '/api/embeddings', { model: 'e', prompt: 'x' }], // the old endpoint; hearth uses /api/embed
+    ] as const;
+    for (const [method, path, body] of refused) {
+      const res = await send(path, { method, body });
+      expect(res.status, path).toBe(404);
+      expect(await res.json(), path).toEqual(offered(path, method));
+    }
+    expect(ollama.seen).toEqual([]);
+  });
+
+  it('refuses a listed path with the wrong method', async () => {
+    const { send, ollama } = setup();
+    expect(await (await send('/api/embed')).json()).toEqual(offered('/api/embed', 'GET'));
+    expect(await (await send('/api/ps', { body: {} })).json()).toEqual(offered('/api/ps'));
+    expect(ollama.seen).toEqual([]);
+  });
+
+  it('forwards what hearth uses and the read-only lookups', async () => {
+    const { send, ollama } = setup();
+    await send('/api/embed', { body: { model: 'e', input: ['x'] } });
+    for (const path of ['/api/ps', '/api/tags', '/api/version']) await send(path);
+    await send('/api/show', { body: { model: 'm' } });
+    expect(ollama.seen.map((r) => r.path)).toEqual(['/api/embed', '/api/ps', '/api/tags', '/api/show']);
+  });
+
+  it('still asks for the token before saying what it offers', async () => {
+    const { send } = setup();
+    expect((await send('/api/pull', { body: { model: 'x' }, token: null })).status).toBe(401);
   });
 });
 

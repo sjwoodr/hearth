@@ -235,7 +235,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
 | `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
-| `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`) |
+| `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, embed and read-only lookups (`PASS_THROUGH`), never model management |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
