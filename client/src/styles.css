@@ -95,8 +95,11 @@ button.icon:hover, button.link:hover { color: var(--accent); }
   flex: 1; min-width: 0; padding: 0.5rem 8px; color: var(--text); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sidebar li .icon { visibility: hidden; }
-.sidebar li:hover .icon, .sidebar li:focus-within .icon, .sidebar li.active .icon { visibility: visible; }
+/* Rename and delete take no room until wanted (hover, keyboard focus, or the open chat), so titles
+   use the full width; visibility: hidden kept their space and cut titles short. */
+@media (min-width: 721px) {
+  .sidebar li:not(:hover, :focus-within, .active) .icon { display: none; }
+}
 .sidebar li:hover { background: var(--bg); }
 .sidebar li.active { background: var(--user-bubble); }
 .sidebar-foot {
@@ -280,7 +283,6 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
     display: block; position: fixed; inset: 0; z-index: 1; padding: 0; border: 0; border-radius: 0;
     background: rgb(0 0 0 / 0.35);
   }
-  .sidebar li .icon { visibility: visible; }
   .menu-toggle { display: inline-block; margin-left: -0.5rem; padding: 0.2rem 0.6rem; font-size: 1.5rem; line-height: 1; color: var(--text); }
   /* Too narrow for one row: the message box gets its own full-width line, buttons go under it. */
   .attachments { order: -2; }
