@@ -292,10 +292,10 @@ The bench lives in `~/src/other/french-model-bench`, outside this repo, because 
 from private content.
 
 **Think: Auto / On / Off.** The button next to Send cycles through three settings (remembered per
-browser). Thinking replies use `HEARTH_MODEL_THINKING` with reasoning capped at
-`HEARTH_THINKING_TOKEN_BUDGET` (200) tokens: at the cap the model is stopped and asked to answer,
-with its reasoning passed back as notes. The reasoning is never shown or stored; the bubble shows
-"Thinking… N" while it runs. Measured: ~12-15 s per reply instead of ~2 s, for grading as accurate as
+browser). Thinking replies use `HEARTH_MODEL_THINKING` with reasoning capped by the effort level
+(below; Medium's cap is `HEARTH_THINKING_TOKEN_BUDGET`, 200 tokens): at the cap the model is stopped
+and asked to answer, with its reasoning passed back as notes. The reasoning is never shown or stored;
+the bubble shows "Thinking… N of 200 · Medium" while it runs. Measured: ~12-15 s per reply instead of ~2 s, for grading as accurate as
 unlimited thinking, which sometimes ran past five minutes. Background jobs (memory, titles,
 summaries) always use `HEARTH_MODEL` without thinking.
 
@@ -309,6 +309,17 @@ summaries) always use `HEARTH_MODEL` without thinking.
 - **On** and **Off** override the rules either way.
 - A fast reply that corrects itself mid-answer ("wait, no, that's wrong") gets a
   **↻ Re-answer with thinking** button next to Regenerate.
+
+**Think effort: Medium / High / Max.** Next to Think (hidden when it's Off), a second button sets how
+much room a thinking reply gets: `HEARTH_THINKING_TOKEN_BUDGET` (200), `_HIGH` (400) and `_MAX`
+(800) reasoning tokens. It applies to On, and to Auto when Auto decides to think; remembered per
+browser. Medium is the measured one: 200 tokens kept all of unlimited thinking's accuracy on the
+grading bench, so more doesn't help checking French. High and Max are for harder questions (code,
+multi-step reasoning) and are unmeasured; at ~22 tokens/s each level roughly doubles the worst-case
+wait (~9, ~18, ~36 s of reasoning). A higher level also holds back more of the context window
+(2 × budget + 64 tokens: 464, 864, 1,664), so in a long chat near the limit it can trim older history
+for that reply. After a reply that thought, **↻ Think harder (High)** (or Max) re-answers at the next
+level up. The reply's note says which level it used ("thought first (High)").
 
 **Context and caching.** Ollama keeps the prompt it just read, and on the next turn reads only what
 changed after the first difference. So the prompt is ordered to keep its start stable: personality,
@@ -382,6 +393,14 @@ never retitled.
 
 **Retry.** Regenerate (or Retry, when a reply failed) re-answers the last question, replacing the
 last reply rather than adding another.
+
+**Markdown and code.** Messages are rendered as Markdown (GitHub style: tables, lists, links), the
+user's too, keeping their line breaks as typed. A fenced code block shows its language, highlighting
+(when tagged, as in ```` ```python ````; highlight.js's common languages, loaded the first time a
+message has a code block) and a **Copy** button. Every message has a **Raw** button (on hover with a
+mouse, always on a phone) that shows its exact text, Markdown and all, and **Rendered** to switch
+back. Copying needs HTTPS or localhost for the clipboard API; on a plain-HTTP address it falls back
+to the browser's older copy command.
 
 **Chat goes first.** Ollama runs one request at a time, shared by replies and background jobs
 (memory extraction, duplicate checks, summaries, titles). A new reply cancels any background call in

@@ -9,6 +9,9 @@ export type PendingState = {
   queued: boolean;
   loading: boolean;
   thinkingTokens: number;
+  /** The reply's reasoning cap and Think effort, when the server said (shown as "12 of 400 · High"). */
+  thinkingBudget?: number | null;
+  effortLabel?: string | null;
   autoReason: string | null;
   waitedMs: number;
 };
@@ -16,7 +19,11 @@ export type PendingState = {
 export function pendingText(p: PendingState): string {
   if (p.searchingFor) return `Searching the web for “${p.searchingFor}”…`;
   if (p.queued) return 'Waiting for the model to finish another reply…';
-  if (p.thinkingTokens > 0) return `Thinking… ${p.thinkingTokens}${p.autoReason ? ` · auto: ${p.autoReason}` : ''}`;
+  if (p.thinkingTokens > 0) {
+    const of = p.thinkingBudget ? ` of ${p.thinkingBudget}` : '';
+    const effort = p.effortLabel ? ` · ${p.effortLabel}` : '';
+    return `Thinking… ${p.thinkingTokens}${of}${effort}${p.autoReason ? ` · auto: ${p.autoReason}` : ''}`;
+  }
   if (p.loading) return 'Loading the model… the first message after a quiet spell takes about 15 seconds';
   if (p.waitedMs >= STILL_WORKING_MS) return 'Still working… a long chat can take a moment to read';
   return '…';

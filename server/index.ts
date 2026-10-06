@@ -56,14 +56,14 @@ const app = createApp({
   origin: config.origin,
   clientIp: (c) => resolveClientIp(getConnInfo(c).remote.address, c.req.header('x-forwarded-for'), trustedProxies),
   chat: models.asReply(ollamaChat(models.endpoint, config.model, config.numCtx)),
-  thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, config.thinkingModel, config.numCtx, config.thinkingTokenBudget)),
+  thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, config.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
   // Read per request, so edits to the prompt file apply without a restart.
   systemPrompt: () => fs.readFileSync(config.systemPromptPath, 'utf8').trim(),
   numCtx: config.numCtx,
   // Up to ~800 tokens of memories per message, out of the context window.
   memoryContext: (user, message) => memoryContext(db, user, message, embed, 800),
-  // The budget itself, plus roughly as much again when the reasoning is handed back as notes.
-  thinkingReserve: 2 * config.thinkingTokenBudget + 64,
+  // Each Think effort's reasoning cap; the reply asks for one per request.
+  thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
@@ -86,7 +86,7 @@ app.get('*', serveStatic({ path: path.join(clientDir, 'index.html') }));
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(
     `hearth listening on http://${info.address}:${info.port} (origin ${config.origin}, model ${config.model}, ` +
-      `thinking ${config.thinkingModel} ≤${config.thinkingTokenBudget} tokens, ` +
+      `thinking ${config.thinkingModel} ≤${Object.values(config.thinkingBudgets).join('/')} tokens, ` +
       `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'}, ` +
       `${models.describe()}${jobs.memories ? '' : ', api only: the worker extracts memories and summarizes'})`,
   );

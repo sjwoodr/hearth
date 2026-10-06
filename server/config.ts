@@ -32,7 +32,13 @@ export const config = {
   // Used, with thinking on, when the in-app Think toggle is on. The same model as HEARTH_MODEL keeps
   // one copy in memory; a different one loads a second model.
   thinkingModel: env('HEARTH_MODEL_THINKING', env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat')),
-  thinkingTokenBudget: Number(env('HEARTH_THINKING_TOKEN_BUDGET', '200')),
+  // Reasoning-token caps for the three Think effort levels (shared/think-effort.ts). Medium's 200 kept
+  // all of unlimited thinking's grading accuracy on the French bench; High and Max are unmeasured.
+  thinkingBudgets: {
+    medium: Number(env('HEARTH_THINKING_TOKEN_BUDGET', '200')),
+    high: Number(env('HEARTH_THINKING_TOKEN_BUDGET_HIGH', '400')),
+    max: Number(env('HEARTH_THINKING_TOKEN_BUDGET_MAX', '800')),
+  },
   // 16k: long chats fit without trimming, so follow-ups reuse Ollama's cache (~1 s to the first word
   // on a ~7k-token chat, against ~7 s at 8k). Gemma 4's sliding-window attention makes it nearly free:
   // 14.01 GiB loaded against 13.99 at 8k.

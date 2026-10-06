@@ -289,7 +289,8 @@ describe('memories in chat and over the API', () => {
   });
 
   it('holds back room for thinking when Think is on', async () => {
-    const ctx = setupApp({ numCtx: 1024 + 400, thinkingReserve: 300 });
+    // Medium's 118-token budget holds back 2 × 118 + 64 = 300 tokens.
+    const ctx = setupApp({ numCtx: 1024 + 400, thinkingBudgets: { medium: 118, high: 118, max: 118 } });
     await createUser(ctx.db, 'alice', 'a good password');
     const cookie = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
     const id = ((await (await call(ctx.app, cookie, 'POST', '/conversations')).json()) as { id: number }).id;
@@ -300,6 +301,20 @@ describe('memories in chat and over the API', () => {
     await (await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'fast' })).text();
     await (await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'careful', think: true })).text();
     expect(ctx.model.calls[0]!.length).toBeGreaterThan(ctx.model.thinkingCalls[0]!.length);
+  });
+
+  it('holds back more room for a higher Think effort', async () => {
+    // Medium holds back 2 × 1 + 64 = 66 tokens; Max 2 × 118 + 64 = 300.
+    const ctx = setupApp({ numCtx: 1024 + 400, thinkingBudgets: { medium: 1, high: 50, max: 118 } });
+    await createUser(ctx.db, 'alice', 'a good password');
+    const cookie = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
+    const id = ((await (await call(ctx.app, cookie, 'POST', '/conversations')).json()) as { id: number }).id;
+    ctx.db
+      .prepare("INSERT INTO messages (conversation_id, role, content) VALUES (?, 'user', ?), (?, 'assistant', ?), (?, 'user', ?), (?, 'assistant', ?)")
+      .run(id, 'a'.repeat(270), id, 'b'.repeat(270), id, 'c'.repeat(270), id, 'd'.repeat(270));
+    await (await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'careful', think: true, effort: 'medium' })).text();
+    await (await call(ctx.app, cookie, 'POST', `/conversations/${id}/retry`, { think: true, effort: 'max' })).text();
+    expect(ctx.model.thinkingCalls[0]!.length).toBeGreaterThan(ctx.model.thinkingCalls[1]!.length);
   });
 
   it('lets a user add, edit, re-kind and delete only their own memories', async () => {

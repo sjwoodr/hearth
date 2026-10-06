@@ -1,3 +1,5 @@
+import type { Effort } from '../../shared/think-effort.ts';
+
 export class ApiError extends Error {
   status: number;
   retryAfterSeconds?: number;
@@ -67,7 +69,8 @@ export type Memory = {
 };
 
 export type StreamEvent =
-  | { type: 'start'; userMessageId: number; think?: boolean; reason?: string }
+  /** `effort` and `budget`: how hard a thinking reply may think, and its cap in reasoning tokens. */
+  | { type: 'start'; userMessageId: number; think?: boolean; effort?: Effort; budget?: number; reason?: string }
   | { type: 'queued' }
   /** Ollama had unloaded the model; this reply waits while it loads (~15 s). */
   | { type: 'loading' }
@@ -112,19 +115,20 @@ export const api = {
   deleteConversation: (id: number) => request('DELETE', `/api/conversations/${id}`),
   /**
    * `images`: data URLs, sent once and never stored. `think`: true always thinks, false never,
-   * "auto" lets the server decide per message.
+   * "auto" lets the server decide per message. `effort`: how hard to think when it does.
    */
   sendMessage: async function* (
     conversationId: number,
     content: string,
     images: string[],
     think: boolean | 'auto',
+    effort: Effort,
     signal: AbortSignal,
   ) {
-    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/messages`, { content, images, think }, signal));
+    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/messages`, { content, images, think, effort }, signal));
   },
-  retry: async function* (conversationId: number, think: boolean | 'auto', signal: AbortSignal) {
-    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/retry`, { think }, signal));
+  retry: async function* (conversationId: number, think: boolean | 'auto', effort: Effort, signal: AbortSignal) {
+    yield* readEvents(await send('POST', `/api/conversations/${conversationId}/retry`, { think, effort }, signal));
   },
   /** The user's answer to a search card: only `approve: true` runs the search. */
   answerSearch: async function* (conversationId: number, approve: boolean, signal: AbortSignal) {
