@@ -397,9 +397,9 @@ last reply rather than adding another.
 **Markdown and code.** Messages are rendered as Markdown (GitHub style: tables, lists, links), the
 user's too, keeping their line breaks as typed. A fenced code block shows its language, highlighting
 (when tagged, as in ```` ```python ````; highlight.js's common languages, loaded the first time a
-message has a code block) and a **Copy** button. Every reply has a **Show raw** button (on hover with a
-mouse, always on a phone) that shows its exact text, Markdown and all; **Show rendered** switches
-back. Copying needs HTTPS or localhost for the clipboard API; on a plain-HTTP address it falls back
+message has a code block) and a **Copy** button. A reply with a code block also has a **Show raw**
+button (on hover with a mouse, always on a phone) that shows its exact text, Markdown and all;
+**Show rendered** switches back. Plain prose replies don't get one. Copying needs HTTPS or localhost for the clipboard API; on a plain-HTTP address it falls back
 to the browser's older copy command.
 
 **Chat goes first.** Ollama runs one request at a time, shared by replies and background jobs

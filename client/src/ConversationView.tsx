@@ -567,12 +567,18 @@ type BubbleProps = {
 // Memoized: every keystroke in the composer re-renders this view, and re-parsing every message's
 // Markdown made typing lag in long chats (~36 ms a key at 166 messages). A message re-renders only
 // when it, or its highlight, changes.
+/** A fenced code block (``` or ~~~) anywhere in the text: the only replies that get Show raw. */
+const hasCodeFence = (text: string) => /^ {0,3}(`{3,}|~{3,})/m.test(text);
+
 const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false }: BubbleProps) {
   const { id, role, content } = message;
   // Raw: a reply's text exactly as stored, Markdown and all, to read or copy as sent.
   const [raw, setRaw] = useState(false);
   const className = `message ${role}${highlight ? ' highlight' : ''}`;
   const domId = id !== undefined && id > 0 ? `message-${id}` : undefined;
+  // Replies only (your own messages show as you typed them), and only with a code block: on plain
+  // prose, raw just shows the same words with asterisks (owner's call).
+  const canShowRaw = role === 'assistant' && !streaming && hasCodeFence(content);
   const body = raw ? (
     <pre className="raw">{content}</pre>
   ) : (
@@ -585,10 +591,10 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {body}
         {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
       </div>
-      {/* Replies only: your own messages are shown as you typed them anyway (owner's call). */}
-      {role === 'assistant' && !streaming && content && (
+      {(canShowRaw || (role === 'assistant' && message.note)) && (
         <div className="message-meta">
           {message.note && <p className="reply-note">{message.note}</p>}
+          {canShowRaw && (
           <button
             type="button"
             className={`link raw-toggle${raw ? ' on' : ''}`}
@@ -598,6 +604,7 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
             {/* Names what a tap does, and says so: a bare "Rendered" read as the current state. */}
             {raw ? 'Show rendered' : 'Show raw'}
           </button>
+          )}
         </div>
       )}
     </div>

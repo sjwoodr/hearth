@@ -254,7 +254,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
-| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies, "Think harder" |
+| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Think harder" |
 | `client/src/Markdown.tsx` | message Markdown (user messages keep line breaks via `remark-breaks`), code blocks with language + Copy (clipboard API, `execCommand` fallback off HTTPS); `rehype-highlight` is lazy-loaded on the first code fence (54 KB gzip, would be +45% on the main bundle) |
 
 ## Invariants
