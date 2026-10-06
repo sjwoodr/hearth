@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
@@ -152,8 +152,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     return () => clearInterval(timer);
   }, [startedAt]);
 
-  // Follow the reply as it streams, unless the reader has scrolled up.
-  useEffect(() => {
+  // Follow the reply as it streams, unless the reader has scrolled up. A layout effect, so it runs
+  // before the browser paints: as a plain effect, a chat opened on reload showed its top for a frame
+  // before jumping to the bottom.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages, streamText]);
@@ -567,7 +569,7 @@ type BubbleProps = {
 // when it, or its highlight, changes.
 const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false }: BubbleProps) {
   const { id, role, content } = message;
-  // Raw: the text exactly as stored, Markdown and all, to read or copy as sent.
+  // Raw: a reply's text exactly as stored, Markdown and all, to read or copy as sent.
   const [raw, setRaw] = useState(false);
   const className = `message ${role}${highlight ? ' highlight' : ''}`;
   const domId = id !== undefined && id > 0 ? `message-${id}` : undefined;
@@ -583,17 +585,18 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {body}
         {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
       </div>
-      {!streaming && content && (
+      {/* Replies only: your own messages are shown as you typed them anyway (owner's call). */}
+      {role === 'assistant' && !streaming && content && (
         <div className="message-meta">
           {message.note && <p className="reply-note">{message.note}</p>}
           <button
             type="button"
-            className="link raw-toggle"
-            aria-pressed={raw}
-            title={raw ? 'Show this message rendered' : 'Show the exact text of this message, Markdown and all'}
+            className={`link raw-toggle${raw ? ' on' : ''}`}
+            title={raw ? 'Showing the exact text. Show this message rendered' : 'Show the exact text of this message, Markdown and all'}
             onClick={() => setRaw((r) => !r)}
           >
-            {raw ? 'Rendered' : 'Raw'}
+            {/* Names what a tap does, and says so: a bare "Rendered" read as the current state. */}
+            {raw ? 'Show rendered' : 'Show raw'}
           </button>
         </div>
       )}
