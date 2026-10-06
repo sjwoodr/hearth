@@ -159,11 +159,10 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 /* With a mouse, Raw shows on hover; on a touch screen there's no hover, so it stays visible. */
 @media (hover: hover) {
   .raw-toggle { opacity: 0; transition: opacity 0.15s; }
-  .bubble:hover .raw-toggle, .raw-toggle:focus-visible, .raw-toggle[aria-pressed='true'] { opacity: 1; }
+  .bubble:hover .raw-toggle, .raw-toggle:focus-visible, .raw-toggle.on { opacity: 1; }
   /* With no timing note beside it, Raw sits in the gap below the message instead of adding a line. */
   .bubble { position: relative; }
   .message-meta:not(:has(.reply-note)) { position: absolute; top: 100%; margin-top: 0; }
-  .bubble.user .message-meta { right: 0; }
   .message-meta .raw-toggle { padding: 0 0.3rem; }
 }
 
