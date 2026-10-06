@@ -1,0 +1,46 @@
+# The worker: memory extraction and chat summaries, through the gateway, so a reply can preempt them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hearth-worker
+  namespace: hearth
+  labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: worker}
+spec:
+  replicas: 1
+  # One worker at a time, so two never extract the same chat.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: worker}
+    spec:
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true}
+      containers:
+        - name: worker
+          image: ghcr.io/sjwoodr/hearth:sha-42addf1
+          command: ["node", "server/worker.ts"]
+          envFrom:
+            - configMapRef: {name: hearth-env}
+          env:
+            - {name: HEARTH_GATEWAY_URL, value: http://hearth-gateway:11436}
+            - name: HEARTH_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef: {name: hearth-gateway, key: token}
+          ports:
+            - {name: health, containerPort: 8788}
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            periodSeconds: 30
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {memory: 768Mi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          hostPath: {path: /var/lib/hearth, type: Directory}

@@ -1,0 +1,18 @@
+# Settings for api, worker and migrate (server/config.ts has every default). Pods read these at
+# start: after a change, `kubectl -n hearth rollout restart deploy/hearth-api deploy/hearth-worker`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hearth-env
+  namespace: hearth
+data:
+  HEARTH_DB_PATH: /data/hearth.db
+  # The address people open: CSRF checks and secure cookies depend on it.
+  HEARTH_ORIGIN: https://hearth.example.com
+  # Migrations run as their own step (02-migrate-job.yaml); api and worker refuse an old schema.
+  HEARTH_AUTO_MIGRATE: "0"
+  HEARTH_LOG_FORMAT: json
+  # k3s's pod network: requests arrive from Traefik's pod, so believe its X-Forwarded-For.
+  HEARTH_TRUSTED_PROXIES: 10.42.0.0/16
+  # Web search needs a SearXNG instance; off until you run one.
+  HEARTH_SEARXNG_URL: "off"
