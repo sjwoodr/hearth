@@ -615,7 +615,7 @@
     {
       "type": "timeseries",
       "title": "Time to first word",
-      "description": "From sending to the first word, over the selected window. Thinking replies count their reasoning here.",
+      "description": "From sending to the first word, over the selected window, by Think effort (none: a fast reply). Thinking replies count their reasoning here.",
       "id": 11,
       "datasource": {
         "type": "prometheus",
@@ -633,8 +633,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, think) (rate(hearth_reply_first_token_seconds_bucket{namespace=\"$namespace\"}[$window])))",
-          "legendFormat": "median, think={{think}}",
+          "expr": "histogram_quantile(0.5, sum by (le, effort) (rate(hearth_reply_first_token_seconds_bucket{namespace=\"$namespace\"}[$window])))",
+          "legendFormat": "median, {{effort}}",
           "refId": "A"
         },
         {
@@ -642,8 +642,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, think) (rate(hearth_reply_first_token_seconds_bucket{namespace=\"$namespace\"}[$window])))",
-          "legendFormat": "p95, think={{think}}",
+          "expr": "histogram_quantile(0.95, sum by (le, effort) (rate(hearth_reply_first_token_seconds_bucket{namespace=\"$namespace\"}[$window])))",
+          "legendFormat": "p95, {{effort}}",
           "refId": "B"
         }
       ],
@@ -684,7 +684,7 @@
     {
       "type": "timeseries",
       "title": "Whole reply",
-      "description": "From sending to the last word (or the search card).",
+      "description": "From sending to the last word (or the search card), by Think effort (none: a fast reply).",
       "id": 12,
       "datasource": {
         "type": "prometheus",
@@ -702,8 +702,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, think) (rate(hearth_reply_seconds_bucket{namespace=\"$namespace\"}[$window])))",
-          "legendFormat": "median, think={{think}}",
+          "expr": "histogram_quantile(0.5, sum by (le, effort) (rate(hearth_reply_seconds_bucket{namespace=\"$namespace\"}[$window])))",
+          "legendFormat": "median, {{effort}}",
           "refId": "A"
         },
         {
@@ -711,8 +711,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, think) (rate(hearth_reply_seconds_bucket{namespace=\"$namespace\"}[$window])))",
-          "legendFormat": "p95, think={{think}}",
+          "expr": "histogram_quantile(0.95, sum by (le, effort) (rate(hearth_reply_seconds_bucket{namespace=\"$namespace\"}[$window])))",
+          "legendFormat": "p95, {{effort}}",
           "refId": "B"
         }
       ],

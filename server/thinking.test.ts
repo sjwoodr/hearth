@@ -47,6 +47,64 @@ describe('the Think toggle', () => {
   });
 });
 
+describe('Think effort', () => {
+  const budgets = { medium: 200, high: 400, max: 800 };
+
+  async function session() {
+    const ctx = setupApp({ thinkingBudgets: budgets });
+    await createUser(ctx.db, 'alice', 'a good password');
+    const cookie = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
+    const post = (p: string, body: unknown) =>
+      ctx.app.request(`/api${p}`, {
+        method: 'POST',
+        headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const id = ((await (await post('/conversations', {})).json()) as { id: number }).id;
+    const events = async (res: Response) =>
+      (await res.text())
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as { type: string; think?: boolean; effort?: string; budget?: number });
+    const say = async (content: string, body: object) => events(await post(`/conversations/${id}/messages`, { content, ...body }));
+    const retry = async (body: object) => events(await post(`/conversations/${id}/retry`, body));
+    return { ctx, say, retry };
+  }
+
+  it('caps reasoning at the chosen level and says which', async () => {
+    const { ctx, say } = await session();
+    const high = await say('Explain the subjunctive.', { think: true, effort: 'high' });
+    const max = await say('And the exceptions?', { think: true, effort: 'max' });
+    expect(ctx.model.thinkingBudgets).toEqual([400, 800]);
+    expect(high[0]).toMatchObject({ type: 'start', think: true, effort: 'high', budget: 400 });
+    expect(max[0]).toMatchObject({ type: 'start', think: true, effort: 'max', budget: 800 });
+  });
+
+  it('is Medium when none or an unknown one is given', async () => {
+    const { ctx, say } = await session();
+    await say('Explain the subjunctive.', { think: true });
+    await say('And the exceptions?', { think: true, effort: 'extreme' });
+    expect(ctx.model.thinkingBudgets).toEqual([200, 200]);
+  });
+
+  it('applies to Auto when it decides to think, and to retries', async () => {
+    const { ctx, say, retry } = await session();
+    const events = await say('Is « La fille que chante est ma sœur » correct?', { think: 'auto', effort: 'max' });
+    expect(events[0]).toMatchObject({ think: true, effort: 'max' });
+    await retry({ think: true, effort: 'high' });
+    expect(ctx.model.thinkingBudgets).toEqual([800, 400]);
+  });
+
+  it('says nothing about effort when the reply does not think', async () => {
+    const { ctx, say } = await session();
+    const events = await say('Tell me about Thomas Paine.', { think: 'auto', effort: 'max' });
+    expect(events[0]).toMatchObject({ type: 'start', think: false });
+    expect(events[0]!.effort).toBeUndefined();
+    expect(events[0]!.budget).toBeUndefined();
+    expect(ctx.model.thinkingCalls).toHaveLength(0);
+  });
+});
+
 describe('Think: Auto', () => {
   async function session() {
     const ctx = setupApp();
@@ -156,6 +214,15 @@ describe('budget-capped thinking against a fake Ollama', () => {
     expect(out).toBe('Correct.');
     expect(seen).toBe(5);
     expect(requests).toHaveLength(1);
+  });
+
+  it("uses a request's own budget over the default", async () => {
+    const { url, requests } = await fakeOllama({ thoughts: 500, answer: 'never reached', plain: 'Done.' });
+    let seen = 0;
+    const opts = { thinkingBudget: 30, onThinking: (t: number) => (seen = t) };
+    await collect(ollamaThinkingChat(url, 'm', 8192, 10)(messages, new AbortController().signal, opts));
+    expect(seen).toBe(30);
+    expect(requests[1]!.messages.at(-1)!.content).toContain('t29 ');
   });
 
   it('stops at the budget and asks for the answer with the reasoning as notes', async () => {

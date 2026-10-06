@@ -124,7 +124,10 @@ the learner to distrust French they know. Missed errors (accepting a wrong answe
 | unlimited | 40/40 | 29.2 s | 300+ s |
 
 200 tokens keeps all of unlimited thinking's accuracy and removes the runaways. Hence
-`HEARTH_THINKING_TOKEN_BUDGET=200`.
+`HEARTH_THINKING_TOKEN_BUDGET=200`, which is the **Medium** Think effort. High (`_HIGH`, 400) and
+Max (`_MAX`, 800) were added 2026-10-05 for harder, non-French questions and are **unmeasured**:
+nothing shows they grade French better, and each doubles the worst-case wait. Run `budget.ts` at 400
+and 800 on something harder than the grading set before claiming they help.
 
 ### Stage 1b: 300 grading answers (150 right, 150 wrong)
 
@@ -166,7 +169,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   "Re-answer with thinking" button.
 - **Budget forcing** (`ollamaThinkingChat`): count reasoning chunks (~1 token each), abort at the
   budget, then call the fast path with the reasoning handed back as a user-role "private notes" message.
-  Reasoning is never shown or stored. `thinkingReserve` holds back `2 × budget + 64` tokens of context.
+  Reasoning is never shown or stored. `thinkingReserve(budget)` (`chat.ts`) holds back `2 × budget + 64`
+  tokens of context, for the reply's own effort level (`shared/think-effort.ts`; the budget rides
+  in `ChatOptions.thinkingBudget`), so Max can trim more history in a long chat than Medium.
   Reasoning that ends under the budget with no text and no tool call gets the same "answer now" turn
   (it surfaced as "The model returned an empty reply" with Think on). With tools offered, that turn
   adds "or call a tool if you need one": without it, a cut before searching made the model answer
@@ -239,6 +244,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
+| `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |
 | `shared/pending-text.ts` | what the chat shows before a reply's first word (search, queue, thinking, loading, still working); tested in `server/pending-text.test.ts` |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
 | `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`); then `deploy` commits the tag to the GitOps repo (environment `gitops`, main only: deploy key + repo name as secrets). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |
@@ -248,7 +254,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
-| `client/src/ConversationView.tsx` | chat UI, Think toggle (per-browser `localStorage` `hearth.think`) |
+| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), per-message Raw toggle, "Think harder" |
+| `client/src/Markdown.tsx` | message Markdown (user messages keep line breaks via `remark-breaks`), code blocks with language + Copy (clipboard API, `execCommand` fallback off HTTPS); `rehype-highlight` is lazy-loaded on the first code fence (54 KB gzip, would be +45% on the main bundle) |
 
 ## Invariants
 

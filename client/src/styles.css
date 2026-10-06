@@ -9,6 +9,14 @@
   --user-bubble: #efe6fa;
   --border: #e3d9ef;
   --error: #b3261e;
+  /* Code highlighting, each at least 4.8:1 on --surface and --user-bubble. */
+  --code-keyword: #7a3fc0;
+  --code-string: #1d6b38;
+  --code-comment: #6b5f7d;
+  --code-number: #a14a00;
+  --code-title: #1f5fa8;
+  --code-attr: #8a2b5e;
+  --code-type: #00707a;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -24,6 +32,13 @@
     --user-bubble: #2e2340;
     --border: #362c44;
     --error: #f2b8b5;
+    --code-keyword: #c9a4ff;
+    --code-string: #8fd6a0;
+    --code-comment: #a797b8;
+    --code-number: #f0b07a;
+    --code-title: #8cc4ff;
+    --code-attr: #f29cc6;
+    --code-type: #6fd3d3;
   }
 }
 * { box-sizing: border-box; }
@@ -103,20 +118,54 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .messages { flex: 1; overflow-y: auto; padding: 1.25rem 16px; }
 .thread { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
 .empty { margin-top: 20vh; text-align: center; font-size: 1.3rem; color: var(--muted); }
-.message { line-height: 1.55; overflow-wrap: anywhere; }
-.message.user {
-  align-self: flex-end; max-width: 85%; padding: 0.6rem 0.9rem;
-  border-radius: 14px 14px 4px 14px; background: var(--user-bubble); white-space: pre-wrap;
+.bubble { display: flex; flex-direction: column; min-width: 0; }
+.bubble.user { align-self: flex-end; align-items: flex-end; max-width: 85%; }
+.message { line-height: 1.55; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.message.user { padding: 0.6rem 0.9rem; border-radius: 14px 14px 4px 14px; background: var(--user-bubble); }
+.message > :first-child { margin-top: 0; }
+.message > :last-child { margin-bottom: 0; }
+.message p { margin: 0.6em 0; }
+.message a { color: var(--accent); }
+.message code, .message pre.raw { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.9em; }
+.message table { border-collapse: collapse; }
+.message th, .message td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; }
+/* Raw: the stored text as is, wrapped like the rest of the chat. */
+.message pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Fenced code: a header with the language and Copy, then the highlighted code. */
+.code-block { margin: 0.75rem 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.code-head {
+  display: flex; justify-content: space-between; align-items: center; padding: 0.1rem 0.25rem 0.1rem 0.75rem;
+  border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted);
 }
-.message.assistant > :first-child { margin-top: 0; }
-.message.assistant > :last-child { margin-bottom: 0; }
-.message.assistant a { color: var(--accent); }
-.message.assistant pre {
-  overflow-x: auto; padding: 0.75rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+.code-head button.link { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+.code-block pre { margin: 0; padding: 0.75rem; overflow-x: auto; overflow-wrap: normal; }
+.code-block code { color: var(--text); }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword { color: var(--code-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-template-tag { color: var(--code-string); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--code-comment); font-style: italic; }
+.hljs-meta .hljs-string { font-style: normal; }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet, .hljs-deletion { color: var(--code-number); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: var(--code-title); }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-template-variable, .hljs-tag { color: var(--code-attr); }
+.hljs-built_in, .hljs-type, .hljs-params .hljs-type, .hljs-title.class_ { color: var(--code-type); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
+/* Under each message: the reply's timing (this session only) and the Raw toggle. */
+.message-meta { display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.15rem; line-height: 1.2; }
+.message-meta .reply-note { margin: 0; }
+.raw-toggle { font-size: 0.75rem; padding: 0.1rem 0.3rem; }
+/* With a mouse, Raw shows on hover; on a touch screen there's no hover, so it stays visible. */
+@media (hover: hover) {
+  .raw-toggle { opacity: 0; transition: opacity 0.15s; }
+  .bubble:hover .raw-toggle, .raw-toggle:focus-visible, .raw-toggle[aria-pressed='true'] { opacity: 1; }
+  /* With no timing note beside it, Raw sits in the gap below the message instead of adding a line. */
+  .bubble { position: relative; }
+  .message-meta:not(:has(.reply-note)) { position: absolute; top: 100%; margin-top: 0; }
+  .bubble.user .message-meta { right: 0; }
+  .message-meta .raw-toggle { padding: 0 0.3rem; }
 }
-.message.assistant code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.9em; }
-.message.assistant table { border-collapse: collapse; }
-.message.assistant th, .message.assistant td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; }
 
 .composer {
   display: flex; gap: 0.5rem; align-items: flex-end; width: 100%; max-width: 792px; margin: 0 auto;
@@ -192,6 +241,10 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .think-toggle { white-space: nowrap; }
 .think-toggle.on { background: var(--user-bubble); color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .think-toggle.auto { color: var(--text); }
+.effort-toggle { background: transparent; color: var(--muted); border-color: var(--border); white-space: nowrap; }
+.effort-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.effort-toggle.high, .effort-toggle.max { color: var(--text); }
+.effort-toggle.max { font-weight: 600; }
 .retry-row { gap: 0.25rem; }
 
 /* ── memories ── */

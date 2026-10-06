@@ -5,6 +5,7 @@
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from '@prometheus-io/client';
 import type { Context } from 'hono';
 import type { ModelScheduler } from './busy.ts';
+import { EFFORTS } from '../shared/think-effort.ts';
 
 export const registry = new Registry();
 
@@ -21,21 +22,21 @@ const SECONDS = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
 export const replySeconds = new Histogram({
   name: 'hearth_reply_seconds',
   help: 'Time from a reply starting to its last word (or the search card).',
-  labelNames: ['think'],
+  labelNames: ['think', 'effort'],
   buckets: SECONDS,
   registers,
 });
 export const replyFirstTokenSeconds = new Histogram({
   name: 'hearth_reply_first_token_seconds',
   help: 'Time from a reply starting to its first word: waiting, recall, prompt reading.',
-  labelNames: ['think'],
+  labelNames: ['think', 'effort'],
   buckets: SECONDS,
   registers,
 });
 export const replies = new Counter({
   name: 'hearth_replies_total',
-  help: 'Replies by how they ended: done, search (a card was shown), error, stopped.',
-  labelNames: ['outcome', 'think'],
+  help: 'Replies by how they ended: done, search (a card was shown), error, stopped. effort: the Think level (none when not thinking).',
+  labelNames: ['outcome', 'think', 'effort'],
   registers,
 });
 
@@ -144,7 +145,7 @@ export function watchScheduler(scheduler: ModelScheduler) {
  */
 export function zeroCounters() {
   for (const outcome of ['done', 'search', 'error', 'stopped'])
-    for (const think of ['true', 'false']) replies.inc({ outcome, think }, 0);
+    for (const effort of ['none', ...EFFORTS]) replies.inc({ outcome, think: String(effort !== 'none'), effort }, 0);
   for (const outcome of ['asked', 'approved', 'declined', 'failed']) searches.inc({ outcome }, 0);
   for (const name of ['memory', 'summary', 'title', 'image'] as const)
     for (const outcome of ['ok', 'preempted', 'failed'] as const) backgroundJobs.inc({ job: name, outcome }, 0);

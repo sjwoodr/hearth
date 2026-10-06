@@ -43,6 +43,8 @@ export type ChatMessage = {
  */
 export type ChatOptions = {
   onThinking?: (tokens: number) => void;
+  /** For a thinking reply: this request's reasoning cap (its Think effort), instead of the default. */
+  thinkingBudget?: number;
   tools?: object[];
   onToolCall?: (call: ToolCall) => void;
   /** For the scheduler: whose reply this is, so waiting replies take turns between users. */
@@ -126,8 +128,9 @@ export function ollamaChat(endpoint: Endpoint, model: string, numCtx: number): C
  * straight away, with its reasoning so far passed back as notes. The reasoning itself is never
  * shown or stored.
  */
-export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: number, budget: number): ChatFn {
+export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: number, defaultBudget: number): ChatFn {
   return async function* (messages, signal, opts) {
+    const budget = opts?.thinkingBudget ?? defaultBudget;
     const thinking = new AbortController();
     const stop = () => thinking.abort();
     signal.addEventListener('abort', stop);

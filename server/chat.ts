@@ -18,7 +18,8 @@ import {
 import { isPreempted } from './busy.ts';
 import { describeWaitingImages, parseImages, PendingImages, withImageText } from './images.ts';
 import { plainSymbols } from '../shared/plain-symbols.ts';
-import { SELF_CORRECTION, shouldThink, type ThinkDecision } from './think-router.ts';
+import { SELF_CORRECTION, shouldThink, type ReplyDecision } from './think-router.ts';
+import { isEffort, type Effort } from '../shared/think-effort.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
 import type { ChatFn, ChatMessage, ToolCall } from './ollama.ts';
@@ -50,8 +51,8 @@ export type ChatDeps = {
   numCtx: number;
   /** Memory for this user and message: a stable part for the system prompt, and facts recalled for this message. */
   memoryContext: (user: SessionUser, message: string) => Promise<MemorySections>;
-  /** Extra context held back when thinking: the reasoning budget, plus the notes it's handed back as. */
-  thinkingReserve?: number;
+  /** Each Think effort's cap on reasoning tokens; without them the thinking model uses its own default. */
+  thinkingBudgets?: Record<Effort, number>;
   /** A model-written title for a chat's first exchange. */
   titleFor?: (userMessage: string, reply: string) => Promise<string | undefined>;
   /** Runs a describe request (images.ts) in the background and returns the description. */
@@ -78,6 +79,8 @@ function noticeLoading(loaded: Promise<boolean | undefined> | undefined, quiet: 
 
 // Context tokens held back for the reply itself.
 const REPLY_RESERVE = 1024;
+/** Context held back when thinking: the reasoning budget, plus roughly as much again when it's handed back as notes. */
+export const thinkingReserve = (budget: number) => 2 * budget + 64;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_TITLE_CHARS = 120;
 
@@ -90,7 +93,7 @@ const withSources = (content: string, sources: Source[] | null) =>
 type ReplyOpts = {
   userMessageId: number;
   firstMessage?: string;
-  decision: ThinkDecision & { auto: boolean };
+  decision: ReplyDecision;
   /** Searches already asked for while answering this message. */
   searches?: number;
   /** Set when the user approved a search: the reply first waits for it (the turn promise). */
@@ -106,11 +109,19 @@ const parseId = (value: string) => {
 
 /**
  * The client's Think setting: true (always), false (never) or "auto", where the rules in
- * think-router.ts decide from the message and the reply before it.
+ * think-router.ts decide from the message and the reply before it. `effort` is how hard to think when
+ * it does (On, or Auto deciding to); anything unknown is Medium.
  */
-function decideThinking(setting: unknown, message: string, previousReply: string | undefined, hasImages: boolean) {
-  if (setting === true) return { think: true, auto: false };
-  if (setting === 'auto') return { ...shouldThink(message, previousReply, hasImages), auto: true };
+function decideThinking(
+  setting: unknown,
+  effortSetting: unknown,
+  message: string,
+  previousReply: string | undefined,
+  hasImages: boolean,
+): ReplyDecision {
+  const effort = isEffort(effortSetting) ? effortSetting : 'medium';
+  if (setting === true) return { think: true, auto: false, effort };
+  if (setting === 'auto') return { ...shouldThink(message, previousReply, hasImages), auto: true, effort };
   return { think: false, auto: false };
 }
 
@@ -197,13 +208,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return c.json({ ok: true });
   });
 
+  const budgetFor = (decision: ReplyDecision) => deps.thinkingBudgets?.[decision.effort ?? 'medium'];
+
   // The prompt for a reply to the chat's latest message. Ordered so the start stays the same from
   // turn to turn (personality, always-remembered memories, the running summary, older history),
   // which lets Ollama reuse its cache and read only what's new. The facts recalled for this message
   // change every time, so they ride on the newest message, in the prompt only; the stored message
   // is left as written. Images go to the model while they're still in memory: until described, and
   // after that only until the next message (so a retry still sees them). Then the description stands in.
-  async function buildPrompt(user: SessionUser, conversationId: number, latest: string, think = false): Promise<ChatMessage[]> {
+  async function buildPrompt(user: SessionUser, conversationId: number, latest: string, decision?: ReplyDecision): Promise<ChatMessage[]> {
     const state = getContextState(db, conversationId);
     const messages = listMessages(db, user.id, conversationId).filter((m) => m.id > state.summary_through_message_id);
     const history: ChatMessage[] = messages.map((m) => {
@@ -226,7 +239,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
     const tool = deps.webSearch ? searchInstructions(deps.now?.() ?? new Date()) : '';
     const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
-    const reserve = REPLY_RESERVE + (think ? (deps.thinkingReserve ?? 0) : 0) + (deps.webSearch ? SEARCH_RESERVE : 0);
+    const budget = decision?.think ? budgetFor(decision) : undefined;
+    const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (deps.webSearch ? SEARCH_RESERVE : 0);
     return fitHistory(system, history, numCtx - reserve);
   }
 
@@ -251,6 +265,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         (writes = writes.then(() => s.write(`${JSON.stringify(event)}\n`)).catch(() => undefined));
       const think = opts.decision.think && !!deps.thinkingChat;
       const generate = think ? deps.thinkingChat! : chat;
+      const effort = think ? (opts.decision.effort ?? 'medium') : undefined;
+      const thinkingBudget = think ? budgetFor(opts.decision) : undefined;
       let lastReported = 0;
       let thoughtTokens = 0;
       // Anything from the model (a word, a thought) or the end of the reply: a loading notice would be stale.
@@ -269,6 +285,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         type: 'start',
         userMessageId: opts.userMessageId,
         think,
+        // How hard, and the cap, so the client can show progress against it.
+        ...(effort ? { effort } : {}),
+        ...(thinkingBudget ? { budget: thinkingBudget } : {}),
         // Why Auto chose to think, so the client can say so.
         ...(think && opts.decision.auto && opts.decision.reason ? { reason: opts.decision.reason } : {}),
       });
@@ -287,8 +306,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         // The scheduler (in deps.chat) makes room by preempting background work, or, when every slot
         // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
         const onQueued = () => void send({ type: 'queued' });
-        const callOpts = { onThinking, tools, onToolCall, userId: user.id, onQueued };
-        const labels = { think: String(think) };
+        const callOpts = { onThinking, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
+        const labels = { think: String(think), effort: effort ?? 'none' };
         const sinceStart = () => (performance.now() - startedAt) / 1000;
         for await (const text of generate(prompt, controller.signal, callOpts)) {
           heard = true;
@@ -342,7 +361,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         });
       } catch (err) {
         heard = true;
-        replies.inc({ think: String(think), outcome: controller.signal.aborted ? 'stopped' : 'error' });
+        replies.inc({ think: String(think), effort: effort ?? 'none', outcome: controller.signal.aborted ? 'stopped' : 'error' });
         // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
         if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources });
         if (!controller.signal.aborted) {
@@ -389,7 +408,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const earlier = listMessages(db, user.id, conversation.id);
     const isFirst = earlier.length === 0;
     const previousReply = earlier.findLast((m) => m.role === 'assistant')?.content;
-    const decision = decideThinking(body?.think, content, previousReply, images.length > 0);
+    const decision = decideThinking(body?.think, body?.effort, content, previousReply, images.length > 0);
     pendingImages.moveOn(conversation.id);
     // A search card left unanswered is dropped: the user moved on.
     pendingSearches.forget(conversation.id);
@@ -398,7 +417,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // An image alone has no words for a title yet; the model's title after the reply will name it.
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
     if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
-    const prompt = await buildPrompt(user, conversation.id, content, decision.think);
+    const prompt = await buildPrompt(user, conversation.id, content, decision);
     return streamReply(c, conversation.id, { prompt }, { userMessageId, firstMessage: isFirst ? firstMessage : undefined, decision });
   });
 
@@ -421,11 +440,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const before = messages.slice(0, messages.indexOf(question));
     const decision = decideThinking(
       body?.think,
+      body?.effort,
       question.content,
       before.findLast((m) => m.role === 'assistant')?.content,
       question.image_count > 0,
     );
-    const prompt = await buildPrompt(user, conversation.id, question.content, decision.think);
+    const prompt = await buildPrompt(user, conversation.id, question.content, decision);
     return streamReply(c, conversation.id, { prompt }, {
       userMessageId: question.id,
       firstMessage: messages.length <= 2 ? question.content : undefined,

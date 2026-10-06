@@ -1,10 +1,10 @@
-import { Fragment, memo, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { memo, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
+import { MessageMarkdown } from './Markdown.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
 import { pendingText } from '../../shared/pending-text.ts';
+import { EFFORT_LABEL, EFFORTS, higherEffort, isEffort, type Effort } from '../../shared/think-effort.ts';
 
 type Props = {
   id: number | undefined;
@@ -18,11 +18,12 @@ type Props = {
 
 /**
  * A message as shown here. `note` is this session's timing line ("Answered in 12.3 seconds");
- * `selfCorrected` marks a fast reply that caught itself mid-answer, to offer thinking.
+ * `selfCorrected` marks a fast reply that caught itself mid-answer, to offer thinking; `effort`
+ * is how hard a reply thought, to offer thinking harder.
  * `previews` are images sent from this page, kept in this tab only: the server never stores
  * them, so after a reload a message shows hearth's description of its images instead.
  */
-type ViewMessage = Message & { note?: string; selfCorrected?: boolean; previews?: string[] };
+type ViewMessage = Message & { note?: string; selfCorrected?: boolean; effort?: Effort; previews?: string[] };
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
@@ -60,6 +61,27 @@ const saveThink = (setting: ThinkSetting) => {
   } catch {}
 };
 const wire = (s: ThinkSetting) => (s === 'auto' ? 'auto' : s === 'on');
+
+// How hard to think when hearth thinks (On, or Auto deciding to): also per browser.
+const EFFORT_KEY = 'hearth.effort';
+const loadEffort = (): Effort => {
+  try {
+    const v = localStorage.getItem(EFFORT_KEY);
+    return isEffort(v) ? v : 'medium';
+  } catch {
+    return 'medium';
+  }
+};
+const saveEffort = (effort: Effort) => {
+  try {
+    localStorage.setItem(EFFORT_KEY, effort);
+  } catch {}
+};
+const EFFORT_HELP: Record<Effort, string> = {
+  medium: 'Thinking effort: Medium. The tested default, enough for checking French; about 10 seconds of thinking at most.',
+  high: 'Thinking effort: High. Twice the thinking room, for harder questions; up to about 20 seconds more.',
+  max: 'Thinking effort: Max. Four times the room, for the hardest questions; up to about 40 seconds more.',
+};
 const THINK_HELP: Record<ThinkSetting, string> = {
   auto: 'Think: Auto. hearth thinks first when you ask it to check or grade French, answer a quiz, or explain a grammar rule; otherwise it answers fast.',
   on: 'Think: On. Every reply reasons first: slower (up to about half a minute), more careful.',
@@ -76,7 +98,11 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   const [queued, setQueued] = useState(false);
   const [loading, setLoading] = useState(false);
   const [think, setThink] = useState<ThinkSetting>(loadThink);
+  const [effort, setEffort] = useState<Effort>(loadEffort);
   const [thinkingTokens, setThinkingTokens] = useState(0);
+  // The cap and effort of the reply in progress, when it thinks.
+  const [thinkingBudget, setThinkingBudget] = useState<number | null>(null);
+  const [replyEffort, setReplyEffort] = useState<Effort | null>(null);
   // Why Auto chose to think for the reply in progress, if it did.
   const [autoReason, setAutoReason] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -150,11 +176,12 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     const elapsed = () => seconds(performance.now() - startedRef.current);
     let thought = false;
     let reason: string | undefined;
+    let thoughtEffort: Effort | undefined;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
       reply = '';
       if (!content.trim()) return;
-      const message = { ...localMessage('assistant', content), note, selfCorrected, sources: sources ?? null };
+      const message = { ...localMessage('assistant', content), note, selfCorrected, effort: thoughtEffort, sources: sources ?? null };
       setMessages((m) => [...m, messageId === undefined ? message : { ...message, id: messageId }]);
     };
     try {
@@ -162,7 +189,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         if (event.type === 'start') {
           thought = event.think === true;
           reason = event.reason;
+          thoughtEffort = thought ? (event.effort ?? 'medium') : undefined;
           setAutoReason(event.reason ?? null);
+          setThinkingBudget(event.budget ?? null);
+          setReplyEffort(thoughtEffort ?? null);
         } else if (event.type === 'queued') setQueued(true);
         else if (event.type === 'loading') setLoading(true);
         else if (event.type === 'searching') setSearchingFor(event.query);
@@ -182,7 +212,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           reply += event.text;
           setStreamText(reply);
         } else if (event.type === 'done') {
-          const how = thought ? (reason ? ` · thought first (auto: ${reason})` : ' · thought first') : '';
+          const how = thought
+            ? ` · thought first (${EFFORT_LABEL[thoughtEffort ?? 'medium']}${reason ? `, auto: ${reason}` : ''})`
+            : '';
           keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected, event.sources);
           setStreamText(null);
           setStartedAt(null);
@@ -217,6 +249,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setQueued(false);
       setLoading(false);
       setThinkingTokens(0);
+      setThinkingBudget(null);
+      setReplyEffort(null);
       setAutoReason(null);
       setSearchingFor(null);
       setStreamText(null);
@@ -290,7 +324,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       onError(err);
       return;
     }
-    if (!(await readReply(api.sendMessage(conversationId, text, images, wire(think), controller.signal), controller))) {
+    if (!(await readReply(api.sendMessage(conversationId, text, images, wire(think), effort, controller.signal), controller))) {
       // Refused before it was saved: take the message back out and restore the draft.
       setMessages((m) => m.filter((msg) => msg !== pending));
       setDraft(text);
@@ -299,14 +333,16 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   }
 
   // Regenerates the answer to the last question, replacing the last reply if there is one.
-  // `withThinking` forces thinking regardless of the setting (the self-correction offer).
-  async function retry(withThinking = false) {
+  // `thinkAt` forces thinking at that effort regardless of the settings (the self-correction offer,
+  // and "think harder" after a reply that thought).
+  async function retry(thinkAt?: Effort) {
     const conversationId = id ?? createdRef.current;
     if (conversationId === undefined || streaming) return;
     setMessages((m) => (m.at(-1)?.role === 'assistant' ? m.slice(0, -1) : m));
     setSearchRequest(null);
     const controller = begin();
-    await readReply(api.retry(conversationId, withThinking ? true : wire(think), controller.signal), controller);
+    const events = thinkAt ? api.retry(conversationId, true, thinkAt, controller.signal) : api.retry(conversationId, wire(think), effort, controller.signal);
+    await readReply(events, controller);
   }
 
   // The answer to a search card. Only Search sends the query anywhere; the server enforces it.
@@ -340,22 +376,28 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         <div className="thread">
         {messages.length === 0 && !streaming && <p className="empty">What's on your mind, {name}?</p>}
         {messages.map((m) => (
-          <Fragment key={m.id}>
-            <MessageBubble message={m} highlight={m.id === highlight} />
-            {m.note && <p className="reply-note">{m.note}</p>}
-          </Fragment>
+          <MessageBubble key={m.id} message={m} highlight={m.id === highlight} />
         ))}
         {streaming &&
           (streamText ? (
             <>
-              <MessageBubble message={{ role: 'assistant', content: streamText }} />
+              <MessageBubble message={{ role: 'assistant', content: streamText }} streaming />
               <p className="reply-note" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s
               </p>
             </>
           ) : (
             <div className="message assistant pending">
-              {pendingText({ searchingFor, queued, loading, thinkingTokens, autoReason, waitedMs: now - (startedAt ?? now) })}
+              {pendingText({
+                searchingFor,
+                queued,
+                loading,
+                thinkingTokens,
+                thinkingBudget,
+                effortLabel: replyEffort ? EFFORT_LABEL[replyEffort] : null,
+                autoReason,
+                waitedMs: now - (startedAt ?? now),
+              })}
               {/* Hidden from screen readers: a number changing ten times a second would drown them out. */}
               <span className="elapsed" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s
@@ -393,12 +435,27 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
               <button
                 type="button"
                 className="link"
-                title="This reply corrected itself partway through. Re-answer with thinking on."
-                onClick={() => retry(true)}
+                title={`This reply corrected itself partway through. Re-answer with thinking on (${EFFORT_LABEL[effort]}).`}
+                onClick={() => retry(effort)}
               >
                 ↻ Re-answer with thinking
               </button>
             )}
+            {(() => {
+              // After a reply that thought: offer the next level up, until Max.
+              const used = messages.at(-1)!.effort;
+              const harder = used && higherEffort(used);
+              return harder ? (
+                <button
+                  type="button"
+                  className="link"
+                  title={`This reply thought at ${EFFORT_LABEL[used]}. Re-answer with more room to think: ${EFFORT_LABEL[harder]}. Slower.`}
+                  onClick={() => retry(harder)}
+                >
+                  ↻ Think harder ({EFFORT_LABEL[harder]})
+                </button>
+              ) : null;
+            })()}
           </div>
         )}
         </div>
@@ -469,6 +526,21 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         >
           Think: {think === 'auto' ? 'Auto' : think === 'on' ? 'On' : 'Off'}
         </button>
+        {think !== 'off' && (
+          <button
+            type="button"
+            className={`effort-toggle ${effort}`}
+            title={`${EFFORT_HELP[effort]} Click to change.`}
+            aria-label={EFFORT_HELP[effort]}
+            onClick={() => {
+              const next = EFFORTS[(EFFORTS.indexOf(effort) + 1) % EFFORTS.length]!;
+              setEffort(next);
+              saveEffort(next);
+            }}
+          >
+            {EFFORT_LABEL[effort]}
+          </button>
+        )}
         {streaming ? (
           <button type="button" className="stop" onClick={() => abortRef.current?.abort()}>
             Stop
@@ -486,32 +558,45 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
 type BubbleProps = {
   message: Pick<ViewMessage, 'role' | 'content'> & Partial<ViewMessage>;
   highlight?: boolean;
+  /** The reply still arriving: no Raw button yet. */
+  streaming?: boolean;
 };
 
 // Memoized: every keystroke in the composer re-renders this view, and re-parsing every message's
 // Markdown made typing lag in long chats (~36 ms a key at 166 messages). A message re-renders only
 // when it, or its highlight, changes.
-const MessageBubble = memo(function MessageBubble({ message, highlight }: BubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false }: BubbleProps) {
   const { id, role, content } = message;
+  // Raw: the text exactly as stored, Markdown and all, to read or copy as sent.
+  const [raw, setRaw] = useState(false);
   const className = `message ${role}${highlight ? ' highlight' : ''}`;
   const domId = id !== undefined && id > 0 ? `message-${id}` : undefined;
-  if (role === 'user') {
-    return (
-      <div id={domId} className={className}>
-        <MessageImages message={message} />
-        {content}
-      </div>
-    );
-  }
+  const body = raw ? (
+    <pre className="raw">{content}</pre>
+  ) : (
+    <MessageMarkdown text={role === 'user' ? content : plainSymbols(content)} typed={role === 'user'} />
+  );
   return (
-    <div id={domId} className={className}>
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener" /> }}
-      >
-        {plainSymbols(content)}
-      </Markdown>
-      {message.sources?.length ? <Sources sources={message.sources} /> : null}
+    <div className={`bubble ${role}`}>
+      <div id={domId} className={className}>
+        {role === 'user' && <MessageImages message={message} />}
+        {body}
+        {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
+      </div>
+      {!streaming && content && (
+        <div className="message-meta">
+          {message.note && <p className="reply-note">{message.note}</p>}
+          <button
+            type="button"
+            className="link raw-toggle"
+            aria-pressed={raw}
+            title={raw ? 'Show this message rendered' : 'Show the exact text of this message, Markdown and all'}
+            onClick={() => setRaw((r) => !r)}
+          >
+            {raw ? 'Rendered' : 'Raw'}
+          </button>
+        </div>
+      )}
     </div>
   );
 });

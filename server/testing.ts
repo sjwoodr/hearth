@@ -8,6 +8,7 @@ import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions } from './ollama.ts';
 import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
+import type { Effort } from '../shared/think-effort.ts';
 
 export const ORIGIN = 'https://hearth.example.com';
 
@@ -28,6 +29,8 @@ export type FakeModel = {
   gate?: Promise<unknown>;
   /** Prompts sent to the thinking variant; it reports THINKING_TOKENS of reasoning, then replies. */
   thinkingCalls: ChatMessage[][];
+  /** The reasoning cap each thinking call was given (undefined: none, the model's default). */
+  thinkingBudgets: (number | undefined)[];
   /** Image describe requests, and what the next one answers; an Error makes it fail. */
   describeCalls: ChatMessage[][];
   description: string | Error;
@@ -82,7 +85,8 @@ export function setupApp(
   opts: {
     numCtx?: number;
     systemPrompt?: string;
-    thinkingReserve?: number;
+    /** Each Think effort's reasoning cap (omitted: no caps, so nothing is held back for thinking). */
+    thinkingBudgets?: Record<Effort, number>;
     webSearch?: boolean;
     db?: DB;
     now?: () => Date;
@@ -102,6 +106,7 @@ export function setupApp(
     title: undefined,
     afterReply: [],
     thinkingCalls: [],
+    thinkingBudgets: [],
     describeCalls: [],
     description: 'A page of French homework.',
     asks: [],
@@ -137,13 +142,14 @@ export function setupApp(
     chat: scheduler.chat(chat),
     systemPrompt: () => opts.systemPrompt ?? 'You are hearth.',
     numCtx: opts.numCtx ?? 8192,
-    thinkingReserve: opts.thinkingReserve,
+    thinkingBudgets: opts.thinkingBudgets,
     memoryContext: async (user, message) => {
       model.recallQueries.push({ userId: user.id, message });
       return { stable: model.memory, recalled: model.recalled };
     },
     thinkingChat: scheduler.chat(async function* (messages, _signal, o) {
       model.thinkingCalls.push(messages);
+      model.thinkingBudgets.push(o?.thinkingBudget);
       for (let t = 1; t <= THINKING_TOKENS; t++) o?.onThinking?.(t);
       if (askedToSearch(o)) return;
       yield 'Considered answer.';

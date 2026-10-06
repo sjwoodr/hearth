@@ -5,7 +5,7 @@
 import type { DB } from './db.ts';
 import { searches } from './metrics.ts';
 import type { ChatMessage, ToolCall } from './ollama.ts';
-import type { ThinkDecision } from './think-router.ts';
+import type { ReplyDecision } from './think-router.ts';
 
 export type Source = { title: string; url: string };
 export type SearchResult = Source & { snippet: string };
@@ -144,7 +144,7 @@ export type PendingSearch = {
   prompt: ChatMessage[];
   /** Which prompt messages had images, so the caller can put them back when the search runs. */
   images: ImageRef[];
-  decision: ThinkDecision & { auto: boolean };
+  decision: ReplyDecision;
   firstMessage?: string;
   /** Searches asked for so far while answering this message, and the pages found. */
   searches: number;

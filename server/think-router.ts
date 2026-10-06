@@ -7,7 +7,14 @@
 // Gemma and Nemotron wrote broken ones). Ceiling: keyword rules miss rephrasings and can fire on
 // look-alikes; the manual On/Off setting overrides them either way.
 
+import type { Effort } from '../shared/think-effort.ts';
+
 export type ThinkDecision = { think: boolean; reason?: string };
+/**
+ * What a reply was told to do: think or not, whether Auto decided, and how hard to think (missing in
+ * a search saved before effort levels existed: Medium).
+ */
+export type ReplyDecision = ThinkDecision & { auto: boolean; effort?: Effort };
 
 const CHECKING =
   /(«[^»]+»|"[^"]{8,}")[^?.!]{0,40}\b(correct|right|wrong|natural|ok|okay)\b|\b(is|was|are) (this|that|it|my|these) (\w+ )?(correct|right|ok|okay|wrong|natural|proper)\b|\bam i (right|correct|wrong)\b|\bdid i (get|say|write|do) (it|this|that)?\s*(right|correctly)?\b|\bcheck (my|this|these|the)\b|\bcorrect (my|this|these|me)\b|\bgrade (my|this|these|me)\b|\bfix (my|this)\b|\best-ce (que c'est |que ce soit )?(correct|juste|bon)\b|\bc'est (correct|juste|bon)\s*\?|\bcorrig(e|ez|er)\b|\bv[ée]rifi(e|ez|er)\b/i;
