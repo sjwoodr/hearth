@@ -454,5 +454,8 @@ turn only; the reply keeps just the links (`messages.sources`), shown as site pi
 the model in later turns. At most 2 searches per message, then it must answer. The system prompt
 gains today's date and when to search: without them Gemma 4 asked for 1 of 10 questions that
 needed a search; with them 9 of 10, and 0 of 10 that didn't (French practice, grammar, chat).
+A last line ties "latest", "next" and "this season" to today's date: without it, "what's the
+latest iPhone model?" was searched 1 of 4 times (the rest answered from training); with it 4 of 4,
+every query carrying the current year.
 Setup: SearXNG in Docker on 127.0.0.1:8888 with `json` in `search.formats`
 (`HEARTH_SEARXNG_URL`; `off` never offers the tool).

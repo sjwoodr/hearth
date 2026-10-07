@@ -216,7 +216,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   it that way for any future tool that reaches outside the machine. Results are seen on one turn only; the DB keeps links (`messages.sources`), never
   result text. Without today's date and a firm "call the tool instead of saying you can't check",
   Gemma 4 called it for 1 of 10 questions that needed it (9/10 with, 0 false calls in 10; a
-  20-message probe, so small). Leaving `tools` out of a request didn't force a full prompt reread
+  20-message probe, so small). The last line ("this season", "latest", "next" mean the current
+  year) was added after a 2026-10-06 probe (fast mode, 4 runs per question): "what's the latest
+  iPhone model?" searched 1/4 without it, 4/4 with; the Bears' and Formula 1 schedules already
+  searched 8/8 (7 naming 2026, none a stale year), and named 2026 in 8/8 with it. Leaving `tools` out of a request didn't force a full prompt reread
   (measured ~1.4 s vs 7.6 s cold), so background calls without tools still hit the cache.
 - **Free prose from background jobs is plain text, not a JSON schema** (summaries, titles, image
   descriptions: `json(messages, null)`). Under Ollama's `format` grammar, a `"` the model meant to open
