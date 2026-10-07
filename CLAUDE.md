@@ -165,8 +165,11 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   hearth just gave, when asked for a French quiz, or for why/exceptions/differences in a French grammar
   question. `aboutFrench` gates each rule so "is it correct that Willie Mays…" stays fast. Checked
   against labelled messages in `think-router.test.ts` and real history. Keyword rules miss rephrasings;
-  the On/Off setting is the override, and a fast reply that corrects itself (`SELF_CORRECTION`) gets a
-  "Re-answer with thinking" button.
+  the On/Off setting is the override, and every fast reply gets a "Re-answer with thinking"
+  button (its tooltip calls out a reply that corrected itself, `SELF_CORRECTION`). It was only on
+  self-corrections at first; a fast searched answer that put Week 6's date on Week 5 and left out
+  the opponent showed fast replies need the one-click retry too (the same question thinking at
+  Medium got both right).
 - **Budget forcing** (`ollamaThinkingChat`): count reasoning chunks (~1 token each), abort at the
   budget, then call the fast path with the reasoning handed back as a user-role "private notes" message.
   Reasoning is never shown or stored. `thinkingReserve(budget)` (`chat.ts`) holds back `2 × budget + 64`
@@ -255,7 +258,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
-| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Think harder" |
+| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Re-answer with thinking" (fast replies), "Think harder" (thinking ones) |
 | `client/src/Markdown.tsx` | message Markdown (user messages keep line breaks via `remark-breaks`), code blocks with language + Copy (clipboard API, `execCommand` fallback off HTTPS); `rehype-highlight` is lazy-loaded on the first code fence (54 KB gzip, would be +45% on the main bundle) |
 
 ## Invariants

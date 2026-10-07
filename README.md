@@ -314,8 +314,12 @@ summaries) always use `HEARTH_MODEL` without thinking.
   next reply a full reread. Checked against 29 labelled messages and the owner's real chat history, where it
   picked exactly his 3 French grammar questions out of 23 messages.
 - **On** and **Off** override the rules either way.
-- A fast reply that corrects itself mid-answer ("wait, no, that's wrong") gets a
-  **↻ Re-answer with thinking** button next to Regenerate.
+- A fast reply gets a **↻ Re-answer with thinking** button next to Regenerate, at the current
+  effort level: keyword rules miss rephrasings, and a fast reply can misread details (in a search
+  result, a date from the wrong row) that a short think catches. It matters most when the reply
+  corrects itself mid-answer ("wait, no, that's wrong"), which the button's tooltip points out.
+  Like Think harder, it shows only on a reply that arrived on this page; after a reload,
+  Regenerate with Think on does the same.
 
 **Think effort: Medium / High / Max.** Next to Think (hidden when it's Off), a second button sets how
 much room a thinking reply gets: `HEARTH_THINKING_TOKEN_BUDGET` (200), `_HIGH` (400) and `_MAX`
