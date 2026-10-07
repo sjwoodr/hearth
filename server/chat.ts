@@ -48,7 +48,8 @@ export type ChatDeps = {
   /** The same job with thinking on, used when the client asks for it (the Think toggle). */
   thinkingChat?: ChatFn;
   systemPrompt: () => string;
-  numCtx: number;
+  /** Tokens of the context window a prompt may fill (HEARTH_CONTEXT_BUDGET), the reply's room included. */
+  contextBudget: number;
   /** Memory for this user and message: a stable part for the system prompt, and facts recalled for this message. */
   memoryContext: (user: SessionUser, message: string) => Promise<MemorySections>;
   /** Each Think effort's cap on reasoning tokens; without them the thinking model uses its own default. */
@@ -162,7 +163,7 @@ function withImagesBack(
 }
 
 export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
-  const { db, chat, systemPrompt, numCtx, memoryContext } = deps;
+  const { db, chat, systemPrompt, contextBudget, memoryContext } = deps;
   const notFound = { error: 'Chat not found.' };
   const pendingImages = new PendingImages();
   const pendingSearches = new PendingSearches(db, deps.now);
@@ -241,7 +242,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
     const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (deps.webSearch ? SEARCH_RESERVE : 0);
-    return fitHistory(system, history, numCtx - reserve);
+    return fitHistory(system, history, contextBudget - reserve);
   }
 
   // Streams a reply as NDJSON: start, optional searching, queued and loading, delta..., then done or error,

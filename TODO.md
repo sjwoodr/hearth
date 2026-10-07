@@ -63,7 +63,7 @@ slot or cached conversation. Measure each idea before trusting it.
       them to the newest message only (like recalled facts) to protect the cache.
 - [ ] **Group recurring French mistakes** by similarity ("five dropped *-s* on *tu* forms this month")
       to suggest targeted drills.
-- [ ] **Ask about a long document.** Today a message is capped at 16,000 characters and the context at
+- [ ] **Ask about a long document.** Today a message is capped at 16,000 characters and prompts to
       16k tokens, so a 67 KB document (~19k tokens) is refused, and even under a raised cap it would
       stay in the chat's history, slowing every later reply and overflowing the summarizer. Instead:
       attach a file, keep it out of the running history, split it into sections, embed them, and

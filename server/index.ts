@@ -59,7 +59,7 @@ const app = createApp({
   thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, config.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
   // Read per request, so edits to the prompt file apply without a restart.
   systemPrompt: () => fs.readFileSync(config.systemPromptPath, 'utf8').trim(),
-  numCtx: config.numCtx,
+  contextBudget: config.contextBudget,
   // Up to ~800 tokens of memories per message, out of the context window.
   memoryContext: (user, message) => memoryContext(db, user, message, embed, 800),
   // Each Think effort's reasoning cap; the reply asks for one per request.
@@ -67,7 +67,7 @@ const app = createApp({
   titleFor: makeTitler(json),
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
-  afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.numCtx) : undefined,
+  afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.contextBudget) : undefined,
   webSearch,
   checkModels: probeModels(config.gatewayUrl || config.ollamaUrl, !!config.gatewayUrl),
   // Says "loading the model" when Ollama has unloaded it (asked alongside each reply).

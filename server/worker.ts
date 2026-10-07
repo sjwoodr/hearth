@@ -28,7 +28,7 @@ if (problem) {
 const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
 const models = connectModels(config);
 const stopMemories = startMemorySweeper(db, models.json, models.embed, config.memoryIdleMinutes, { paused: models.replyActive });
-const stopSummaries = startSummarySweeper(db, models.json, config.numCtx);
+const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget);
 // Only health endpoints, for probes. Its server also keeps the process alive.
 const health = new Hono();
 registerHealthRoutes(health, { db, models: probeModels(config.gatewayUrl, true) });

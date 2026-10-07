@@ -83,7 +83,7 @@ export async function listen(app: Hono, servers: { close: () => void }[]): Promi
 
 export function setupApp(
   opts: {
-    numCtx?: number;
+    contextBudget?: number;
     systemPrompt?: string;
     /** Each Think effort's reasoning cap (omitted: no caps, so nothing is held back for thinking). */
     thinkingBudgets?: Record<Effort, number>;
@@ -141,7 +141,7 @@ export function setupApp(
     clientIp: (c) => c.req.header('x-test-ip') ?? '10.0.0.1',
     chat: scheduler.chat(chat),
     systemPrompt: () => opts.systemPrompt ?? 'You are hearth.',
-    numCtx: opts.numCtx ?? 8192,
+    contextBudget: opts.contextBudget ?? 8192,
     thinkingBudgets: opts.thinkingBudgets,
     memoryContext: async (user, message) => {
       model.recallQueries.push({ userId: user.id, message });

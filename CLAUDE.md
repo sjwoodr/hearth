@@ -184,9 +184,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   running summary (all in the system prompt), then history. Recalled facts change every message, so
   they are prepended to the **newest user message in the prompt only**, never stored. Putting them in
   the system prompt made every reply reread a ~7k-token chat (~22 s vs ~1 s).
-- **`num_ctx` 16384.** Gemma 4's sliding-window attention makes 16k cost ~0.02 GB over 8k; at 8k long
-  chats no longer fit, trimming changed the prompt start every turn (~7 s per reply). The summarizer
-  scales with it: fold past half the window, keep the newest quarter verbatim.
+- **Context: 32k loaded (`HEARTH_NUM_CTX`), 16k used (`HEARTH_CONTEXT_BUDGET`).** The budget is
+  what trimming and the summarizer use (fold past half, keep the newest quarter verbatim): at 8k
+  long chats no longer fit and trimming changed the prompt start every turn (~7 s per reply), and a
+  32k budget lets an unsummarized chat reach ~17k tokens, a 60 s cold reread. The window is 32k only
+  to match pi's 32k tag of the same model: Ollama reloads on a `num_ctx` mismatch, so the two
+  evicted each other (5-15 s plus a cold reread). Measured 2026-10-07 with 2 slots: 15.79 GB at 32k
+  vs 15.26 at 16k, same tokens/s, and 0.0 s load switching between the tags at the same size. If
+  pi's context changes, change `HEARTH_NUM_CTX` with it.
 - **Recall threshold 0.38, top 6.** Measured with embeddinggemma: related 0.44-0.61, unrelated
   0.19-0.30. The first guess (0.45) missed real matches.
 - **Near-duplicate memories: embeddings pick candidates (≥0.85), the model decides** with a yes/no
