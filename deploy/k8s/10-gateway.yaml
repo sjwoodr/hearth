@@ -1,0 +1,58 @@
+# The model gateway: the only thing that talks to Ollama, and it hands out Ollama's slots with
+# replies first. Ollama runs on the host (outside Kubernetes), listening on 127.0.0.1, so the
+# gateway uses the host's network to reach it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hearth-gateway
+  namespace: hearth
+  labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: gateway}
+spec:
+  replicas: 1
+  # Never two at once: a second gateway would double the slot count and fight for the port.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: gateway}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: gateway}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true}
+      containers:
+        - name: gateway
+          image: ghcr.io/sjwoodr/hearth:sha-42addf1
+          command: ["node", "server/gateway-main.ts"]
+          env:
+            - {name: HEARTH_GATEWAY_HOST, value: "0.0.0.0"}
+            - {name: HEARTH_GATEWAY_PORT, value: "11436"}
+            - {name: OLLAMA_URL, value: http://127.0.0.1:11434}
+            # Must equal OLLAMA_NUM_PARALLEL in Ollama's service settings.
+            - {name: HEARTH_OLLAMA_SLOTS, value: "2"}
+            - {name: HEARTH_LOG_FORMAT, value: json}
+            - name: HEARTH_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef: {name: hearth-gateway, key: token}
+          ports:
+            - {name: http, containerPort: 11436}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hearth-gateway
+  namespace: hearth
+spec:
+  selector: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: gateway}
+  ports:
+    - {name: http, port: 11436, targetPort: http}

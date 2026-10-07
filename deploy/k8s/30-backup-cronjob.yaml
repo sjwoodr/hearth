@@ -1,0 +1,37 @@
+# Nightly, a consistent copy of the live database (SQLite's online backup) into
+# /var/lib/hearth/backups/, kept 14 days. Copy those files offsite, never the live hearth.db.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hearth-backup
+  namespace: hearth
+  labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: backup}
+spec:
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: backup}
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true}
+          containers:
+            - name: backup
+              image: ghcr.io/sjwoodr/hearth:sha-42addf1
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  bin/hearth db backup
+                  find /data/backups -name 'hearth-*.db' -mtime +14 -print -delete
+              env:
+                - {name: HEARTH_DB_PATH, value: /data/hearth.db}
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              volumeMounts:
+                - {name: data, mountPath: /data}
+          volumes:
+            - name: data
+              hostPath: {path: /var/lib/hearth, type: Directory}

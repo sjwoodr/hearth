@@ -1,0 +1,57 @@
+# The api: chats, history, memories, search approval, titles and image descriptions.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hearth-api
+  namespace: hearth
+  labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: api}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: api}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: api}
+    spec:
+      # Time to finish a reply in progress on shutdown (HEARTH_SHUTDOWN_GRACE_MS is a little less).
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true}
+      containers:
+        - name: api
+          image: ghcr.io/sjwoodr/hearth:sha-42addf1
+          envFrom:
+            - configMapRef: {name: hearth-env}
+          env:
+            - {name: HEARTH_ROLE, value: api}
+            - {name: HEARTH_SHUTDOWN_GRACE_MS, value: "55000"}
+            - {name: HEARTH_GATEWAY_URL, value: http://hearth-gateway:11436}
+            - name: HEARTH_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef: {name: hearth-gateway, key: token}
+          ports:
+            - {name: http, containerPort: 8787}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          hostPath: {path: /var/lib/hearth, type: Directory}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hearth-api
+  namespace: hearth
+spec:
+  selector: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: api}
+  ports:
+    - {name: http, port: 8787, targetPort: http}

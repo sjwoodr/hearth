@@ -126,6 +126,13 @@ creates the data volume, so uninstalling can't delete it) and a Secret with the 
 README has the values and an install example. `.github/workflows/chart.yml` lints it, validates
 the render with kubeconform and runs its unit tests (`helm unittest`) whenever the chart changes.
 
+### Plain manifests
+
+`deploy/k8s/` is the same deployment as plain YAML, without Helm, for a single-node k3s cluster:
+numbered files, the migration as an explicit step before the services start, and the gateway token
+created with `kubectl`. Its README has the install and upgrade steps. Tested on k3s 1.36 (Ubuntu
+24.04, Traefik's bundled chart) with a small model; the chart remains the maintained way to deploy.
+
 ### CI
 
 `.github/workflows/ci.yml` runs `pnpm check-types` and `pnpm test` on every pull request and on

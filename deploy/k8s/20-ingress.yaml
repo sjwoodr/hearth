@@ -1,0 +1,24 @@
+# One hostname: /api to the api, everything else to the front end. Named for Traefik's internal
+# door (websecure) on purpose: hearth is never on the public door.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hearth
+  namespace: hearth
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: hearth.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: {name: hearth-api, port: {name: http}}
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: hearth-web, port: {name: http}}

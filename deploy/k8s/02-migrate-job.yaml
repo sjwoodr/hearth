@@ -1,0 +1,30 @@
+# Applies pending database migrations, then exits. Run it, and wait for it, before starting (or
+# upgrading) the api and worker. Delete the finished Job before running it again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hearth-migrate
+  namespace: hearth
+  labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: migrate}
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: hearth, app.kubernetes.io/component: migrate}
+    spec:
+      restartPolicy: Never
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true}
+      containers:
+        - name: migrate
+          image: ghcr.io/sjwoodr/hearth:sha-42addf1
+          command: ["node", "server/migrate.ts"]
+          envFrom:
+            - configMapRef: {name: hearth-env}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        # The SQLite file lives on this machine's disk. Every pod that opens it must run on the same
+        # machine (one node here), never on network storage.
+        - name: data
+          hostPath: {path: /var/lib/hearth, type: Directory}
