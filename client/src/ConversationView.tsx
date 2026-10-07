@@ -18,12 +18,20 @@ type Props = {
 
 /**
  * A message as shown here. `note` is this session's timing line ("Answered in 12.3 seconds");
- * `selfCorrected` marks a fast reply that caught itself mid-answer, to offer thinking; `effort`
- * is how hard a reply thought, to offer thinking harder.
+ * `fast` marks a reply that answered without thinking, to offer re-answering with thinking;
+ * `selfCorrected` marks a fast reply that caught itself mid-answer, the strongest case for it;
+ * `effort` is how hard a reply thought, to offer thinking harder. All three are known only for
+ * replies that arrived on this page (the server doesn't store them).
  * `previews` are images sent from this page, kept in this tab only: the server never stores
  * them, so after a reload a message shows hearth's description of its images instead.
  */
-type ViewMessage = Message & { note?: string; selfCorrected?: boolean; effort?: Effort; previews?: string[] };
+type ViewMessage = Message & {
+  note?: string;
+  fast?: boolean;
+  selfCorrected?: boolean;
+  effort?: Effort;
+  previews?: string[];
+};
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
@@ -183,7 +191,14 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       const content = reply;
       reply = '';
       if (!content.trim()) return;
-      const message = { ...localMessage('assistant', content), note, selfCorrected, effort: thoughtEffort, sources: sources ?? null };
+      const message = {
+        ...localMessage('assistant', content),
+        note,
+        fast: !thought,
+        selfCorrected,
+        effort: thoughtEffort,
+        sources: sources ?? null,
+      };
       setMessages((m) => [...m, messageId === undefined ? message : { ...message, id: messageId }]);
     };
     try {
@@ -433,11 +448,15 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             <button type="button" className="link" onClick={() => retry()}>
               {messages.at(-1)!.role === 'assistant' ? '↻ Regenerate' : '↻ Retry'}
             </button>
-            {messages.at(-1)!.selfCorrected && (
+            {(messages.at(-1)!.fast || messages.at(-1)!.selfCorrected) && (
               <button
                 type="button"
                 className="link"
-                title={`This reply corrected itself partway through. Re-answer with thinking on (${EFFORT_LABEL[effort]}).`}
+                title={
+                  messages.at(-1)!.selfCorrected
+                    ? `This reply corrected itself partway through. Re-answer with thinking on (${EFFORT_LABEL[effort]}).`
+                    : `This reply answered without thinking. Re-answer with thinking on (${EFFORT_LABEL[effort]}): slower, and better at checking details.`
+                }
                 onClick={() => retry(effort)}
               >
                 ↻ Re-answer with thinking

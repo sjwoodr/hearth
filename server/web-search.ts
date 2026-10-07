@@ -46,7 +46,9 @@ export function searchInstructions(now: Date): string {
   const today = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return `Today is ${today}. Your training data stops well before that.
 
-You have a web_search tool. Call it, instead of answering, whenever the reply depends on anything that changes or that you might have wrong: news, results, releases, versions, schedules, opening hours, prices, weather, tours, or any specific date, number or name you aren't certain of. Never tell the user to check elsewhere or that you can't look it up: call the tool, and the user decides whether the search runs. Don't search for French practice, grammar, translation, explanations of well-known ideas, opinions, or chat.`;
+You have a web_search tool. Call it, instead of answering, whenever the reply depends on anything that changes or that you might have wrong: news, results, releases, versions, schedules, opening hours, prices, weather, tours, or any specific date, number or name you aren't certain of. Never tell the user to check elsewhere or that you can't look it up: call the tool, and the user decides whether the search runs. Don't search for French practice, grammar, translation, explanations of well-known ideas, opinions, or chat.
+
+Build search queries from today's date: words like "this season", "latest" or "next" refer to the current year in that date, never to years you remember from training.`;
 }
 
 const clip = (text: string, max: number) => {

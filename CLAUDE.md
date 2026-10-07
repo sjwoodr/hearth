@@ -165,8 +165,11 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   hearth just gave, when asked for a French quiz, or for why/exceptions/differences in a French grammar
   question. `aboutFrench` gates each rule so "is it correct that Willie Mays…" stays fast. Checked
   against labelled messages in `think-router.test.ts` and real history. Keyword rules miss rephrasings;
-  the On/Off setting is the override, and a fast reply that corrects itself (`SELF_CORRECTION`) gets a
-  "Re-answer with thinking" button.
+  the On/Off setting is the override, and every fast reply gets a "Re-answer with thinking"
+  button (its tooltip calls out a reply that corrected itself, `SELF_CORRECTION`). It was only on
+  self-corrections at first; a fast searched answer that put Week 6's date on Week 5 and left out
+  the opponent showed fast replies need the one-click retry too (the same question thinking at
+  Medium got both right).
 - **Budget forcing** (`ollamaThinkingChat`): count reasoning chunks (~1 token each), abort at the
   budget, then call the fast path with the reasoning handed back as a user-role "private notes" message.
   Reasoning is never shown or stored. `thinkingReserve(budget)` (`chat.ts`) holds back `2 × budget + 64`
@@ -213,7 +216,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   it that way for any future tool that reaches outside the machine. Results are seen on one turn only; the DB keeps links (`messages.sources`), never
   result text. Without today's date and a firm "call the tool instead of saying you can't check",
   Gemma 4 called it for 1 of 10 questions that needed it (9/10 with, 0 false calls in 10; a
-  20-message probe, so small). Leaving `tools` out of a request didn't force a full prompt reread
+  20-message probe, so small). The last line ("this season", "latest", "next" mean the current
+  year) was added after a 2026-10-06 probe (fast mode, 4 runs per question): "what's the latest
+  iPhone model?" searched 1/4 without it, 4/4 with; the Bears' and Formula 1 schedules already
+  searched 8/8 (7 naming 2026, none a stale year), and named 2026 in 8/8 with it. Leaving `tools` out of a request didn't force a full prompt reread
   (measured ~1.4 s vs 7.6 s cold), so background calls without tools still hit the cache.
 - **Free prose from background jobs is plain text, not a JSON schema** (summaries, titles, image
   descriptions: `json(messages, null)`). Under Ollama's `format` grammar, a `"` the model meant to open
@@ -255,7 +261,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
-| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Think harder" |
+| `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Re-answer with thinking" (fast replies), "Think harder" (thinking ones) |
 | `client/src/Markdown.tsx` | message Markdown (user messages keep line breaks via `remark-breaks`), code blocks with language + Copy (clipboard API, `execCommand` fallback off HTTPS); `rehype-highlight` is lazy-loaded on the first code fence (54 KB gzip, would be +45% on the main bundle) |
 
 ## Invariants

@@ -314,8 +314,12 @@ summaries) always use `HEARTH_MODEL` without thinking.
   next reply a full reread. Checked against 29 labelled messages and the owner's real chat history, where it
   picked exactly his 3 French grammar questions out of 23 messages.
 - **On** and **Off** override the rules either way.
-- A fast reply that corrects itself mid-answer ("wait, no, that's wrong") gets a
-  **↻ Re-answer with thinking** button next to Regenerate.
+- A fast reply gets a **↻ Re-answer with thinking** button next to Regenerate, at the current
+  effort level: keyword rules miss rephrasings, and a fast reply can misread details (in a search
+  result, a date from the wrong row) that a short think catches. It matters most when the reply
+  corrects itself mid-answer ("wait, no, that's wrong"), which the button's tooltip points out.
+  Like Think harder, it shows only on a reply that arrived on this page; after a reload,
+  Regenerate with Think on does the same.
 
 **Think effort: Medium / High / Max.** Next to Think (hidden when it's Off), a second button sets how
 much room a thinking reply gets: `HEARTH_THINKING_TOKEN_BUDGET` (200), `_HIGH` (400) and `_MAX`
@@ -450,5 +454,8 @@ turn only; the reply keeps just the links (`messages.sources`), shown as site pi
 the model in later turns. At most 2 searches per message, then it must answer. The system prompt
 gains today's date and when to search: without them Gemma 4 asked for 1 of 10 questions that
 needed a search; with them 9 of 10, and 0 of 10 that didn't (French practice, grammar, chat).
+A last line ties "latest", "next" and "this season" to today's date: without it, "what's the
+latest iPhone model?" was searched 1 of 4 times (the rest answered from training); with it 4 of 4,
+every query carrying the current year.
 Setup: SearXNG in Docker on 127.0.0.1:8888 with `json` in `search.formats`
 (`HEARTH_SEARXNG_URL`; `off` never offers the tool).
