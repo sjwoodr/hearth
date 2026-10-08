@@ -290,7 +290,7 @@ describe('memories in chat and over the API', () => {
 
   it('holds back room for thinking when Think is on', async () => {
     // Medium's 118-token budget holds back 2 × 118 + 64 = 300 tokens.
-    const ctx = setupApp({ numCtx: 1024 + 400, thinkingBudgets: { medium: 118, high: 118, max: 118 } });
+    const ctx = setupApp({ contextBudget: 1024 + 400, thinkingBudgets: { medium: 118, high: 118, max: 118 } });
     await createUser(ctx.db, 'alice', 'a good password');
     const cookie = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
     const id = ((await (await call(ctx.app, cookie, 'POST', '/conversations')).json()) as { id: number }).id;
@@ -305,7 +305,7 @@ describe('memories in chat and over the API', () => {
 
   it('holds back more room for a higher Think effort', async () => {
     // Medium holds back 2 × 1 + 64 = 66 tokens; Max 2 × 118 + 64 = 300.
-    const ctx = setupApp({ numCtx: 1024 + 400, thinkingBudgets: { medium: 1, high: 50, max: 118 } });
+    const ctx = setupApp({ contextBudget: 1024 + 400, thinkingBudgets: { medium: 1, high: 50, max: 118 } });
     await createUser(ctx.db, 'alice', 'a good password');
     const cookie = sessionCookie(await login(ctx.app, 'alice', 'a good password'));
     const id = ((await (await call(ctx.app, cookie, 'POST', '/conversations')).json()) as { id: number }).id;

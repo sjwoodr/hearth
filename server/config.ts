@@ -13,6 +13,8 @@ function env(name: string, fallback: string): string {
 
 const isOff = (value: string) => ['0', 'false', 'off', 'no'].includes(value.trim().toLowerCase());
 
+const numCtx = Number(env('HEARTH_NUM_CTX', '32768'));
+
 export const config = {
   root,
   host: env('HEARTH_HOST', '127.0.0.1'),
@@ -39,10 +41,17 @@ export const config = {
     high: Number(env('HEARTH_THINKING_TOKEN_BUDGET_HIGH', '400')),
     max: Number(env('HEARTH_THINKING_TOKEN_BUDGET_MAX', '800')),
   },
-  // 16k: long chats fit without trimming, so follow-ups reuse Ollama's cache (~1 s to the first word
-  // on a ~7k-token chat, against ~7 s at 8k). Gemma 4's sliding-window attention makes it nearly free:
-  // 14.01 GiB loaded against 13.99 at 8k.
-  numCtx: Number(env('HEARTH_NUM_CTX', '16384')),
+  // The context window Ollama loads the model with. 32k matches the 32k tag agent harnesses (pi) use
+  // for the same model: Ollama keeps one copy per model file and reloads it for a request at another
+  // size, so mismatched sizes evicted each other (5-15 s load, then a cold reread). With 2 slots it
+  // loads at 15.79 GB against 15.26 at 16k, with the same generation speed (2026-10-07).
+  numCtx,
+  // How much of that window hearth fills: history is trimmed to it and the summarizer scales with it
+  // (summarize past half, keep a quarter). 16k: long chats fit without trimming, so follow-ups reuse
+  // Ollama's cache (~1 s to the first word on a ~7k-token chat, against ~7 s at 8k), while a cold
+  // reread stays ~30 s at worst instead of the ~60 s measured for a chat grown to 32k's limit.
+  // Never more than numCtx.
+  contextBudget: Math.min(Number(env('HEARTH_CONTEXT_BUDGET', '16384')), numCtx),
   // Requests Ollama runs at once. Must equal Ollama's OLLAMA_NUM_PARALLEL: more than that and Ollama
   // queues internally, out of the scheduler's sight, so a reply could wait behind background work.
   ollamaSlots: Number(env('HEARTH_OLLAMA_SLOTS', '1')),

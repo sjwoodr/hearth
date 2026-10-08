@@ -187,7 +187,10 @@ correctness of French is at stake.
   think?" model call, which would have evicted the cache.
 - **A 16k context window turned out to be nearly free.** Gemma 4 uses sliding-window attention, so 16k
   cost 0.02 GB more memory than 8k. At 8k, long chats no longer fit and trimming changed the start of
-  the prompt every turn (~7 s per reply); at 16k, follow-ups start in about a second.
+  the prompt every turn (~7 s per reply); at 16k, follow-ups start in about a second. Later the model
+  was loaded at 32k, to share one copy with an agent harness using the same model at 32k (Ollama
+  reloads a model asked for at a different size), while hearth still keeps its prompts to 16k:
+  0.5 GB more memory, the same speed.
 - **Thresholds were measured, not guessed.** Memory recall uses embedding similarity: related pairs
   scored 0.44-0.61 and unrelated ones 0.19-0.30, so the cutoff went in the gap (0.38). The first
   guess, 0.45, would have missed real matches.

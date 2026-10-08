@@ -289,7 +289,7 @@ the exact memory section the model would get.
 
 ## Model
 
-`gemma4:26b-a4b-it-qat`, `num_ctx` 16384, thinking off: a mixture-of-experts model (~4B of 26B
+`gemma4:26b-a4b-it-qat`, `num_ctx` 32768 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
 active per token), 15 GB loaded, ~26 tokens/s on the Radeon 780M. Chosen with a 158-question French
 bench against nine other setups (Gemma 12B, Nemotron, Mistral Small/Nemo, Ministral, Qwen 3, Aya):
 153/158 at ~1.2 s per answer. A follow-up grading test found it marks about 1 in 30 correct answers
@@ -338,26 +338,30 @@ always-remembered memories and the running summary in the system prompt, then th
 recalled for each message change every time, so they're attached to that message (in the prompt only;
 the stored message is untouched). Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
 recall in the system prompt every reply reread the whole chat (~22 s), and at 8k the chat no longer
-fits, so trimming changed the start every turn (~7 s). The summarizer scales with `HEARTH_NUM_CTX`:
-it summarizes past half the window and keeps a quarter verbatim. With Think on, the thinking budget
+fits, so trimming changed the start every turn (~7 s). Prompts are kept to `HEARTH_CONTEXT_BUDGET`
+(16k), and the summarizer scales with it: it summarizes past half the budget and keeps a quarter
+verbatim. With Think on, the thinking budget
 (and the notes it produces) is held back from the window too.
 
-**Context size and keep-alive: the trade-off (left at 16k and 30m for now).** Memory is not what
-decides the context size: 32k loads at 14.04 GiB against 14.01 at 16k. What it changes is how much a
-reply has to reread when Ollama's cache is empty. The unsummarized history can grow to half the window
-(about 8-9k tokens at 16k, about 17k at 32k), and a cold reread runs at about 275-290 tokens/s here. The
-cache holds one conversation, so it is empty after any of these:
+**Context window vs context budget: 32k loaded, 16k used.** Two settings, because they cost
+different things:
 
-- **The model was unloaded.** `OLLAMA_KEEP_ALIVE=30m` unloads it after 30 idle minutes, so the first
-  reply also pays 5-15 s to load it.
-- **Another client used the model at a different `num_ctx`.** Ollama keeps one copy per model file,
-  so a request at another context size (say an agent harness using a 32k tag of the same model)
-  reloads it, and hearth's next reply reloads it back. Measured on two switches: 14.6 s and 4.8 s
-  (a 29.7 s and a 17.1 s reply). A reload can also evict the embedding model, which costs the next
-  message ~1 s to bring back.
-- **Another chat was used in between**, by you or another user. No reload, just the reread.
+- `HEARTH_NUM_CTX` (32768) is the window Ollama loads the model with. It costs memory, not speed:
+  15.79 GB loaded at 32k against 15.26 at 16k (two slots), and the same ~24-25 tokens/s
+  (2026-10-07). It's 32k to match agent harnesses that use a 32k tag of the same model (pi, via
+  `~/.prime/agent/Modelfile.gemma4-26b-a4b-32k`). Ollama keeps one copy per model file and reloads
+  it when a request asks for another size, so with hearth at 16k each switch reloaded the model
+  (measured 14.6 s and 4.8 s on two switches), emptied the cache, and could evict the embedding
+  model (~1 s to bring back). At the same size, a request from either tag loads nothing (0.0 s).
+- `HEARTH_CONTEXT_BUDGET` (16384, never more than the window) is how much of it hearth fills:
+  history is trimmed to it and the summarizer scales with it. This is what decides speed, because
+  a reply rereads its whole prompt when Ollama's cache is empty, at about 275-290 tokens/s here.
 
-| Cold reread, chat size | 16k (now) | 32k |
+The cache is empty after the model was unloaded (`OLLAMA_KEEP_ALIVE=30m`, which also adds 5-15 s to
+load it) or after another chat used the model in between. The unsummarized history can grow to half
+the budget, so a bigger budget means longer cold rereads:
+
+| Cold reread, chat size | 16k budget (now) | 32k budget |
 |---|---|---|
 | Short (~1.3-1.5k tokens, measured) | ~5 s | same |
 | Just below summarizing | ~30 s (estimated from the rate) | **60.2 s** (measured: 16,970 tokens) |
@@ -366,21 +370,19 @@ Add 5-15 s when the model also has to load. The 32k row was measured with a thro
 the first word cold, then 2.9 s for a follow-up in the same chat. hearth's token estimate (3.5
 characters per token) put that chat at 15.9k; Gemma counted 16,970, about 3.2 characters per token,
 so summarizing actually starts ~7% later than hearth thinks. The 1024 tokens held back for the reply
-absorb that at either size.
-
-With a warm cache both sizes cost the same: only the new message is read. 32k's gains are fewer
-summaries (so fewer blurred details) and no reload when sharing the model with a 32k client.
+absorb that at either size. With a warm cache both cost the same: only the new message is read. A
+32k budget's only gain is fewer summaries (so fewer blurred details).
 
 To change either one:
 
-1. **32k for hearth:** set `HEARTH_NUM_CTX=32768` in `.env` and restart hearth. Nothing else needs
-   to change, since the summarizer scales with it. Then update the model notes here, in
-   `docs/model-selection.md` and in `CLAUDE.md`, and time one reply to a long chat after an idle
-   period to replace the estimate above.
+1. **A bigger budget:** set `HEARTH_CONTEXT_BUDGET=32768` in `.env` and restart hearth (raise
+   `HEARTH_NUM_CTX` too if it should go past 32k). The summarizer follows it. Then update the model
+   notes here, in `docs/model-selection.md` and in `CLAUDE.md`, and time one reply to a long chat
+   after an idle period to replace the estimate above.
 2. **Keep the model loaded:** raise `OLLAMA_KEEP_ALIVE` (for example `4h`, or `-1` for never) in
    the Ollama service's systemd drop-in, then `sudo systemctl daemon-reload && sudo systemctl
    restart ollama`. A resumed chat then costs only the reread, and only if something else used
-   the model in between. The cost is ~14 GiB of RAM held permanently.
+   the model in between. The cost is ~15 GB of RAM held permanently.
 
 **Where settings come from.** `server/config.ts` holds every default; `.env` (gitignored) overrides
 them, and values already in the environment override both. `.env.example` documents the same
