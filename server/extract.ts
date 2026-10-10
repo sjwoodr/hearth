@@ -125,7 +125,7 @@ export const UPDATED_CANDIDATE = 0.7;
 const MAX_CANDIDATES_CHECKED = 3;
 const SAME_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'] };
 
-async function saysTheSame(json: JsonFn, existing: string, candidate: string): Promise<boolean> {
+export async function saysTheSame(json: JsonFn, existing: string, candidate: string): Promise<boolean> {
   const raw = (await json(
     [
       {

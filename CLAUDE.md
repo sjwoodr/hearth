@@ -20,6 +20,7 @@ pnpm migrate           # apply pending migrations and exit (hearth also migrates
 pnpm gateway           # the model gateway on :11435 (needs HEARTH_GATEWAY_TOKEN); optional for one process
 pnpm worker            # memory extraction + summaries in their own process (with HEARTH_ROLE=api + the gateway)
 node scripts/bench-slots.ts   # Ollama slot benchmark (1-4 simulated users; results in data/bench/)
+node scripts/bench-extraction.ts --models a,b   # background-model bench: extraction, duplicate judge, summaries (data/bench/extraction/)
 bin/hearth             # admin console (fzf menus); `bin/hearth help` for subcommands
 ```
 

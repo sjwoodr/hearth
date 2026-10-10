@@ -1,0 +1,110 @@
+{
+  "about": "Generic cases for scripts/bench-extraction.ts. Memories are keyed by label; an extraction case's expect.update lists the labels that must be rewritten, and any other update counts as unwanted. expect.adds is none (adding anything is a miss), some (at least one), or any. Duplicate pairs give the right answer to the yes/no 'same memory?' judge: same=true only if the new memory adds nothing beyond the existing one.",
+  "extraction": [
+    {
+      "name": "correction: the mug is for home",
+      "user": "alice",
+      "memories": {
+        "mug": "Alice drinks green tea every morning from a blue mug.",
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "Any tips for staying awake in the afternoon at work?"],
+        ["assistant", "A second round of green tea from that blue mug of yours at the office would do it, and a short walk after lunch."],
+        ["user", "The blue mug lives at home, it's my weekend tea. At work I just use paper cups."],
+        ["assistant", "Got it, the blue mug stays home for weekend tea, and work tea comes in paper cups."]
+      ],
+      "expect": { "update": ["mug"], "adds": "any" }
+    },
+    {
+      "name": "extension: more detail on an existing memory",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "mug": "Alice drinks green tea every morning.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "I'm up to three hives now, all Italian bees. The third colony arrived last week."],
+        ["assistant", "Three hives is a proper apiary. Italian bees are gentle, so that's a good choice."]
+      ],
+      "expect": { "update": ["bees"], "adds": "any" }
+    },
+    {
+      "name": "correction in French: Italian, not Spanish",
+      "user": "alice",
+      "memories": {
+        "lang": "Alice is learning Spanish.",
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "Tu peux me donner un exercice d'espagnol ?"],
+        ["assistant", "Bien sûr. Puisque tu apprends l'espagnol, conjugue « hablar » au présent."],
+        ["user", "Non, attends, c'est l'italien que j'apprends, pas l'espagnol. Je me suis trompée de mot."],
+        ["assistant", "D'accord, l'italien alors. Conjugue « parlare » au présent."]
+      ],
+      "expect": { "update": ["lang"], "adds": "any" }
+    },
+    {
+      "name": "new fact, nothing to update",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "I just started cello lessons, my first one was yesterday."],
+        ["assistant", "The cello is a lovely choice. How did the first lesson go?"],
+        ["user", "Hard on the fingers but fun."]
+      ],
+      "expect": { "update": [], "adds": "some" }
+    },
+    {
+      "name": "control: small talk",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "mug": "Alice drinks green tea every morning.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "It's raining again, can you believe it?"],
+        ["assistant", "Third day in a row. At least it's good weather for a book."],
+        ["user", "Ha, true. Tell me a joke."],
+        ["assistant", "Why did the scarecrow win an award? He was outstanding in his field."]
+      ],
+      "expect": { "update": [], "adds": "none" }
+    },
+    {
+      "name": "control: one-off instruction and general knowledge",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        ["user", "Keep this one short: what's the capital of Peru?"],
+        ["assistant", "Lima."],
+        ["user", "And who won the 1998 World Cup?"],
+        ["assistant", "France, 3-0 against Brazil in the final."]
+      ],
+      "expect": { "update": [], "adds": "none" }
+    }
+  ],
+  "pairs": [
+    { "existing": "Alice likes purple.", "candidate": "Alice loves the color purple.", "same": true },
+    { "existing": "Alice keeps bees.", "candidate": "Alice is a beekeeper.", "same": true },
+    { "existing": "Bob drinks coffee every morning.", "candidate": "Every morning Bob has a coffee.", "same": true },
+    { "existing": "Alice has a daughter in high school.", "candidate": "Alice's daughter is in high school.", "same": true },
+    { "existing": "Alice lives in Lyon.", "candidate": "Alice's home is in Lyon.", "same": true },
+    { "existing": "Alice plays chess online.", "candidate": "Alice plays online chess.", "same": true },
+    { "existing": "Alice is learning French.", "candidate": "Alice is learning Spanish.", "same": false },
+    { "existing": "Alice plays a druid in Diablo 4.", "candidate": "Alice plays a paladin in Diablo 4.", "same": false },
+    { "existing": "Alice keeps bees.", "candidate": "Alice keeps three hives of Italian bees.", "same": false },
+    { "existing": "Alice drinks tea at work.", "candidate": "Alice drinks tea at home.", "same": false },
+    { "existing": "Alice's son plays soccer.", "candidate": "Alice's daughter plays soccer.", "same": false },
+    { "existing": "Alice runs 5 km on weekdays.", "candidate": "Alice runs 10 km on Sundays.", "same": false }
+  ]
+}
