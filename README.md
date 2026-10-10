@@ -271,8 +271,11 @@ with `bin/hearth memories`:
 whose newest message is at least `HEARTH_MEMORY_IDLE_MINUTES` (5) old and have
 messages it hasn't read. It sends the unread part plus the user's existing
 memories to the chat model with a JSON schema, then keeps only valid changes: at
-most 8 additions and 8 updates, 300 characters each, no duplicates, and updates
-only to that user's own memories. It never deletes. Progress is stored per chat
+most 8 additions and 8 updates, 400 characters each, no duplicates, and updates
+only to that user's own memories. The model is told to update an existing memory
+on the same subject rather than add another, and to rewrite the memory behind
+anything the user corrects, so a vague memory that led to a wrong reply gets fixed
+instead of gaining a second, competing one. It never deletes. Progress is stored per chat
 (`memory_through_message_id`), so a restart loses nothing; a chat whose
 extraction fails waits 15 minutes before a retry.
 
@@ -281,7 +284,9 @@ existing memories and the rest of the batch. Similarity alone can't separate a r
 different fact on the same topic (measured: rewordings 0.86-0.94, but "learning French" vs "learning
 Spanish" 0.886 and "druid" vs "paladin" 0.905), so anything at 0.85 or above goes to the chat model
 as a yes/no "do these say the same thing?" question. It judged 9 of 10 test pairs right, and its one
-miss kept a duplicate rather than dropping a fact. Any failure keeps the memory.
+miss kept a duplicate rather than dropping a fact. Any failure keeps the memory. A memory updated
+in the same batch is checked from 0.70: the model often saves a correction twice, as the update
+and as a new memory, and those pairs scored only 0.77-0.83.
 
 `hearth memories extract <chat-id>` runs it on demand, and
 `hearth memories recall <user> <text>` shows each fact's score for a message and

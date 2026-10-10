@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
-import { addMemory, memoryContext, rankFacts, updateMemory } from './memories.ts';
+import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { login, ORIGIN, sessionCookie, setupApp } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
@@ -50,7 +50,7 @@ describe('sanitizing what the model proposes', () => {
         add: [
           { content: '  Alice   studies French. ' },
           { content: '' },
-          { content: 'x'.repeat(301) },
+          { content: 'x'.repeat(MAX_MEMORY_CHARS + 1) },
           { content: 'alice likes RADIO.' },
           { content: 'Alice studies French.' },
           { content: 42 },

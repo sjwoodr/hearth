@@ -197,6 +197,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 - **Near-duplicate memories: embeddings pick candidates (≥0.85), the model decides** with a yes/no
   schema. Similarity alone can't separate rewordings (0.86-0.94) from different facts on one topic
   ("learning French" vs "learning Spanish" 0.886). Any failure keeps the memory.
+- **Corrections update the memory behind them** (`instructions` in `extract.ts`). A vague memory
+  ("drinks Dunkin' coffee ... in a Tervis") led to a wrong reply; the user corrected it, and the old
+  wording ("if a new detail changes or extends a memory, update it") updated it in 0 of 10 runs: the
+  model added the correction as a second memory instead, so the vague one stayed. "Check for the
+  same subject; if one exists, do not add, update it" plus "rewrite the memory behind a correction"
+  updated it 5/5 (probe) and 3/3 (end to end), with 0 updates in 15 control runs on ordinary chats
+  (2026-10-10, live history, fast mode). Updates run longer, so `MAX_MEMORY_CHARS` went 300 → 400:
+  4 of 5 rewrites were 300-343 characters and would have been silently dropped; asking for "under
+  300" made the model drop details (the tea) or overshoot anyway. The duplicate add of the same
+  correction still survives about 2 runs in 3 (the yes/no judge errs to keep); harmless, as both agree.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
 - **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands
@@ -317,7 +327,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   copy; admin tasks for the real instance run in the cluster
   (`kubectl -n hearth exec -it deploy/hearth-api -- bin/hearth ...`). A new version reaches the
   cluster when CI's `deploy` job (after a merge to main) commits the new image tag to the private
-  repo's values; Argo CD rolls it out. Merging a PR is the deploy.
+  repo's values; Argo CD rolls it out. A push to main is the deploy (no PRs since 2026-10-10).
   Every step keeps today's single-process setup working by default. The cluster phases happen in
   the private repo; don't start cluster work in this repo without being asked.
 - Backups: the chart's nightly CronJob writes consistent copies next to the cluster's database, and

@@ -5,7 +5,7 @@ import type { EmbedFn } from './ollama.ts';
 
 export const MEMORY_KINDS = ['profile', 'fact'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
-export const MAX_MEMORY_CHARS = 300;
+export const MAX_MEMORY_CHARS = 400;
 
 export type Memory = {
   id: number;

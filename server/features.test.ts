@@ -506,13 +506,22 @@ describe('near-duplicate memories', () => {
     'Alice loves the color purple.': [0.98, 0.2, 0],
     'Alice dislikes orange.': [0.9, 0.43, 0],
     'Alice keeps bees.': [0, 0, 1],
+    // 0.76 from the update below: under the usual bar, over the one for this batch's updates.
+    'Alice likes purple, mostly lilac.': [0, 0.6, 0.8],
+    'Alice mostly likes lilac.': [0, 0.98, 0.2],
+    // 0.43 from it: too far even for an updated memory.
+    'Alice paints in lilac.': [0.7, 0.71, 0],
   };
   const embed: EmbedFn = async (texts) => texts.map((t) => VECTORS[t] ?? [0, 1, 0]);
 
-  async function extractWith(adds: string[], judge: (existing: string, candidate: string) => boolean | Error) {
+  async function extractWith(
+    adds: string[],
+    judge: (existing: string, candidate: string) => boolean | Error,
+    update?: string,
+  ) {
     const ctx = setupApp();
     const alice = await createUser(ctx.db, 'alice', 'a good password');
-    addMemory(ctx.db, alice.id, 'fact', 'Alice likes purple.');
+    const purple = addMemory(ctx.db, alice.id, 'fact', 'Alice likes purple.');
     const chat = Number(ctx.db.prepare('INSERT INTO conversations (user_id) VALUES (?)').run(alice.id).lastInsertRowid);
     ctx.db.prepare("INSERT INTO messages (conversation_id, role, content) VALUES (?, 'user', 'stuff')").run(chat);
     const judged: string[] = [];
@@ -524,7 +533,7 @@ describe('near-duplicate memories', () => {
         if (verdict instanceof Error) throw verdict;
         return { same: verdict };
       }
-      return { add: adds.map((content) => ({ content })), update: [], name: '' };
+      return { add: adds.map((content) => ({ content })), update: update ? [{ id: purple.id, content: update }] : [], name: '' };
     };
     const result = await extractMemories(ctx.db, chat, json, embed);
     const stored = (ctx.db.prepare('SELECT content FROM memories ORDER BY id').all() as { content: string }[]).map(
@@ -548,6 +557,18 @@ describe('near-duplicate memories', () => {
   it('keeps the memory when the judgement fails', async () => {
     const { stored } = await extractWith(['Alice loves the color purple.'], () => new Error('model down'));
     expect(stored).toContain('Alice loves the color purple.');
+  });
+
+  it('drops an addition that restates an update from the same batch', async () => {
+    const { stored, judged } = await extractWith(['Alice mostly likes lilac.'], () => true, 'Alice likes purple, mostly lilac.');
+    expect(stored).toEqual(['Alice likes purple, mostly lilac.']);
+    expect(judged).toEqual(['Alice mostly likes lilac.']);
+  });
+
+  it('does not ask about an addition far from the update', async () => {
+    const { stored, judged } = await extractWith(['Alice paints in lilac.'], () => true, 'Alice likes purple, mostly lilac.');
+    expect(stored).toEqual(['Alice likes purple, mostly lilac.', 'Alice paints in lilac.']);
+    expect(judged).toEqual([]);
   });
 
   it('catches a duplicate within the same batch', async () => {

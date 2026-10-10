@@ -101,8 +101,11 @@ Never record what hearth said, general knowledge, guesses, or one-off small talk
   preference. Record it only if ${username} says it applies from now on.
 - Each thing gets exactly one memory. Never add a memory that restates another one, new or
   existing, in different words.
-- If a new detail changes or extends an existing memory, update that memory by its id instead of
-  adding another.
+- Before adding a memory, check the existing ones for the same subject (the same habit, object,
+  person or project). If one exists, do not add: update that memory by its id, rewriting it to
+  include the new or corrected detail. Use "add" only for a subject no existing memory covers.
+- If ${username} corrects something hearth said about them, rewrite the memory behind it so the
+  mistake can't happen again.
 - Write each memory as one short, specific sentence in the third person, using the name ${username}.
   Don't include dates; hearth records when each memory was learned.
 - If nothing is worth remembering, return empty lists.
@@ -115,6 +118,10 @@ Never record what hearth said, general knowledge, guesses, or one-off small talk
 // alone can't tell them apart, so it only picks candidates and the model makes the call
 // (9 of 10 right on those pairs, erring toward keeping).
 export const NEAR_DUPLICATE_CANDIDATE = 0.85;
+// An addition next to an update in the same batch is often that update restated on its own
+// (a correction saved twice): those pairs scored 0.77-0.83, under the bar above, so a memory
+// updated in this batch is checked from a lower one.
+export const UPDATED_CANDIDATE = 0.7;
 const MAX_CANDIDATES_CHECKED = 3;
 const SAME_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'] };
 
@@ -138,22 +145,27 @@ async function saysTheSame(json: JsonFn, existing: string, candidate: string): P
 type NewMemory = { content: string; vector?: ArrayLike<number> };
 
 /**
- * Drops additions that reword a memory the user already has (or one added earlier in the same
- * batch). Any failure keeps the memory: a duplicate is cheaper than a lost fact.
+ * Drops additions that reword a memory the user already has, one updated in this batch, or one
+ * added earlier in the batch. Any failure keeps the memory: a duplicate is cheaper than a lost fact.
  */
 async function dropNearDuplicates(
   db: DB,
   userId: number,
   adds: { content: string }[],
+  updates: { content: string }[],
   json: JsonFn,
   embed: EmbedFn,
 ): Promise<{ kept: NewMemory[]; skipped: number }> {
   if (adds.length === 0) return { kept: [], skipped: 0 };
-  let existing: { content: string; vector: ArrayLike<number> }[];
+  let existing: { content: string; vector: ArrayLike<number>; bar: number }[];
   let vectors: number[][];
   try {
-    existing = await withEmbeddings(db, userId, embed);
-    vectors = await embed(adds.map((a) => a.content));
+    const stored = await withEmbeddings(db, userId, embed);
+    vectors = await embed([...adds, ...updates].map((a) => a.content));
+    existing = [
+      ...stored.map((m) => ({ ...m, bar: NEAR_DUPLICATE_CANDIDATE })),
+      ...updates.map((u, i) => ({ content: u.content, vector: vectors[adds.length + i]!, bar: UPDATED_CANDIDATE })),
+    ];
   } catch (err) {
     console.error('memory: near-duplicate check skipped:', err instanceof Error ? err.message : err);
     return { kept: adds, skipped: 0 };
@@ -163,9 +175,9 @@ async function dropNearDuplicates(
   let skipped = 0;
   for (const [i, add] of adds.entries()) {
     const vector = vectors[i]!;
-    const candidates = [...existing, ...kept]
-      .map((m) => ({ content: m.content, score: cosine(vector, m.vector) }))
-      .filter((m) => m.score >= NEAR_DUPLICATE_CANDIDATE)
+    const candidates = [...existing, ...kept.map((m) => ({ ...m, bar: NEAR_DUPLICATE_CANDIDATE }))]
+      .map((m) => ({ content: m.content, score: cosine(vector, m.vector), bar: m.bar }))
+      .filter((m) => m.score >= m.bar)
       .sort((a, b) => b.score - a.score)
       .slice(0, MAX_CANDIDATES_CHECKED);
     let duplicate = false;
@@ -258,7 +270,7 @@ export async function extractMemories(
   const changes = sanitizeExtraction(raw, existing);
   const named = changes.name !== undefined && conversation.display_name === null;
   const { kept, skipped } = embed
-    ? await dropNearDuplicates(db, conversation.user_id, changes.add, json, embed)
+    ? await dropNearDuplicates(db, conversation.user_id, changes.add, changes.update, json, embed)
     : { kept: changes.add as NewMemory[], skipped: 0 };
 
   db.transaction(() => {

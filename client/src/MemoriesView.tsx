@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Memory, type MemoryKind } from './api.ts';
 
-const MAX_CHARS = 300;
+const MAX_CHARS = 400;
 
 const SECTIONS: { kind: MemoryKind; title: string; blurb: string }[] = [
   {
