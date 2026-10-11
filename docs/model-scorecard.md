@@ -72,6 +72,8 @@ What has a real chance on this machine, so new releases are worth a test only wh
   fits fully on the GPU; above that it needs a strong reason. Plus **vision and thinking** (hearth needs both).
   The size rule below still applies: a bigger model than Gemma has to be faster and more accurate.
 - **Strong multilingual training**, French above all.
+- **Cheap context is a bonus**: sliding-window or hybrid attention keeps the KV cache small. Gemma 4
+  grows ~0.5 GB from 16k to 32k; Qwen3-30B-A3B (full attention) ~2 GB (20 → 22 GB). Measure at 32k.
 
 Families to watch: **Gemma** (Gemma 4 came out 2026-04-02, roughly a yearly cadence, so a Gemma 5 MoE
 around spring 2027 would fit the pattern) and **Qwen** (Qwen 3.6 35B-A3B was the closest challenger:
