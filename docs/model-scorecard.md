@@ -67,7 +67,9 @@ What has a real chance on this machine, so new releases are worth a test only wh
 
 - **Mixture of experts with ~4B or fewer active parameters.** Memory bandwidth (~90 GB/s shared DDR5)
   sets speed here, so dense models of 12B and up run at ~7-10 tok/s whatever their quality.
-- **Under ~20 GB loaded at 32k**, fully on the GPU, with **vision and thinking** (hearth needs both).
+- **A soft cap of ~25 GB loaded at 32k** (owner, 2026-10-11): 21-25 GB is still worth a test, since it
+  fits fully on the GPU; above that it needs a strong reason. Plus **vision and thinking** (hearth needs both).
+  The size rule below still applies: a bigger model than Gemma has to be faster and more accurate.
 - **Strong multilingual training**, French above all.
 
 Families to watch: **Gemma** (Gemma 4 came out 2026-04-02, roughly a yearly cadence, so a Gemma 5 MoE
