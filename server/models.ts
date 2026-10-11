@@ -1,10 +1,12 @@
 // How a hearth process reaches the models: Ollama directly with an in-process scheduler (one
 // process, the default), or the model gateway, which schedules every process's calls. Shared by
 // the api (index.ts) and the worker (worker.ts) so both are wired the same way.
+import { createModelChoice } from './active-model.ts';
 import { createModelScheduler } from './busy.ts';
+import type { DB } from './db.ts';
 import { schedulerHooks, watchScheduler } from './metrics.ts';
 import type { config as appConfig } from './config.ts';
-import { ollamaEmbed, ollamaJson, type ChatFn, type Endpoint, type JsonFn } from './ollama.ts';
+import { ollamaEmbed, ollamaJson, ollamaModelLoaded, type ChatFn, type Endpoint, type JsonFn } from './ollama.ts';
 
 type Config = typeof appConfig;
 
@@ -32,19 +34,31 @@ export function backgroundJobs(role: string) {
   return { memories: all, summariesAfterReply: all };
 }
 
-export function connectModels(config: Config) {
+/**
+ * `db` holds the active model (an admin's switch, see active-model.ts): chat, thinking and every
+ * background job ask it per call, so a switch reaches every process without a restart.
+ */
+export function connectModels(config: Config, db: DB) {
   // With a gateway it schedules every hearth process's calls; without one, this process schedules its own.
   const endpoint: Endpoint = config.gatewayUrl ? { url: config.gatewayUrl, token: config.gatewayToken } : config.ollamaUrl;
   const scheduler = config.gatewayUrl ? undefined : createModelScheduler({ slots: config.ollamaSlots, ...schedulerHooks });
   if (scheduler) watchScheduler(scheduler);
   const asBackground = (fn: JsonFn) => (scheduler ? scheduler.background(fn) : fn);
+  const choice = createModelChoice(db, config.model);
+  const model = () => choice.current();
+  // A different thinking model (HEARTH_MODEL_THINKING) applies only while the default is active.
+  const thinkingModel = () => (choice.isDefault() ? config.thinkingModel : choice.current());
   return {
     endpoint,
+    choice,
+    model,
+    thinkingModel,
+    loaded: ollamaModelLoaded(endpoint),
     asReply: (fn: ChatFn) => (scheduler ? scheduler.chat(fn) : fn),
     // Background sweeps hold off while a reply is active. With a gateway this process can't see other
     // processes' replies, but the gateway preempts for them anyway.
     replyActive: () => scheduler?.replyActive() ?? false,
-    json: asBackground(ollamaJson(endpoint, config.model, config.numCtx)),
+    json: asBackground(ollamaJson(endpoint, model, config.numCtx)),
     // Embeddings go through the gateway too when there is one, so only the gateway reaches Ollama.
     embed: ollamaEmbed(endpoint, config.embedModel),
     describe: () =>

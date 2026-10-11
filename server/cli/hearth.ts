@@ -5,7 +5,8 @@ import { config } from '../config.ts';
 import { openDbOrExit } from '../db.ts';
 import { extractMemories } from '../extract.ts';
 import { DEFAULT_RECALL, memoryContext, rankFacts } from '../memories.ts';
-import { ollamaEmbed, ollamaJson } from '../ollama.ts';
+import { createModelChoice } from '../active-model.ts';
+import { ollamaEmbed, ollamaJson, ollamaModels, type Endpoint } from '../ollama.ts';
 import { MARK_END, MARK_START, searchAllMessages } from '../search.ts';
 import { deleteUserSessions } from '../sessions.ts';
 import {
@@ -17,6 +18,7 @@ import {
   setDisplayName,
   setDisabled,
   setPassword,
+  setRole,
   validatePassword,
   type User,
 } from '../users.ts';
@@ -40,7 +42,7 @@ const USAGE = `hearth: admin console for the hearth database
 Run with no arguments for the interactive menu (fzf; numbered prompts when piped).
 
   hearth users    list | add <user> | passwd <user> | name <user> [display name]
-                  | disable <user> | enable <user> | delete <user>
+                  | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
   hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                   | delete <id>
   hearth messages edit <id> [text] | delete <id>
@@ -49,6 +51,8 @@ Run with no arguments for the interactive menu (fzf; numbered prompts when piped
                   | extract <chat-id>    run memory extraction on a chat now
                   | recall <user> <text> show what a message would recall, with scores
   hearth sessions list [user] | revoke <id-prefix> | revoke-user <user> | purge
+  hearth model    show | list | use <model> | reset   the model every user talks to (admins can
+                  switch it in the app too; it reverts on its own once idle and unloaded)
   hearth db       info | check | backup [file] | vacuum | shell
 
 Deletes ask for confirmation; add --yes to skip it. Text left off the command line
@@ -104,6 +108,57 @@ async function askNewPassword(): Promise<string> {
   }
 }
 
+// ── model ──────────────────────────────────────────────────────────────────────
+// Through the gateway when there is one (as the api and worker do), so this works inside the cluster.
+const modelEndpoint: Endpoint = config.gatewayUrl ? { url: config.gatewayUrl, token: config.gatewayToken } : config.ollamaUrl;
+const modelChoice = createModelChoice(db, config.model);
+const catalog = ollamaModels(modelEndpoint);
+
+function modelShow(): string {
+  const m = modelChoice.info();
+  if (m.isDefault) return `${m.model} (the default)`;
+  return [
+    `${m.model}, switched by ${m.by} at ${localTime(m.since!)}`,
+    `Last used ${localTime(m.lastUsed!)}. Default: ${m.default}. Memory extraction waits until it's back.`,
+  ].join('\n');
+}
+
+async function modelList(): Promise<string> {
+  const current = modelChoice.current();
+  const rows = (await catalog.list()).map((m) =>
+    [
+      (m.name === current ? '* ' : '  ') + m.name.padEnd(36),
+      `${(m.size / 1e9).toFixed(1)} GB`.padEnd(9),
+      ['vision', 'thinking', 'tools'].filter((c) => m.capabilities.includes(c)).join(', '),
+    ].join(' '),
+  );
+  return [`  ${'MODEL'.padEnd(36)} ${'SIZE'.padEnd(9)} CAN`, ...rows].join('\n');
+}
+
+async function modelUse(name: string | undefined): Promise<void> {
+  if (!name) fail('Say which model: hearth model use <name> (see hearth model list).');
+  if (!(await catalog.list()).some((m) => m.name === name)) fail(`"${name}" isn't one of Ollama's chat models (see hearth model list).`);
+  modelChoice.set(name!, 'admin console');
+  console.log(name === config.model ? `Back to the default, ${name}.` : `Everyone now talks to ${name}. Memory extraction waits until the default is back.`);
+}
+
+function modelReset(): void {
+  modelChoice.reset();
+  console.log(`Back to the default, ${config.model}.`);
+}
+
+async function modelMenu(): Promise<void> {
+  const models = await catalog.list();
+  const current = modelChoice.current();
+  const choice = await pick(`Model (now ${current})`, [
+    ...(current === config.model ? [] : [{ key: '\0reset', label: `back to the default (${config.model})` }]),
+    ...models.map((m) => ({ key: m.name, label: `${m.name === current ? '* ' : '  '}${m.name}  ${(m.size / 1e9).toFixed(1)} GB` })),
+  ]);
+  if (!choice) return;
+  if (choice === '\0reset') await attempt(() => modelReset());
+  else await attempt(() => modelUse(choice));
+}
+
 // ── users ──────────────────────────────────────────────────────────────────────
 function usersTable(): string {
   const users = listUsers(db);
@@ -113,11 +168,12 @@ function usersTable(): string {
       u.username.padEnd(20),
       (u.display_name ?? '-').padEnd(20),
       (u.disabled ? 'disabled' : 'active').padEnd(9),
+      u.role.padEnd(6),
       String(u.sessions).padEnd(9),
       localTime(u.created_at),
     ].join(' '),
   );
-  const header = ['USERNAME'.padEnd(20), 'NAME'.padEnd(20), 'STATUS'.padEnd(9), 'SESSIONS'.padEnd(9), 'CREATED'];
+  const header = ['USERNAME'.padEnd(20), 'NAME'.padEnd(20), 'STATUS'.padEnd(9), 'ROLE'.padEnd(6), 'SESSIONS'.padEnd(9), 'CREATED'];
   return [header.join(' '), ...rows].join('\n');
 }
 
@@ -125,7 +181,7 @@ function userSummary(username: string): string {
   const u = requireUser(username);
   const n = (sql: string) => (db.prepare(sql).get(u.id) as { n: number }).n;
   return [
-    `${u.username}  (${u.disabled ? 'DISABLED' : 'active'})`,
+    `${u.username}  (${u.disabled ? 'DISABLED' : 'active'}, ${u.role})`,
     `Display name: ${u.display_name ?? '(none; uses the username)'}`,
     `Created ${localTime(u.created_at)}`,
     '',
@@ -157,6 +213,13 @@ async function userName(username: string | undefined, name: string | undefined):
   setDisplayName(db, u.username, name!);
   const updated = requireUser(u.username);
   console.log(updated.display_name ? `"${u.username}" is now called "${updated.display_name}".` : `"${u.username}" uses their username again.`);
+}
+
+function userRole(username: string | undefined, role: string | undefined): void {
+  const u = requireUser(username);
+  if (!role) fail('Say which role: admin or user.');
+  setRole(db, u.username, role!);
+  console.log(role === 'admin' ? `"${u.username}" is now an admin (can switch the model).` : `"${u.username}" is now a regular user.`);
 }
 
 function userSetDisabled(username: string | undefined, disabled: boolean): void {
@@ -397,6 +460,7 @@ async function mainMenu(): Promise<void> {
       { key: 'chats', label: `chats      (${count('conversations')})` },
       { key: 'memories', label: `memories   (${count('memories')})` },
       { key: 'sessions', label: `sessions   (${count('sessions')})` },
+      { key: 'model', label: `model      (${modelChoice.current()})` },
       { key: 'db', label: 'database   info · check · backup · vacuum · sqlite3 shell' },
       { key: 'quit', label: 'quit' },
     ]);
@@ -404,6 +468,7 @@ async function mainMenu(): Promise<void> {
     else if (choice === 'chats') await chatsMenu();
     else if (choice === 'memories') await memoriesMenu();
     else if (choice === 'sessions') await sessionsMenu();
+    else if (choice === 'model') await modelMenu();
     else if (choice === 'db') await dbMenu();
     else return;
   }
@@ -431,6 +496,7 @@ async function userMenu(username: string): Promise<void> {
       { key: 'chats', label: 'chats' },
       { key: 'memories', label: 'memories' },
       { key: 'name', label: `display name  (${u.display_name ?? 'none'})` },
+      { key: 'role', label: u.role === 'admin' ? 'role: admin  (make a regular user)' : 'role: user  (make an admin)' },
       { key: 'passwd', label: 'change password' },
       { key: 'toggle', label: u.disabled ? 'enable (allow login)' : 'disable (block login, keep data)' },
       { key: 'signout', label: 'sign out everywhere' },
@@ -441,6 +507,7 @@ async function userMenu(username: string): Promise<void> {
     else if (choice === 'chats') await chatsMenu(username);
     else if (choice === 'memories') await memoriesMenu(username);
     else if (choice === 'name') await attempt(() => userName(username, undefined));
+    else if (choice === 'role') await attempt(() => userRole(username, u.role === 'admin' ? 'user' : 'admin'));
     else if (choice === 'passwd') await attempt(() => userPasswd(username));
     else if (choice === 'toggle') await attempt(() => userSetDisabled(username, !u.disabled));
     else if (choice === 'signout') await attempt(() => sessionsRevokeUser(username));
@@ -623,6 +690,7 @@ async function run(argv: string[]): Promise<void> {
       if (action === 'add') return userAdd(a);
       if (action === 'passwd') return userPasswd(a);
       if (action === 'name') return userName(a, b === undefined ? undefined : (text(b, ...rest) ?? ''));
+      if (action === 'role') return userRole(a, b);
       if (action === 'disable' || action === 'enable') return userSetDisabled(a, action === 'disable');
       if (action === 'delete') return void (await userDelete(a, yes));
       break;
@@ -652,6 +720,12 @@ async function run(argv: string[]): Promise<void> {
       if (action === 'revoke') return sessionRevoke(a);
       if (action === 'revoke-user') return sessionsRevokeUser(a);
       if (action === 'purge') return console.log(`Removed ${admin.purgeExpiredSessions(db)} expired session(s).`);
+      break;
+    case 'model':
+      if (!action || action === 'show') return console.log(modelShow());
+      if (action === 'list') return console.log(await modelList());
+      if (action === 'use') return modelUse(a);
+      if (action === 'reset') return modelReset();
       break;
     case 'db':
       if (!action || action === 'info') return console.log(admin.dbInfo(db, config.dbPath));

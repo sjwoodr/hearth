@@ -19,6 +19,16 @@ function headersFor(e: Endpoint, priority: 'reply' | 'background', userId?: numb
   };
 }
 
+/** A model name, or a function giving the one to use now (an admin can switch it while hearth runs). */
+export type ModelName = string | (() => string);
+const nameOf = (m: ModelName) => (typeof m === 'function' ? m() : m);
+
+/**
+ * `think` for a reply that shouldn't reason. gpt-oss can't turn reasoning off: with `false` its answer
+ * comes back empty (measured 2026-10-10), so it gets its lowest level instead.
+ */
+export const fastThink = (model: string): false | 'low' => (model.startsWith('gpt-oss') ? 'low' : false);
+
 /** The gateway's answer for a background call a reply preempted: 409 `{"error":"preempted"}`. */
 const PREEMPTED = 'preempted';
 
@@ -108,10 +118,11 @@ function startChat(endpoint: Endpoint, body: object, signal: AbortSignal, userId
 
 const withTools = (opts?: ChatOptions) => (opts?.tools?.length ? { tools: opts.tools } : {});
 
-export function ollamaChat(endpoint: Endpoint, model: string, numCtx: number): ChatFn {
+export function ollamaChat(endpoint: Endpoint, model: ModelName, numCtx: number): ChatFn {
   return async function* (messages, signal, opts) {
+    const name = nameOf(model);
     // think: false keeps chat snappy; the model otherwise reasons before every reply.
-    const request = { model, messages, think: false, ...withTools(opts), options: { num_ctx: numCtx } };
+    const request = { model: name, messages, think: fastThink(name), ...withTools(opts), options: { num_ctx: numCtx } };
     const body = await startChat(endpoint, request, signal, opts?.userId);
     for await (const data of readLines(body, opts?.onQueued)) {
       if (data.done) recordModelStats('reply', data);
@@ -128,8 +139,10 @@ export function ollamaChat(endpoint: Endpoint, model: string, numCtx: number): C
  * straight away, with its reasoning so far passed back as notes. The reasoning itself is never
  * shown or stored.
  */
-export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: number, defaultBudget: number): ChatFn {
+export function ollamaThinkingChat(endpoint: Endpoint, model: ModelName, numCtx: number, defaultBudget: number): ChatFn {
   return async function* (messages, signal, opts) {
+    // Resolved once, so the reasoning and the answer after a cut come from the same model.
+    const name = nameOf(model);
     const budget = opts?.thinkingBudget ?? defaultBudget;
     const thinking = new AbortController();
     const stop = () => thinking.abort();
@@ -143,7 +156,7 @@ export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: nu
     try {
       const body = await startChat(
         endpoint,
-        { model, messages, think: true, ...withTools(opts), options: { num_ctx: numCtx } },
+        { model: name, messages, think: true, ...withTools(opts), options: { num_ctx: numCtx } },
         thinking.signal,
         opts?.userId,
       );
@@ -185,7 +198,7 @@ export function ollamaThinkingChat(endpoint: Endpoint, model: string, numCtx: nu
       content: `(Your private reasoning so far, not shown to me:)\n${notes}\n\nThinking time is up. Reply to my last message now${orTool}.`,
     };
     // Through the gateway this is a second request, so it can wait for a slot again.
-    yield* ollamaChat(endpoint, model, numCtx)([...messages, answerNow], signal, {
+    yield* ollamaChat(endpoint, name, numCtx)([...messages, answerNow], signal, {
       tools: opts?.tools,
       onToolCall: opts?.onToolCall,
       userId: opts?.userId,
@@ -209,16 +222,17 @@ export const JSON_MAX_TOKENS = 2048;
  */
 export type JsonFn = (messages: ChatMessage[], schema: object | null, signal?: AbortSignal) => Promise<unknown>;
 
-export function ollamaJson(endpoint: Endpoint, model: string, numCtx: number): JsonFn {
+export function ollamaJson(endpoint: Endpoint, model: ModelName, numCtx: number): JsonFn {
   return async (messages, schema, signal) => {
+    const name = nameOf(model);
     const res = await fetch(`${urlOf(endpoint)}/api/chat`, {
       method: 'POST',
       headers: headersFor(endpoint, 'background'),
       body: JSON.stringify({
-        model,
+        model: name,
         messages,
         stream: false,
-        think: false,
+        think: fastThink(name),
         ...(schema ? { format: schema } : {}),
         options: { num_ctx: numCtx, temperature: 0.2, num_predict: JSON_MAX_TOKENS },
       }),
@@ -255,6 +269,59 @@ export function ollamaModelLoaded(endpoint: Endpoint): (model: string) => Promis
     } catch {
       return undefined;
     }
+  };
+}
+
+/** A chat model Ollama has: never an embedding model, which can't hold a conversation. */
+export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[] };
+
+/**
+ * The chat models Ollama has pulled, from /api/tags plus each one's /api/show capabilities (both
+ * pass through the gateway). Capabilities are cached by digest, so a re-pulled tag is asked again.
+ */
+export function ollamaModels(endpoint: Endpoint): { list(): Promise<ModelInfo[]>; capabilities(name: string): Promise<string[] | undefined> } {
+  const shown = new Map<string, string[]>();
+  async function capabilitiesOf(name: string, digest = ''): Promise<string[]> {
+    const key = `${name}@${digest}`;
+    const cached = shown.get(key);
+    if (cached) return cached;
+    const res = await fetch(`${urlOf(endpoint)}/api/show`, {
+      method: 'POST',
+      headers: headersFor(endpoint, 'reply'),
+      body: JSON.stringify({ model: name }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`Ollama /api/show returned ${res.status} for ${name}`);
+    const caps = ((await res.json()) as { capabilities?: string[] }).capabilities ?? [];
+    shown.set(key, caps);
+    return caps;
+  }
+  async function list(): Promise<ModelInfo[]> {
+    const res = await fetch(`${urlOf(endpoint)}/api/tags`, { headers: headersFor(endpoint, 'reply'), signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`Ollama /api/tags returned ${res.status}`);
+    const { models = [] } = (await res.json()) as {
+      models?: { name: string; size: number; digest?: string; details?: { parameter_size?: string; quantization_level?: string } }[];
+    };
+    const all = await Promise.all(
+      models.map(async (m) => ({
+        name: m.name,
+        size: m.size,
+        parameterSize: m.details?.parameter_size,
+        quantization: m.details?.quantization_level,
+        capabilities: await capabilitiesOf(m.name, m.digest),
+      })),
+    );
+    return all.filter((m) => m.capabilities.includes('completion') && !m.capabilities.includes('embedding')).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return {
+    list,
+    async capabilities(name) {
+      try {
+        return await capabilitiesOf(name);
+      } catch {
+        return undefined;
+      }
+    },
   };
 }
 

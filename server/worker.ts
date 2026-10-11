@@ -11,6 +11,7 @@ import { startMetrics, zeroCounters } from './metrics.ts';
 import { openDbOrExit } from './db.ts';
 import { probeModels, registerHealthRoutes } from './health.ts';
 import { startMemorySweeper } from './extract.ts';
+import { startModelReverter } from './active-model.ts';
 import { connectModels, modelSetupProblem } from './models.ts';
 import { closeGracefully } from './shutdown.ts';
 import { startSummarySweeper } from './summarize.ts';
@@ -26,8 +27,12 @@ if (problem) {
 }
 
 const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
-const models = connectModels(config);
-const stopMemories = startMemorySweeper(db, models.json, models.embed, config.memoryIdleMinutes, { paused: models.replyActive });
+const models = connectModels(config, db);
+// Paused while an admin's switch is active (see index.ts), and reverts that switch once it's idle.
+const stopMemories = startMemorySweeper(db, models.json, models.embed, config.memoryIdleMinutes, {
+  paused: () => models.replyActive() || !models.choice.isDefault(),
+});
+const stopReverter = startModelReverter(models.choice, models.loaded);
 const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget);
 // Only health endpoints, for probes. Its server also keeps the process alive.
 const health = new Hono();
@@ -45,6 +50,7 @@ closeGracefully(server, {
   graceMs: config.shutdownGraceMs,
   beforeClose: () => {
     stopMemories();
+    stopReverter();
     stopSummaries();
   },
   cleanup: () => void db.close(),

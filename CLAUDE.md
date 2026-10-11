@@ -244,6 +244,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   a quotation closes the string, so text was silently cut mid-sentence ("…how the band's" before
   `"engine"`); it clipped a chat summary and two memories. Extraction keeps its schema, with a
   `pattern` (no raw `"`, must end in punctuation) that Ollama enforces. Use the same for new schemas.
+- **The model can be switched by an admin, for everyone** (`server/active-model.ts`,
+  `model-routes.ts`; owner's call, 2026-10-11, "just for fun"). One model fits in memory, so the switch
+  is server-wide, stored in `settings` (api and worker share the DB; 2 s read cache), and every model
+  call resolves the name per call (`ModelName` in `ollama.ts`). Capabilities come from Ollama's
+  `/api/show`: no `vision` → images refused, no `thinking` → fast, no `tools` → no web search.
+  **Memory extraction pauses** on a non-default model (the small-model bench showed weaker models
+  merge and invent memories), and `startModelReverter` (in whichever process extracts memories)
+  returns to `HEARTH_MODEL` once Ollama has unloaded the other model **and** it's been unused 5 min;
+  both conditions, because right after a switch the new model isn't loaded yet. gpt-oss can't turn
+  reasoning off, so "fast" sends it `think: "low"` (`fastThink`). Other users learn of a switch from
+  `X-Hearth-Model` on their next request; no push channel (an occasional poll is a TODO). Admin is
+  `users.role`, granted only by `bin/hearth users role`.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -258,6 +270,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
+| `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |

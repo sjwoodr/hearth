@@ -152,21 +152,22 @@ delete the job if you don't deploy this way.
 
 ## Admin console: `bin/hearth`
 
-Everything in the database is managed from the host with `bin/hearth`; there is
-no admin interface on the web. Run it bare for an fzf menu (arrow keys, type to
+Everything in the database is managed from the host with `bin/hearth`; the one
+admin control on the web is the model switch (below), and only for admins. Run it bare for an fzf menu (arrow keys, type to
 filter, ESC to go back, details in a preview pane). When input is piped or fzf is
 missing it falls back to numbered prompts, which is also how its tests drive it.
 Every action is also a subcommand:
 
 ```
 hearth users    list | add <user> | passwd <user> | name <user> [display name]
-                | disable <user> | enable <user> | delete <user>
+                | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
 hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                 | delete <id>
 hearth messages edit <id> [text] | delete <id>
 hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
                 | kind <id> <profile|fact> | delete <id>
 hearth sessions list [user] | revoke <id-prefix> | revoke-user <user> | purge
+hearth model    show | list | use <model> | reset
 hearth db       info | check | backup [file] | vacuum | shell
 ```
 
@@ -190,6 +191,8 @@ Multi-user, with no sign-up from the web interface; accounts come from
 - Failed logins are throttled: 5 misses for one username from one address, or
   20 from one address, lock that for 15 minutes. Lockouts are in memory, so a
   restart clears them.
+- **Roles: `user` (everyone, by default) and `admin`.** Only `hearth users role <user> admin` grants
+  admin; the web app can't. An admin can switch the model (below); nothing else differs.
 - Each user can have a display name (`hearth users name <user> <name>`), used
   in the greeting, the memory prompt and extraction; without one hearth uses
   the username. Extraction fills a blank display name when a user explicitly
@@ -303,13 +306,26 @@ result and the design decisions they led to are in [docs/model-selection.md](doc
 The bench lives in `~/src/other/french-model-bench`, outside this repo, because its answer key comes
 from private content.
 
+**Switching the model (admins).** The sidebar shows the model in use; an admin's **Change** opens a
+list of every chat model Ollama has pulled (embedding models are left out), with its size and what
+it can do: photos (`vision`), Think (`thinking`) and web search (`tools`). A switch is for everyone,
+because one model fits in memory: it's stored in the `settings` table, so the api and the worker pick
+it up within seconds, and chat, thinking, titles, image descriptions and summaries all use it. What
+the new model can't do is turned off for it: images are refused with a message, Think answers fast,
+and web search isn't offered. Every API answer carries `X-Hearth-Model`, so other users see a notice
+on their next request ("The model is now …"); there is no push. **Memory extraction waits** while a
+non-default model is active (a weaker model can merge or invent memories) and catches up later.
+**hearth goes back to `HEARTH_MODEL` by itself** once Ollama has unloaded the other model
+(`OLLAMA_KEEP_ALIVE`) and no reply has used it for 5 minutes. The same from the console: `hearth model
+list | use <model> | reset`.
+
 **Think: Auto / On / Off.** The button next to Send cycles through three settings (remembered per
 browser). Thinking replies use `HEARTH_MODEL_THINKING` with reasoning capped by the effort level
 (below; Medium's cap is `HEARTH_THINKING_TOKEN_BUDGET`, 200 tokens): at the cap the model is stopped
 and asked to answer, with its reasoning passed back as notes. The reasoning is never shown or stored;
 the bubble shows "Thinking… N of 200 · Medium" while it runs. Measured: ~12-15 s per reply instead of ~2 s, for grading as accurate as
 unlimited thinking, which sometimes ran past five minutes. Background jobs (memory, titles,
-summaries) always use `HEARTH_MODEL` without thinking.
+summaries) never think, and use `HEARTH_MODEL` unless an admin has switched the model.
 
 - **Auto** (the default) thinks only when the message calls for it, by plain rules in
   `server/think-router.ts`: asking to check, correct or grade French; answering (or disputing) a quiz

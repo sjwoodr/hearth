@@ -14,7 +14,8 @@ import { probeModels } from './health.ts';
 import { makeImageDescriber } from './images.ts';
 import { memoryContext } from './memories.ts';
 import { backgroundJobs, connectModels, modelSetupProblem } from './models.ts';
-import { ollamaChat, ollamaModelLoaded, ollamaThinkingChat } from './ollama.ts';
+import { startModelReverter } from './active-model.ts';
+import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { makeTitler } from './titles.ts';
 import { closeGracefully } from './shutdown.ts';
@@ -48,15 +49,14 @@ try {
 const db = openDbOrExit(config.dbPath, { autoMigrate: config.autoMigrate });
 const webSearch = config.searxngUrl === 'off' ? undefined : searxngSearch(config.searxngUrl);
 // Every chat-model call goes through a scheduler: replies go first, background work yields.
-const models = connectModels(config);
+const models = connectModels(config, db);
 const { embed, json } = models;
-const modelLoaded = ollamaModelLoaded(models.endpoint);
 const app = createApp({
   db,
   origin: config.origin,
   clientIp: (c) => resolveClientIp(getConnInfo(c).remote.address, c.req.header('x-forwarded-for'), trustedProxies),
-  chat: models.asReply(ollamaChat(models.endpoint, config.model, config.numCtx)),
-  thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, config.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
+  chat: models.asReply(ollamaChat(models.endpoint, models.model, config.numCtx)),
+  thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, models.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
   // Read per request, so edits to the prompt file apply without a restart.
   systemPrompt: () => fs.readFileSync(config.systemPromptPath, 'utf8').trim(),
   contextBudget: config.contextBudget,
@@ -71,11 +71,17 @@ const app = createApp({
   webSearch,
   checkModels: probeModels(config.gatewayUrl || config.ollamaUrl, !!config.gatewayUrl),
   // Says "loading the model" when Ollama has unloaded it (asked alongside each reply).
-  modelLoaded: (think) => modelLoaded(think ? config.thinkingModel : config.model),
+  modelLoaded: (think) => models.loaded(think ? models.thinkingModel() : models.model()),
+  modelChoice: models.choice,
+  modelCatalog: ollamaModels(models.endpoint),
 });
+// Memory extraction waits while an admin's switch is active: a weaker model can merge or invent
+// memories. It catches up once the default is back.
 const stopMemories = jobs.memories
-  ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: models.replyActive })
+  ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: () => models.replyActive() || !models.choice.isDefault() })
   : undefined;
+// Whoever extracts memories also reverts an idle switch (with HEARTH_ROLE=api that's the worker).
+const stopReverter = jobs.memories ? startModelReverter(models.choice, models.loaded) : undefined;
 
 // Built front end (pnpm build). In development, Vite serves it and proxies /api here.
 app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
@@ -94,6 +100,9 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 closeGracefully(server, {
   name: 'hearth',
   graceMs: config.shutdownGraceMs,
-  beforeClose: () => stopMemories?.(),
+  beforeClose: () => {
+    stopMemories?.();
+    stopReverter?.();
+  },
   cleanup: () => void db.close(),
 });

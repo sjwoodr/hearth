@@ -10,6 +10,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The model every answer says is in use (X-Hearth-Model): an admin can switch it for everyone. */
+export type ModelHeader = { model: string; isDefault: boolean };
+const modelListeners = new Set<(m: ModelHeader) => void>();
+/** Calls `listener` with the model each response reports; returns the unsubscribe. */
+export function onModelHeader(listener: (m: ModelHeader) => void): () => void {
+  modelListeners.add(listener);
+  return () => modelListeners.delete(listener);
+}
+
 async function send(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
   // Non-GET requests are always JSON. With no Content-Type, Hono's csrf() treats the request
   // as a form post and checks Origin, which fails for any LAN name other than HEARTH_ORIGIN.
@@ -20,6 +29,8 @@ async function send(method: string, path: string, body?: unknown, signal?: Abort
     body: isRead ? undefined : JSON.stringify(body ?? {}),
     signal,
   });
+  const model = res.headers.get('X-Hearth-Model');
+  if (model) for (const listener of modelListeners) listener({ model, isDefault: res.headers.get('X-Hearth-Model-Default') === '1' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`, data.retryAfterSeconds);
@@ -30,8 +41,11 @@ async function send(method: string, path: string, body?: unknown, signal?: Abort
 const request = async <T,>(method: string, path: string, body?: unknown): Promise<T> =>
   (await send(method, path, body)).json() as Promise<T>;
 
-/** `name` is the display name, or the username when none is set. */
-export type Me = { username: string; name: string };
+/** `name` is the display name, or the username when none is set. An admin can switch the model. */
+export type Me = { username: string; name: string; role?: 'user' | 'admin'; isAdmin?: boolean };
+/** A chat model Ollama has; `capabilities` from Ollama (vision, thinking, tools). */
+export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[] };
+export type ActiveModel = { model: string; default: string; isDefault: boolean; since?: string; by?: string; lastUsed?: string };
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
 export type Source = { title: string; url: string };
 /**
@@ -70,7 +84,7 @@ export type Memory = {
 
 export type StreamEvent =
   /** `effort` and `budget`: how hard a thinking reply may think, and its cap in reasoning tokens. */
-  | { type: 'start'; userMessageId: number; think?: boolean; effort?: Effort; budget?: number; reason?: string }
+  | { type: 'start'; userMessageId: number; model?: string; think?: boolean; effort?: Effort; budget?: number; reason?: string }
   | { type: 'queued' }
   /** Ollama had unloaded the model; this reply waits while it loads (~15 s). */
   | { type: 'loading' }
@@ -140,4 +154,8 @@ export const api = {
   updateMemory: (id: number, change: { kind?: MemoryKind; content?: string }) =>
     request<Memory>('PATCH', `/api/memories/${id}`, change),
   deleteMemory: (id: number) => request('DELETE', `/api/memories/${id}`),
+  /** Admin only: the chat models Ollama has, and the one in use. */
+  models: () => request<{ active: ActiveModel; models: ModelInfo[] }>('GET', '/api/models'),
+  setModel: (model: string) => request<{ active: ActiveModel }>('PUT', '/api/model', { model }),
+  resetModel: () => request<{ active: ActiveModel }>('DELETE', '/api/model'),
 };

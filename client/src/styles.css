@@ -296,3 +296,30 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
 }
+
+/* The model in use (an admin can switch it for everyone) and the admin's picker. */
+.sidebar-model {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 16px 0;
+  font-size: 0.85rem; border-top: 1px solid var(--border); overflow: hidden;
+}
+.sidebar-model > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-model .switched { color: var(--accent); font-weight: 600; }
+.sidebar-model + .sidebar-foot { border-top: none; }
+.notice { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  background: var(--user-bubble); color: var(--text); font-size: 0.9rem; }
+.model-picker { max-width: min(560px, calc(100vw - 32px)); border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); padding: 1rem 1.25rem; }
+.model-picker::backdrop { background: rgb(0 0 0 / 0.4); }
+.model-picker h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.model-picker p { font-size: 0.9rem; }
+.model-list { list-style: none; margin: 0.75rem 0; padding: 0; display: grid; gap: 0.5rem; }
+.model-list button { width: 100%; display: grid; gap: 0.3rem; text-align: left; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); }
+.model-list button:not(:disabled):hover { border-color: var(--accent); }
+.model-list li.current button { border-color: var(--accent); background: var(--user-bubble); cursor: default; }
+.model-list button:disabled { opacity: 1; }
+.model-name { font-weight: 600; overflow-wrap: anywhere; }
+.model-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.8rem; color: var(--muted); }
+.chip { padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); }
+.chip.missing { text-decoration: line-through; opacity: 0.8; }
+.dialog-actions { display: flex; justify-content: flex-end; }

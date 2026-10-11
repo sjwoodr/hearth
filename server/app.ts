@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { registerChatRoutes, type ChatDeps } from './chat.ts';
 import { registerMemoryRoutes } from './memory-routes.ts';
+import { registerModelRoutes } from './model-routes.ts';
 import type { DB } from './db.ts';
 import { registerHealthRoutes, type ModelsProbe } from './health.ts';
 import { getDummyHash, verifyPassword } from './passwords.ts';
@@ -74,7 +75,7 @@ export function createApp(opts: AppOptions) {
       path: '/',
       maxAge: SESSION_TTL_MS / 1000,
     });
-    return c.json({ username: user.username, name: nameOf(user) });
+    return c.json({ username: user.username, name: nameOf(user), role: user.role, isAdmin: user.role === 'admin' });
   });
 
   app.post('/api/logout', (c) => {
@@ -91,11 +92,21 @@ export function createApp(opts: AppOptions) {
     const user = token ? getSessionUser(db, token) : undefined;
     if (!user) return c.json({ error: 'Not signed in.' }, 401);
     c.set('user', user);
+    // Every answer says which model is in use, so the client notices an admin's switch on its next request.
+    const model = opts.modelChoice?.info();
+    if (model) {
+      c.header('X-Hearth-Model', model.model);
+      c.header('X-Hearth-Model-Default', model.isDefault ? '1' : '0');
+    }
     await next();
   });
-  authed.get('/me', (c) => c.json({ username: c.get('user').username, name: c.get('user').name }));
+  authed.get('/me', (c) => {
+    const user = c.get('user');
+    return c.json({ username: user.username, name: user.name, role: user.role, isAdmin: user.role === 'admin' });
+  });
   registerChatRoutes(authed, opts);
   registerMemoryRoutes(authed, db);
+  registerModelRoutes(authed, opts);
 
   app.route('/api', authed);
   return app;

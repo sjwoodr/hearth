@@ -139,7 +139,8 @@ export async function pause(): Promise<void> {
   if (interactive) await ask('  ↵  press Enter to continue… ');
 }
 
+/** SQLite's UTC `datetime('now')`, or an ISO time with its own zone (the settings table's). */
 export function localTime(sqliteUtc: string): string {
-  const d = new Date(`${sqliteUtc.replace(' ', 'T')}Z`);
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(sqliteUtc) ? sqliteUtc : `${sqliteUtc.replace(' ', 'T')}Z`);
   return Number.isNaN(d.getTime()) ? sqliteUtc : d.toLocaleString();
 }

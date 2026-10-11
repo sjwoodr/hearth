@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Conversation, type Me, type SearchHit } from './api.ts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError, onModelHeader, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
 import { ConversationView } from './ConversationView.tsx';
 import { MemoriesView } from './MemoriesView.tsx';
+import { ModelPicker } from './ModelPicker.tsx';
 
 const readHash = (): number | undefined => {
   const match = /^#\/c\/(\d+)$/.exec(location.hash);
@@ -36,6 +37,28 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState('');
+  // The model in use, from the X-Hearth-Model header on every answer. An admin's switch shows up on
+  // this browser's next request with a notice, unless this browser made it.
+  const [model, setModel] = useState<ModelHeader | undefined>(undefined);
+  const [modelNotice, setModelNotice] = useState('');
+  const [picking, setPicking] = useState(false);
+  const seenModel = useRef<string | undefined>(undefined);
+
+  useEffect(
+    () =>
+      onModelHeader((m) => {
+        setModel((prev) => (prev?.model === m.model && prev.isDefault === m.isDefault ? prev : m));
+        const before = seenModel.current;
+        seenModel.current = m.model;
+        if (before === undefined || before === m.model) return;
+        setModelNotice(
+          m.isDefault
+            ? `Back to ${m.model}, the default model.`
+            : `The model is now ${m.model} (changed by an admin). The next reply may take about 15 s while it loads.`,
+        );
+      }),
+    [],
+  );
 
   const handleError = useCallback(
     (err: unknown) => {
@@ -194,6 +217,18 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             ))}
           </ul>
         </nav>
+        {model && (
+          <div className="sidebar-model">
+            <span className="muted" title={model.isDefault ? 'The default model' : 'Switched by an admin'}>
+              Model: <span className={model.isDefault ? undefined : 'switched'}>{model.model}</span>
+            </span>
+            {me.isAdmin && (
+              <button type="button" className="link" onClick={() => setPicking(true)}>
+                Change
+              </button>
+            )}
+          </div>
+        )}
         <div className="sidebar-foot">
           <button
             type="button"
@@ -233,6 +268,25 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           <p className="error banner" role="alert">
             {error}
           </p>
+        )}
+        {modelNotice && (
+          <p className="notice banner" role="status">
+            {modelNotice}
+            <button type="button" className="icon" aria-label="Dismiss" onClick={() => setModelNotice('')}>
+              ✕
+            </button>
+          </p>
+        )}
+        {picking && (
+          <ModelPicker
+            onClose={() => setPicking(false)}
+            onSwitched={(active) => {
+              // This browser made the switch, so the next header showing it isn't news.
+              seenModel.current = active.model;
+              setModel({ model: active.model, isDefault: active.isDefault });
+              setModelNotice('');
+            }}
+          />
         )}
         {showMemories ? (
           <MemoriesView onOpenChat={open} onError={handleError} />

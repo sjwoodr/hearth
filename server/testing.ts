@@ -2,10 +2,11 @@
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import type { Hono } from 'hono';
+import type { ModelChoice } from './active-model.ts';
 import { createApp } from './app.ts';
 import { createModelScheduler } from './busy.ts';
 import { openDb, type DB } from './db.ts';
-import type { ChatFn, ChatMessage, ChatOptions } from './ollama.ts';
+import type { ChatFn, ChatMessage, ChatOptions, ModelInfo } from './ollama.ts';
 import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
 import type { Effort } from '../shared/think-effort.ts';
@@ -94,6 +95,9 @@ export function setupApp(
     slots?: number;
     /** What the model-loaded check answers (undefined: can't tell); omitted, the app has no check. */
     modelLoaded?: LoadedCheck;
+    /** A model switch to test (active-model.ts) and the fake Ollama models it can choose from. */
+    modelChoice?: ModelChoice;
+    models?: ModelInfo[];
   } = {},
 ) {
   const db = opts.db ?? openDb(':memory:');
@@ -164,6 +168,15 @@ export function setupApp(
       return model.description;
     },
     afterReply: (id) => model.afterReply.push(id),
+    modelChoice: opts.modelChoice,
+    ...(opts.models
+      ? {
+          modelCatalog: {
+            list: async () => opts.models!,
+            capabilities: async (name: string) => opts.models!.find((m) => m.name === name)?.capabilities,
+          },
+        }
+      : {}),
     ...scriptedLoadedCheck(model, opts.modelLoaded),
     ...(opts.webSearch
       ? {

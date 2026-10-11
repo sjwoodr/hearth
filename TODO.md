@@ -37,6 +37,9 @@
       cutoff doesn't work: different facts on one topic score as high as rewordings.
 - [x] Model-written chat titles after the first reply.
 - [ ] Per-user personality, or editing the system prompt from the web instead of the file.
+- [ ] An occasional poll (`GET /api/me` every minute or on tab focus) so an idle tab notices an
+      admin's model switch without the user doing anything. Today it shows on the next request,
+      which has been enough; may never be needed.
 - [ ] Users changing their own password or display name from the web (today it's CLI only, by design).
 - [x] Web search for current events; the model asks, the user approves each search on a card.
 - [ ] Automated front-end tests. Browser checks so far were ad hoc scripts driving headless Chrome with

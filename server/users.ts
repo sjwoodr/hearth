@@ -8,8 +8,13 @@ export type User = {
   display_name: string | null;
   password_hash: string;
   disabled: number;
+  role: Role;
   created_at: string;
 };
+
+export const ROLES = ['user', 'admin'] as const;
+export type Role = (typeof ROLES)[number];
+export const isRole = (value: unknown): value is Role => typeof value === 'string' && (ROLES as readonly string[]).includes(value);
 
 const USERNAME_RE = /^[a-z0-9][a-z0-9_.-]{0,31}$/i;
 
@@ -40,6 +45,13 @@ export function setDisplayName(db: DB, username: string, name: string): void {
     throw new Error(`A display name must be 1-${MAX_DISPLAY_NAME_CHARS} characters, without markdown symbols.`);
   }
   db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(clean, user.id);
+}
+
+/** Makes a user an admin or a plain user. Only the admin console calls this; the web app never does. */
+export function setRole(db: DB, username: string, role: string): void {
+  if (!isRole(role)) throw new Error(`A role must be one of: ${ROLES.join(', ')}.`);
+  const user = requireUser(db, username);
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, user.id);
 }
 
 /** What hearth calls the user. */

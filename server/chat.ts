@@ -19,6 +19,8 @@ import { isPreempted } from './busy.ts';
 import { describeWaitingImages, parseImages, PendingImages, withImageText } from './images.ts';
 import { plainSymbols } from '../shared/plain-symbols.ts';
 import { SELF_CORRECTION, shouldThink, type ReplyDecision } from './think-router.ts';
+import type { ModelChoice } from './active-model.ts';
+import type { ModelInfo } from './ollama.ts';
 import { isEffort, type Effort } from '../shared/think-effort.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
@@ -66,6 +68,10 @@ export type ChatDeps = {
   now?: () => Date;
   /** Whether the reply's model (the thinking one when `think`) is in Ollama's memory; undefined: can't tell. */
   modelLoaded?: (think: boolean) => Promise<boolean | undefined>;
+  /** The model in use (an admin can switch it); replies record their use so an idle switch can revert. */
+  modelChoice?: ModelChoice;
+  /** What a model can do (Ollama's capabilities: vision, thinking, tools); undefined: can't tell. */
+  modelCatalog?: { list(): Promise<ModelInfo[]>; capabilities(name: string): Promise<string[] | undefined> };
 };
 
 /**
@@ -99,6 +105,10 @@ type ReplyOpts = {
   searches?: number;
   /** Set when the user approved a search: the reply first waits for it (the turn promise). */
   searching?: string;
+  /** False when the current model can't call tools, so web search isn't offered. */
+  search?: boolean;
+  /** The model answering, for the client's notice when it changed. */
+  model?: string;
 };
 
 
@@ -217,7 +227,23 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   // change every time, so they ride on the newest message, in the prompt only; the stored message
   // is left as written. Images go to the model while they're still in memory: until described, and
   // after that only until the next message (so a retry still sees them). Then the description stands in.
-  async function buildPrompt(user: SessionUser, conversationId: number, latest: string, decision?: ReplyDecision): Promise<ChatMessage[]> {
+  // What the model in use can do. Unknown capabilities (no catalog, Ollama unreachable) allow everything.
+  type ModelNow = { name?: string; caps?: string[] };
+  async function modelNow(): Promise<ModelNow> {
+    const name = deps.modelChoice?.current();
+    return { name, caps: name && deps.modelCatalog ? await deps.modelCatalog.capabilities(name) : undefined };
+  }
+  const can = (m: ModelNow, capability: string) => !m.caps || m.caps.includes(capability);
+  const searchFor = (m: ModelNow) => !!deps.webSearch && can(m, 'tools');
+  const thinkingFor = (m: ModelNow, decision: ReplyDecision): ReplyDecision => (can(m, 'thinking') ? decision : { think: false, auto: false });
+
+  async function buildPrompt(
+    user: SessionUser,
+    conversationId: number,
+    latest: string,
+    decision?: ReplyDecision,
+    search = !!deps.webSearch,
+  ): Promise<ChatMessage[]> {
     const state = getContextState(db, conversationId);
     const messages = listMessages(db, user.id, conversationId).filter((m) => m.id > state.summary_through_message_id);
     const history: ChatMessage[] = messages.map((m) => {
@@ -238,10 +264,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       history[history.length - 1] = withRecall;
     }
     const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
-    const tool = deps.webSearch ? searchInstructions(deps.now?.() ?? new Date()) : '';
+    const tool = search ? searchInstructions(deps.now?.() ?? new Date()) : '';
     const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
-    const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (deps.webSearch ? SEARCH_RESERVE : 0);
+    const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (search ? SEARCH_RESERVE : 0);
     return fitHistory(system, history, contextBudget - reserve);
   }
 
@@ -252,7 +278,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const user = c.get('user');
     const searches = opts.searches ?? 0;
     // Past the limit the tool is withheld, so the model has to answer with what it found.
-    const tools = deps.webSearch && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : undefined;
+    const tools = deps.webSearch && opts.search !== false && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : undefined;
     c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
     c.header('Cache-Control', 'no-cache');
     return stream(c, async (s) => {
@@ -282,9 +308,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         }
       };
 
+      deps.modelChoice?.touch();
       await send({
         type: 'start',
         userMessageId: opts.userMessageId,
+        ...(opts.model ? { model: opts.model } : {}),
         think,
         // How hard, and the cap, so the client can show progress against it.
         ...(effort ? { effort } : {}),
@@ -406,10 +434,16 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       return c.json({ error: `Message is too long (max ${MAX_MESSAGE_CHARS} characters).` }, 400);
     }
 
+    const model = await modelNow();
+    if (images.length > 0 && !can(model, 'vision')) {
+      return c.json({ error: `The current model (${model.name}) can't read images. Send the message without them, or ask an admin to switch back.` }, 400);
+    }
+
     const earlier = listMessages(db, user.id, conversation.id);
     const isFirst = earlier.length === 0;
     const previousReply = earlier.findLast((m) => m.role === 'assistant')?.content;
-    const decision = decideThinking(body?.think, body?.effort, content, previousReply, images.length > 0);
+    const decision = thinkingFor(model, decideThinking(body?.think, body?.effort, content, previousReply, images.length > 0));
+    const search = searchFor(model);
     pendingImages.moveOn(conversation.id);
     // A search card left unanswered is dropped: the user moved on.
     pendingSearches.forget(conversation.id);
@@ -418,8 +452,14 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // An image alone has no words for a title yet; the model's title after the reply will name it.
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
     if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
-    const prompt = await buildPrompt(user, conversation.id, content, decision);
-    return streamReply(c, conversation.id, { prompt }, { userMessageId, firstMessage: isFirst ? firstMessage : undefined, decision });
+    const prompt = await buildPrompt(user, conversation.id, content, decision, search);
+    return streamReply(c, conversation.id, { prompt }, {
+      userMessageId,
+      firstMessage: isFirst ? firstMessage : undefined,
+      decision,
+      search,
+      model: model.name,
+    });
   });
 
   // Regenerates the reply to the latest user message, replacing the last reply if there is one
@@ -439,18 +479,25 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     pendingSearches.forget(conversation.id);
 
     const before = messages.slice(0, messages.indexOf(question));
-    const decision = decideThinking(
-      body?.think,
-      body?.effort,
-      question.content,
-      before.findLast((m) => m.role === 'assistant')?.content,
-      question.image_count > 0,
+    const model = await modelNow();
+    const decision = thinkingFor(
+      model,
+      decideThinking(
+        body?.think,
+        body?.effort,
+        question.content,
+        before.findLast((m) => m.role === 'assistant')?.content,
+        question.image_count > 0,
+      ),
     );
-    const prompt = await buildPrompt(user, conversation.id, question.content, decision);
+    const search = searchFor(model);
+    const prompt = await buildPrompt(user, conversation.id, question.content, decision, search);
     return streamReply(c, conversation.id, { prompt }, {
       userMessageId: question.id,
       firstMessage: messages.length <= 2 ? question.content : undefined,
       decision,
+      search,
+      model: model.name,
     });
   });
 
@@ -477,11 +524,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const approved = body.approve === true && !!deps.webSearch;
     searchCount.inc({ outcome: approved ? 'approved' : 'declined' });
     const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
+    // The model may have been switched while the card waited.
+    const model = await modelNow();
     return streamReply(c, conversation.id, turn, {
       userMessageId: pending.userMessageId,
       firstMessage: pending.firstMessage,
-      decision: pending.decision,
+      decision: thinkingFor(model, pending.decision),
       searches: pending.searches,
+      search: searchFor(model),
+      model: model.name,
       ...(approved ? { searching: pending.query } : {}),
     });
   });
