@@ -20,7 +20,7 @@ current one however well it grades.
 | `deepseek-r1:14b` | dense 14B | ~9 GB² | 9.0 | always | — | stopped at 20: ~900 reasoning tokens, ~48 s per answer | — | — | — | No: far too slow | 10-11 |
 | `aya-expanse:32b` | dense 32B | ~19 GB² | ~3.7 | none | 138 | 250 (23 / 27), 2.8 s | — | — | — | No: slowest and worst grader | 10-11 |
 | `gemma4:12b-it-qat` | dense 12B | 7.7 GB | ~10 | on/off, cap | 150 (157 thinking) | 280 (15 / 5), 1.7 s | 40/40 on a 40-item subset, 27 s | — | — | Previous model; replaced by the 26B | 09-29 |
-| `Nemotron 3.5 30B-A3B` (IQ4_NL) | MoE 30B, ~3B active | 20 GB | 23-26 | — | 142 | — | — | — | — | No: weaker French | 09-29 |
+| `Nemotron 3.5 30B-A3B` (IQ4_NL) | MoE 30B, ~3B active | 20.3 GB | 23.6 | off | 142 | 268 (12 / 20), 1.4 s | — | — | — | No: bigger, slower, and a much weaker grader | 09-29, 10-11 |
 | `mistral-small3.2:24b` | dense 24B | ~16 GB | — | — | 141 | — | — | — | — | No: weaker grading | 09-29 |
 | `ministral-3:14b` | dense 14B | 8.9 GB | — | — | 140 | — | — | — | — | No: weaker grading | 09-29 |
 | `qwen3:14b` | dense 14B | ~10 GB | — | — | 138 | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
