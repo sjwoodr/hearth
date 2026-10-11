@@ -61,6 +61,22 @@ loaded). Dates are 2026. "—" means not run.
 - **Extraction**: the background-model bench, `scripts/bench-extraction.ts`: corrections and
   extensions that landed on the right memory, out of 12, and the yes/no duplicate judge, out of 36.
 
+## Watch list
+
+What has a real chance on this machine, so new releases are worth a test only when they match it:
+
+- **Mixture of experts with ~4B or fewer active parameters.** Memory bandwidth (~90 GB/s shared DDR5)
+  sets speed here, so dense models of 12B and up run at ~7-10 tok/s whatever their quality.
+- **Under ~20 GB loaded at 32k**, fully on the GPU, with **vision and thinking** (hearth needs both).
+- **Strong multilingual training**, French above all.
+
+Families to watch: **Gemma** (Gemma 4 came out 2026-04-02, roughly a yearly cadence, so a Gemma 5 MoE
+around spring 2027 would fit the pattern) and **Qwen** (Qwen 3.6 35B-A3B was the closest challenger:
+MoE with vision, but 22 GB and weaker French; a smaller vision MoE would be worth testing). Coding-only
+models (qwen3-coder) and decision models (Kev, Clef) are out for hearth but can go in the coding column.
+Generic "best local LLM" lists rank by capacity or quality, not bandwidth, so filter them through
+the rules above before testing anything.
+
 ## Adding a model
 
 1. `ollama pull` it, then measure **Loaded** and **Speed** at 32k context with the GPU otherwise idle.
