@@ -148,7 +148,9 @@ The first answer of each run also pays for loading the model (9-26 s), and the p
   Thinking caught all of them. All fast-mode errors were conjugations; genders and pronouns were clean.
 - Ambiguous-gender nouns (*la maire*, *une élève*, *le/la tour*) are excluded from the wrong answers.
 
-The public write-up is [docs/model-selection.md](docs/model-selection.md) (method, all results, and
+**Every model tested is on one table: [docs/model-scorecard.md](docs/model-scorecard.md)** (size, speed,
+thinking, each bench, extraction, verdict, and the owner's rule for replacing the current model). Add a
+row whenever a model is tested. The public write-up is [docs/model-selection.md](docs/model-selection.md) (method, all results, and
 the design decisions they led to). Keep it in step when results change. Private, outside the repo:
 `~/french-model-report.md` (stage-1 working report, including every miss and answer-key checks; it
 quotes Aubemer drill items, so it must not be copied here), `~/linkedin-article.md`,
@@ -335,8 +337,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   the host's encrypted restic job snapshots that live database (`hearth db backup`, SQLite's online
   backup) before each run, because a live SQLite file can't be copied safely. Phone layout check and 2FA before any internet exposure:
   see `TODO.md`.
-- Bench models no longer needed are still pulled in Ollama (Mistral Small/Nemo, Ministral, Qwen 3,
-  Aya, Gemma 12B, Nemotron); remove them if disk matters.
+- Bench models no longer needed may still be pulled in Ollama; the scorecard's verdicts say which
+  ones failed. Remove them if disk matters.
 - **Grading French from a photo is unmeasured.** In the first real run (2026-10-01, typed homework
   image, Think: Auto thought first) the reply called "Tu écoute" correct, while the background
   transcription kept the mistake verbatim. A 3-run probe was mixed (image + thinking caught it 3/3,

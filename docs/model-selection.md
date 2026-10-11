@@ -3,6 +3,8 @@
 *September 2026. How hearth's model and its Think setting were picked by measurement, on the machine
 hearth runs on, and which design decisions came out of that testing.*
 
+Every model tested since, with its numbers and verdict, is on one table: [model-scorecard.md](model-scorecard.md).
+
 ## Why
 
 When Copilot's web chat added strict daily limits and dropped both its personality and chat history,
