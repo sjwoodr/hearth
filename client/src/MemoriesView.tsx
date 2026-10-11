@@ -173,6 +173,9 @@ function MemoryItem({ memory, onOpenChat, onSave, onMove, onDelete }: ItemProps)
     <li className="memory">
       <p>{memory.content}</p>
       <div className="memory-actions">
+        <span className="memory-id" title="Memory ID, the same one bin/hearth uses">
+          #{memory.id}
+        </span>
         {memory.source_conversation_id !== null ? (
           <a
             href={`#/c/${memory.source_conversation_id}`}

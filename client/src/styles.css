@@ -269,6 +269,7 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .memory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; margin-top: 0.4rem; font-size: 0.85rem; }
 .memory-actions a { color: var(--accent); margin-right: auto; }
 .memory-actions button.link { padding: 0.2rem 0.4rem; }
+.memory-id { color: var(--muted); opacity: 0.7; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .sidebar-foot .current { color: var(--accent); }
 
 /* ── phones: the chat list slides over the conversation ── */

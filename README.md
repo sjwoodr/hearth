@@ -258,7 +258,8 @@ certificates, but any reverse proxy fits.
 ## Memory
 
 Two kinds of memory, both per user and both editable on the Memories page or
-with `bin/hearth memories`:
+with `bin/hearth memories` (the page shows each memory's ID, `#64`, the same
+one the CLI takes):
 
 - **Always remembered** (`profile`): added to every chat's system prompt.
   hearth never creates these itself; a memory becomes one only when its owner
