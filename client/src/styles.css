@@ -299,10 +299,21 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 
 /* The model in use (an admin can switch it for everyone) and the admin's picker. */
 .sidebar-model {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 16px 0;
-  font-size: 0.85rem; border-top: 1px solid var(--border); overflow: hidden;
+  position: relative; padding: 0.5rem 16px 0; font-size: 0.85rem; border-top: 1px solid var(--border);
 }
-.sidebar-model > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The full name, wrapping if it must: nothing is cut off. */
+.sidebar-model .model-label { display: block; overflow-wrap: anywhere; }
+.sidebar-model.admin { cursor: pointer; }
+/* Change sits over the end of the line, hidden until hover, keyboard focus or a tap reveals it. */
+.sidebar-model .change {
+  position: absolute; right: 8px; bottom: -0.15rem; padding-left: 1.5rem; opacity: 0; pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface) 1.25rem);
+  transition: opacity 0.12s;
+}
+.sidebar-model.revealed .change, .sidebar-model:focus-within .change { opacity: 1; pointer-events: auto; }
+@media (hover: hover) {
+  .sidebar-model:hover .change { opacity: 1; pointer-events: auto; }
+}
 .sidebar-model .switched { color: var(--accent); font-weight: 600; }
 .sidebar-model + .sidebar-foot { border-top: none; }
 .notice { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;

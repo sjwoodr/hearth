@@ -42,6 +42,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [model, setModel] = useState<ModelHeader | undefined>(undefined);
   const [modelNotice, setModelNotice] = useState('');
   const [picking, setPicking] = useState(false);
+  const [revealChange, setRevealChange] = useState(false);
   const seenModel = useRef<string | undefined>(undefined);
 
   useEffect(
@@ -218,12 +219,25 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           </ul>
         </nav>
         {model && (
-          <div className="sidebar-model">
-            <span className="muted" title={model.isDefault ? 'The default model' : 'Switched by an admin'}>
+          // The whole name shows; an admin's Change appears over its end on hover (or keyboard focus),
+          // and on a touch screen a tap on the line reveals it.
+          <div
+            className={`sidebar-model${me.isAdmin ? ' admin' : ''}${revealChange ? ' revealed' : ''}`}
+            onClick={me.isAdmin ? () => setRevealChange((r) => !r) : undefined}
+          >
+            <span className="muted model-label" title={`${model.model}: ${model.isDefault ? 'the default model' : 'switched by an admin'}`}>
               Model: <span className={model.isDefault ? undefined : 'switched'}>{model.model}</span>
             </span>
             {me.isAdmin && (
-              <button type="button" className="link" onClick={() => setPicking(true)}>
+              <button
+                type="button"
+                className="link change"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRevealChange(false);
+                  setPicking(true);
+                }}
+              >
                 Change
               </button>
             )}
