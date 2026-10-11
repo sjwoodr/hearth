@@ -125,6 +125,32 @@ export const UPDATED_CANDIDATE = 0.7;
 const MAX_CANDIDATES_CHECKED = 3;
 const SAME_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'] };
 
+const STATED_SCHEMA = { type: 'object', properties: { stated: { type: 'boolean' } }, required: ['stated'] };
+
+/**
+ * Whether the user actually said `candidate` about themselves in this conversation. A lone lookup
+ * ("who is the Jaguars' quarterback?", follow-up "he played at Clemson, right?") became "interested in
+ * the Jaguars" in about 1 of 5 extractions of that real chat; a rule in the main prompt didn't change
+ * the rate. A narrow yes/no on each new memory is the check.
+ */
+export async function statedByUser(json: JsonFn, username: string, transcript: string, candidate: string): Promise<boolean> {
+  const raw = (await json(
+    [
+      {
+        role: 'system',
+        content:
+          `You check one memory about ${username} against the conversation it came from. Answer stated=true only if ` +
+          `${username} said it, or clearly implied it, about themselves: a fact, a preference, an interest, a plan. ` +
+          `Answer stated=false if it rests only on a question ${username} asked, on something hearth said, or on a guess. ` +
+          'Asking about a team, a product or a person is not an interest in it.',
+      },
+      { role: 'user', content: `CONVERSATION:\n${transcript}\n\nMEMORY: ${candidate}` },
+    ],
+    STATED_SCHEMA,
+  )) as { stated?: unknown };
+  return raw?.stated !== false;
+}
+
 export async function saysTheSame(json: JsonFn, existing: string, candidate: string): Promise<boolean> {
   const raw = (await json(
     [
@@ -206,6 +232,8 @@ export type ExtractResult = {
   updated: number;
   /** Additions dropped as rewordings of an existing memory. */
   duplicates: number;
+  /** Additions dropped because the user never said them about themselves (a lookup, a guess). */
+  unstated: number;
   named: boolean;
 };
 
@@ -230,7 +258,7 @@ export async function extractMemories(
   const unread = db
     .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
     .all(conversation.id, conversation.memory_through_message_id) as MessageRow[];
-  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, named: false };
+  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, named: false };
   if (unread.length === 0) return none;
   const lastId = unread.at(-1)!.id;
 
@@ -269,9 +297,24 @@ export async function extractMemories(
   );
   const changes = sanitizeExtraction(raw, existing);
   const named = changes.name !== undefined && conversation.display_name === null;
+  // Each new memory must be something the user said about themselves, not a question they asked.
+  // Updates aren't checked: they rewrite a memory the user already has. Any failure keeps the memory.
+  const stated: { content: string }[] = [];
+  let unstated = 0;
+  for (const add of changes.add) {
+    let keep = true;
+    try {
+      keep = await statedByUser(json, conversation.username, transcript.join('\n\n'), add.content);
+    } catch (err) {
+      if (isPreempted(err)) throw err;
+      console.error('memory: stated check failed, keeping it:', err instanceof Error ? err.message : err);
+    }
+    if (keep) stated.push(add);
+    else unstated++;
+  }
   const { kept, skipped } = embed
-    ? await dropNearDuplicates(db, conversation.user_id, changes.add, changes.update, json, embed)
-    : { kept: changes.add as NewMemory[], skipped: 0 };
+    ? await dropNearDuplicates(db, conversation.user_id, stated, changes.update, json, embed)
+    : { kept: stated as NewMemory[], skipped: 0 };
 
   db.transaction(() => {
     const insert = db.prepare(
@@ -295,6 +338,7 @@ export async function extractMemories(
     added: kept.length,
     updated: changes.update.length,
     duplicates: skipped,
+    unstated,
     named,
   };
 }
@@ -354,7 +398,7 @@ export function createSweep(
           retryAt.delete(id);
           job('memory', 'ok');
           console.log(
-            `memory: chat ${id} done in ${secs()}: read ${r.read}, added ${r.added}, updated ${r.updated}, skipped ${r.duplicates} duplicate(s)`,
+            `memory: chat ${id} done in ${secs()}: read ${r.read}, added ${r.added}, updated ${r.updated}, skipped ${r.duplicates} duplicate(s), ${r.unstated} not said by the user`,
           );
         } catch (err) {
           if (isPreempted(err)) {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PreemptedError } from './busy.ts';
 import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
@@ -108,8 +109,9 @@ describe('extracting from a conversation', () => {
       ['assistant', 'Happy to help.'],
     ]);
     const prompts: ChatMessage[][] = [];
-    const json: JsonFn = async (messages) => {
-      prompts.push(messages);
+    const json: JsonFn = async (messages, schema) => {
+      // Only the extraction prompts (each new memory also gets a yes/no "did they say it?" check).
+      if (schema === EXTRACTION_SCHEMA) prompts.push(messages);
       // A "profile" suggestion is ignored: extraction only records facts.
       return { add: [{ kind: 'profile', content: 'Alice is learning French relative pronouns.' }], update: [] };
     };
@@ -335,5 +337,42 @@ describe('memories in chat and over the API', () => {
 
     expect((await call(ctx.app, ctx.alice, 'DELETE', `/memories/${id}`)).status).toBe(200);
     expect(await (await call(ctx.app, ctx.alice, 'GET', '/memories')).json()).toEqual([]);
+  });
+});
+
+describe('checking that the user said it', () => {
+  // The extraction proposes two memories; the yes/no check answers per memory.
+  async function extractWith(stated: (memory: string) => boolean | Error) {
+    const { db, alice } = await seed();
+    const chat = chatWith(db, alice.id, [
+      ['user', 'who is the quarterback of the jacksonville jaguars'],
+      ['assistant', 'Trevor Lawrence.'],
+      ['user', 'I keep bees, by the way.'],
+    ]);
+    const json: JsonFn = async (messages, schema) => {
+      if (schema === EXTRACTION_SCHEMA) {
+        return { add: [{ content: 'Alice is interested in the Jacksonville Jaguars.' }, { content: 'Alice keeps bees.' }], update: [] };
+      }
+      const verdict = stated(/MEMORY: (.*)$/.exec(messages[1]!.content)![1]!);
+      if (verdict instanceof Error) throw verdict;
+      return { stated: verdict };
+    };
+    const result = await extractMemories(db, chat, json);
+    return { result, stored: (memoriesOf(db, alice.id) as { content: string }[]).map((m) => m.content) };
+  }
+
+  it('drops a memory the user never said about themselves, and keeps one they did', async () => {
+    const { result, stored } = await extractWith((m) => !m.includes('Jaguars'));
+    expect(stored).toEqual(['Alice keeps bees.']);
+    expect(result).toMatchObject({ added: 1, unstated: 1 });
+  });
+
+  it('keeps the memory when the check fails', async () => {
+    const { stored } = await extractWith(() => new Error('model down'));
+    expect(stored).toHaveLength(2);
+  });
+
+  it('abandons the run, writing nothing, when a reply preempts the check', async () => {
+    await expect(extractWith(() => new PreemptedError())).rejects.toBeInstanceOf(PreemptedError);
   });
 });

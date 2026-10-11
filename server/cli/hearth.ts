@@ -375,7 +375,11 @@ async function memoryExtract(chatId: number): Promise<void> {
     console.log('Nothing new to read in that chat.');
     return;
   }
-  const extras = [r.duplicates ? `skipped ${r.duplicates} duplicate(s)` : '', r.named ? 'learned their name' : '']
+  const extras = [
+    r.duplicates ? `skipped ${r.duplicates} duplicate(s)` : '',
+    r.unstated ? `dropped ${r.unstated} the user never said` : '',
+    r.named ? 'learned their name' : '',
+  ]
     .filter(Boolean)
     .map((x) => `, ${x}`)
     .join('');

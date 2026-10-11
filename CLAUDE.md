@@ -210,6 +210,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   4 of 5 rewrites were 300-343 characters and would have been silently dropped; asking for "under
   300" made the model drop details (the tea) or overshoot anyway. The duplicate add of the same
   correction still survives about 2 runs in 3 (the yes/no judge errs to keep); harmless, as both agree.
+- **Every new memory must be something the user said about themselves** (`statedByUser` in
+  `extract.ts`): a yes/no check per addition, before the duplicate check. A lone lookup ("who is the
+  Jaguars' quarterback?") became "interested in the Jaguars" in 3 of 20 extractions of that real chat
+  (live history, 2026-10-11); a rule in the main prompt left it at 1 in 5. With the check: 0 of 20, the
+  generic suite unchanged (real facts and "I'm a Bears fan" kept, corrections still update), and the
+  duplicate add of a correction stopped appearing. Trade-off: interests implied only by questions are
+  dropped too (a Diablo comparison chat no longer adds "interested in Diablo 4"). Updates aren't checked;
+  any failure keeps the memory.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
 - **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands

@@ -282,6 +282,11 @@ instead of gaining a second, competing one. It never deletes. Progress is stored
 (`memory_through_message_id`), so a restart loses nothing; a chat whose
 extraction fails waits 15 minutes before a retry.
 
+**Only what the user said.** Each new memory gets one more yes/no question before it's saved:
+did the user say this about themselves, or only ask about it? A lone lookup ("who is the Jaguars'
+quarterback?") used to become "interested in the Jaguars" about 1 time in 7; with the check, 0 in 20.
+Updates to existing memories aren't checked, and a failed check keeps the memory.
+
 **Near-duplicates.** Before saving, each new memory is embedded and compared with the user's
 existing memories and the rest of the batch. Similarity alone can't separate a rewording from a
 different fact on the same topic (measured: rewordings 0.86-0.94, but "learning French" vs "learning

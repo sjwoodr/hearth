@@ -10,12 +10,29 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "Any tips for staying awake in the afternoon at work?"],
-        ["assistant", "A second round of green tea from that blue mug of yours at the office would do it, and a short walk after lunch."],
-        ["user", "The blue mug lives at home, it's my weekend tea. At work I just use paper cups."],
-        ["assistant", "Got it, the blue mug stays home for weekend tea, and work tea comes in paper cups."]
+        [
+          "user",
+          "Any tips for staying awake in the afternoon at work?"
+        ],
+        [
+          "assistant",
+          "A second round of green tea from that blue mug of yours at the office would do it, and a short walk after lunch."
+        ],
+        [
+          "user",
+          "The blue mug lives at home, it's my weekend tea. At work I just use paper cups."
+        ],
+        [
+          "assistant",
+          "Got it, the blue mug stays home for weekend tea, and work tea comes in paper cups."
+        ]
       ],
-      "expect": { "update": ["mug"], "adds": "any" }
+      "expect": {
+        "update": [
+          "mug"
+        ],
+        "adds": "any"
+      }
     },
     {
       "name": "extension: more detail on an existing memory",
@@ -26,10 +43,21 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "I'm up to three hives now, all Italian bees. The third colony arrived last week."],
-        ["assistant", "Three hives is a proper apiary. Italian bees are gentle, so that's a good choice."]
+        [
+          "user",
+          "I'm up to three hives now, all Italian bees. The third colony arrived last week."
+        ],
+        [
+          "assistant",
+          "Three hives is a proper apiary. Italian bees are gentle, so that's a good choice."
+        ]
       ],
-      "expect": { "update": ["bees"], "adds": "any" }
+      "expect": {
+        "update": [
+          "bees"
+        ],
+        "adds": "any"
+      }
     },
     {
       "name": "correction in French: Italian, not Spanish",
@@ -40,12 +68,29 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "Tu peux me donner un exercice d'espagnol ?"],
-        ["assistant", "Bien sûr. Puisque tu apprends l'espagnol, conjugue « hablar » au présent."],
-        ["user", "Non, attends, c'est l'italien que j'apprends, pas l'espagnol. Je me suis trompée de mot."],
-        ["assistant", "D'accord, l'italien alors. Conjugue « parlare » au présent."]
+        [
+          "user",
+          "Tu peux me donner un exercice d'espagnol ?"
+        ],
+        [
+          "assistant",
+          "Bien sûr. Puisque tu apprends l'espagnol, conjugue « hablar » au présent."
+        ],
+        [
+          "user",
+          "Non, attends, c'est l'italien que j'apprends, pas l'espagnol. Je me suis trompée de mot."
+        ],
+        [
+          "assistant",
+          "D'accord, l'italien alors. Conjugue « parlare » au présent."
+        ]
       ],
-      "expect": { "update": ["lang"], "adds": "any" }
+      "expect": {
+        "update": [
+          "lang"
+        ],
+        "adds": "any"
+      }
     },
     {
       "name": "new fact, nothing to update",
@@ -55,11 +100,23 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "I just started cello lessons, my first one was yesterday."],
-        ["assistant", "The cello is a lovely choice. How did the first lesson go?"],
-        ["user", "Hard on the fingers but fun."]
+        [
+          "user",
+          "I just started cello lessons, my first one was yesterday."
+        ],
+        [
+          "assistant",
+          "The cello is a lovely choice. How did the first lesson go?"
+        ],
+        [
+          "user",
+          "Hard on the fingers but fun."
+        ]
       ],
-      "expect": { "update": [], "adds": "some" }
+      "expect": {
+        "update": [],
+        "adds": "some"
+      }
     },
     {
       "name": "control: small talk",
@@ -70,12 +127,27 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "It's raining again, can you believe it?"],
-        ["assistant", "Third day in a row. At least it's good weather for a book."],
-        ["user", "Ha, true. Tell me a joke."],
-        ["assistant", "Why did the scarecrow win an award? He was outstanding in his field."]
+        [
+          "user",
+          "It's raining again, can you believe it?"
+        ],
+        [
+          "assistant",
+          "Third day in a row. At least it's good weather for a book."
+        ],
+        [
+          "user",
+          "Ha, true. Tell me a joke."
+        ],
+        [
+          "assistant",
+          "Why did the scarecrow win an award? He was outstanding in his field."
+        ]
       ],
-      "expect": { "update": [], "adds": "none" }
+      "expect": {
+        "update": [],
+        "adds": "none"
+      }
     },
     {
       "name": "control: one-off instruction and general knowledge",
@@ -85,26 +157,174 @@
         "lyon": "Alice lives in Lyon."
       },
       "messages": [
-        ["user", "Keep this one short: what's the capital of Peru?"],
-        ["assistant", "Lima."],
-        ["user", "And who won the 1998 World Cup?"],
-        ["assistant", "France, 3-0 against Brazil in the final."]
+        [
+          "user",
+          "Keep this one short: what's the capital of Peru?"
+        ],
+        [
+          "assistant",
+          "Lima."
+        ],
+        [
+          "user",
+          "And who won the 1998 World Cup?"
+        ],
+        [
+          "assistant",
+          "France, 3-0 against Brazil in the final."
+        ]
       ],
-      "expect": { "update": [], "adds": "none" }
+      "expect": {
+        "update": [],
+        "adds": "none"
+      }
+    },
+    {
+      "name": "control: a lookup about a sports team",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon.",
+        "mug": "Alice drinks green tea every morning."
+      },
+      "messages": [
+        [
+          "user",
+          "who is the quarterback of the jacksonville jaguars"
+        ],
+        [
+          "assistant",
+          "Trevor Lawrence. He was the first overall pick in 2021 and has started for them since."
+        ],
+        [
+          "user",
+          "he played at Clemson, right?"
+        ],
+        [
+          "assistant",
+          "Yes, he won a national championship at Clemson as a freshman in 2018."
+        ]
+      ],
+      "expect": {
+        "update": [],
+        "adds": "none"
+      }
+    },
+    {
+      "name": "control: a lookup about a product",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon.",
+        "mug": "Alice drinks green tea every morning."
+      },
+      "messages": [
+        [
+          "user",
+          "what's the latest iPhone model?"
+        ],
+        [
+          "assistant",
+          "The iPhone 18 Pro, released in September."
+        ],
+        [
+          "user",
+          "how much is it?"
+        ],
+        [
+          "assistant",
+          "It starts at $1,099 in the US."
+        ]
+      ],
+      "expect": {
+        "update": [],
+        "adds": "none"
+      }
+    },
+    {
+      "name": "interest stated: a team the user follows",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon.",
+        "mug": "Alice drinks green tea every morning."
+      },
+      "messages": [
+        [
+          "user",
+          "I've been a Chicago Bears fan since I was a kid. Who do they play on Sunday?"
+        ],
+        [
+          "assistant",
+          "They host the Packers at Soldier Field, kickoff at noon."
+        ]
+      ],
+      "expect": {
+        "update": [],
+        "adds": "some"
+      }
     }
   ],
   "pairs": [
-    { "existing": "Alice likes purple.", "candidate": "Alice loves the color purple.", "same": true },
-    { "existing": "Alice keeps bees.", "candidate": "Alice is a beekeeper.", "same": true },
-    { "existing": "Bob drinks coffee every morning.", "candidate": "Every morning Bob has a coffee.", "same": true },
-    { "existing": "Alice has a daughter in high school.", "candidate": "Alice's daughter is in high school.", "same": true },
-    { "existing": "Alice lives in Lyon.", "candidate": "Alice's home is in Lyon.", "same": true },
-    { "existing": "Alice plays chess online.", "candidate": "Alice plays online chess.", "same": true },
-    { "existing": "Alice is learning French.", "candidate": "Alice is learning Spanish.", "same": false },
-    { "existing": "Alice plays a druid in Diablo 4.", "candidate": "Alice plays a paladin in Diablo 4.", "same": false },
-    { "existing": "Alice keeps bees.", "candidate": "Alice keeps three hives of Italian bees.", "same": false },
-    { "existing": "Alice drinks tea at work.", "candidate": "Alice drinks tea at home.", "same": false },
-    { "existing": "Alice's son plays soccer.", "candidate": "Alice's daughter plays soccer.", "same": false },
-    { "existing": "Alice runs 5 km on weekdays.", "candidate": "Alice runs 10 km on Sundays.", "same": false }
+    {
+      "existing": "Alice likes purple.",
+      "candidate": "Alice loves the color purple.",
+      "same": true
+    },
+    {
+      "existing": "Alice keeps bees.",
+      "candidate": "Alice is a beekeeper.",
+      "same": true
+    },
+    {
+      "existing": "Bob drinks coffee every morning.",
+      "candidate": "Every morning Bob has a coffee.",
+      "same": true
+    },
+    {
+      "existing": "Alice has a daughter in high school.",
+      "candidate": "Alice's daughter is in high school.",
+      "same": true
+    },
+    {
+      "existing": "Alice lives in Lyon.",
+      "candidate": "Alice's home is in Lyon.",
+      "same": true
+    },
+    {
+      "existing": "Alice plays chess online.",
+      "candidate": "Alice plays online chess.",
+      "same": true
+    },
+    {
+      "existing": "Alice is learning French.",
+      "candidate": "Alice is learning Spanish.",
+      "same": false
+    },
+    {
+      "existing": "Alice plays a druid in Diablo 4.",
+      "candidate": "Alice plays a paladin in Diablo 4.",
+      "same": false
+    },
+    {
+      "existing": "Alice keeps bees.",
+      "candidate": "Alice keeps three hives of Italian bees.",
+      "same": false
+    },
+    {
+      "existing": "Alice drinks tea at work.",
+      "candidate": "Alice drinks tea at home.",
+      "same": false
+    },
+    {
+      "existing": "Alice's son plays soccer.",
+      "candidate": "Alice's daughter plays soccer.",
+      "same": false
+    },
+    {
+      "existing": "Alice runs 5 km on weekdays.",
+      "candidate": "Alice runs 10 km on Sundays.",
+      "same": false
+    }
   ]
 }
