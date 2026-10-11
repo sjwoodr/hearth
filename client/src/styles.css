@@ -320,6 +320,7 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .model-list button:disabled { opacity: 1; }
 .model-name { font-weight: 600; overflow-wrap: anywhere; }
 .model-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.8rem; color: var(--muted); }
+.model-aliases { font-size: 0.75rem; overflow-wrap: anywhere; }
 .chip { padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); }
 .chip.missing { text-decoration: line-through; opacity: 0.8; }
 .dialog-actions { display: flex; justify-content: flex-end; }

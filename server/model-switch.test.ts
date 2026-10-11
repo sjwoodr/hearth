@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createModelChoice, revertIfIdle, REVERT_IDLE_MS } from './active-model.ts';
 import { openDb } from './db.ts';
-import type { ModelInfo } from './ollama.ts';
+import { groupSameWeights, type ModelInfo } from './ollama.ts';
 import { call, setupApp, signIn, type TestApp } from './testing.ts';
 import { setRole } from './users.ts';
 
 const DEFAULT = 'gemma4:26b-a4b-it-qat';
 const MODELS: ModelInfo[] = [
   { name: DEFAULT, size: 15e9, capabilities: ['completion', 'vision', 'thinking', 'tools'] },
-  { name: 'gpt-oss:20b', size: 13e9, capabilities: ['completion', 'thinking', 'tools'] },
+  { name: 'gpt-oss:20b', size: 13e9, capabilities: ['completion', 'thinking', 'tools'], aliases: ['gpt-oss-32k:latest'] },
   { name: 'plain:7b', size: 4e9, capabilities: ['completion'] },
 ];
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(32).fill(7)]).toString('base64');
@@ -76,6 +76,33 @@ describe('switching the model', () => {
     expect((await call(app, admin, 'PUT', '/model', { model: 'embeddinggemma:300m-qat-q8_0' })).status).toBe(400);
     expect((await call(app, admin, 'PUT', '/model', { model: '../../etc' })).status).toBe(400);
     expect(choice.current()).toBe(DEFAULT);
+  });
+});
+
+describe('tags that share weights', () => {
+  const tag = (name: string, weights: string) => ({ name, size: 1, capabilities: ['completion'], weights });
+
+  it('lists them once, under the default name, with the rest as aliases', () => {
+    const grouped = groupSameWeights(
+      [tag('gemma4-26b-a4b-32k:latest', 'a b'), tag(DEFAULT, 'a b'), tag('gpt-oss:20b', 'c')],
+      DEFAULT,
+    );
+    expect(grouped.map((m) => [m.name, m.aliases])).toEqual([
+      [DEFAULT, ['gemma4-26b-a4b-32k:latest']],
+      ['gpt-oss:20b', undefined],
+    ]);
+  });
+
+  it('prefers a real tag over a ":latest" one when the default is not in the group', () => {
+    expect(groupSameWeights([tag('mine:latest', 'x'), tag('vendor:7b-q4', 'x')]).map((m) => [m.name, m.aliases])).toEqual([
+      ['vendor:7b-q4', ['mine:latest']],
+    ]);
+  });
+
+  it('switches to an alias under its main name, so a second copy never loads', async () => {
+    const { app, admin, choice } = await setup();
+    expect((await call(app, admin, 'PUT', '/model', { model: 'gpt-oss-32k:latest' })).status).toBe(200);
+    expect(choice.current()).toBe('gpt-oss:20b');
   });
 });
 

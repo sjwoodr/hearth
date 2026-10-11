@@ -272,16 +272,54 @@ export function ollamaModelLoaded(endpoint: Endpoint): (model: string) => Promis
   };
 }
 
-/** A chat model Ollama has: never an embedding model, which can't hold a conversation. */
-export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[] };
+/**
+ * A chat model Ollama has: never an embedding model, which can't hold a conversation. `aliases`: other
+ * tags built on the same weights (a custom tag that only changes a parameter, like a 32k-context copy).
+ */
+export type ModelInfo = {
+  name: string;
+  size: number;
+  parameterSize?: string;
+  quantization?: string;
+  capabilities: string[];
+  aliases?: string[];
+};
 
 /**
- * The chat models Ollama has pulled, from /api/tags plus each one's /api/show capabilities (both
- * pass through the gateway). Capabilities are cached by digest, so a re-pulled tag is asked again.
+ * One entry per set of weights: tags whose Modelfiles load the same files are the same model to hearth,
+ * which sends its own num_ctx anyway. The entry keeps the preferred name (hearth's default when it's
+ * in the group, else a real tag before a `:latest` one, else the shortest) and lists the rest as aliases.
  */
-export function ollamaModels(endpoint: Endpoint): { list(): Promise<ModelInfo[]>; capabilities(name: string): Promise<string[] | undefined> } {
-  const shown = new Map<string, string[]>();
-  async function capabilitiesOf(name: string, digest = ''): Promise<string[]> {
+export function groupSameWeights(models: (ModelInfo & { weights: string })[], prefer?: string): ModelInfo[] {
+  const groups = new Map<string, (ModelInfo & { weights: string })[]>();
+  for (const m of models) groups.set(m.weights, [...(groups.get(m.weights) ?? []), m]);
+  const rank = (name: string) => [name === prefer ? 0 : 1, name.endsWith(':latest') ? 1 : 0, name.length];
+  const before = (a: string, b: string) => {
+    const [x, y] = [rank(a), rank(b)];
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+    return a.localeCompare(b);
+  };
+  return [...groups.values()]
+    .map((group) => {
+      const [first, ...rest] = [...group].sort((a, b) => before(a.name, b.name));
+      const { weights: _weights, ...info } = first!;
+      return rest.length ? { ...info, aliases: rest.map((m) => m.name) } : info;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The chat models Ollama has pulled, from /api/tags plus each one's /api/show (both pass through the
+ * gateway): capabilities, and which weight files its Modelfile loads, to fold duplicate tags together.
+ * Cached by digest, so a re-pulled tag is asked again. `prefer`: the name to keep for a group.
+ */
+export function ollamaModels(
+  endpoint: Endpoint,
+  opts: { prefer?: string } = {},
+): { list(): Promise<ModelInfo[]>; capabilities(name: string): Promise<string[] | undefined> } {
+  type Shown = { capabilities: string[]; weights: string };
+  const shown = new Map<string, Shown>();
+  async function show(name: string, digest = ''): Promise<Shown> {
     const key = `${name}@${digest}`;
     const cached = shown.get(key);
     if (cached) return cached;
@@ -292,9 +330,12 @@ export function ollamaModels(endpoint: Endpoint): { list(): Promise<ModelInfo[]>
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`Ollama /api/show returned ${res.status} for ${name}`);
-    const caps = ((await res.json()) as { capabilities?: string[] }).capabilities ?? [];
-    shown.set(key, caps);
-    return caps;
+    const data = (await res.json()) as { capabilities?: string[]; modelfile?: string };
+    // The Modelfile's FROM lines name the weight blobs; without any, the tag stands alone.
+    const files = [...(data.modelfile ?? '').matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]!).sort();
+    const value = { capabilities: data.capabilities ?? [], weights: files.length ? files.join(' ') : `tag:${name}` };
+    shown.set(key, value);
+    return value;
   }
   async function list(): Promise<ModelInfo[]> {
     const res = await fetch(`${urlOf(endpoint)}/api/tags`, { headers: headersFor(endpoint, 'reply'), signal: AbortSignal.timeout(5000) });
@@ -303,21 +344,21 @@ export function ollamaModels(endpoint: Endpoint): { list(): Promise<ModelInfo[]>
       models?: { name: string; size: number; digest?: string; details?: { parameter_size?: string; quantization_level?: string } }[];
     };
     const all = await Promise.all(
-      models.map(async (m) => ({
-        name: m.name,
-        size: m.size,
-        parameterSize: m.details?.parameter_size,
-        quantization: m.details?.quantization_level,
-        capabilities: await capabilitiesOf(m.name, m.digest),
-      })),
+      models.map(async (m) => {
+        const { capabilities, weights } = await show(m.name, m.digest);
+        return { name: m.name, size: m.size, parameterSize: m.details?.parameter_size, quantization: m.details?.quantization_level, capabilities, weights };
+      }),
     );
-    return all.filter((m) => m.capabilities.includes('completion') && !m.capabilities.includes('embedding')).sort((a, b) => a.name.localeCompare(b.name));
+    return groupSameWeights(
+      all.filter((m) => m.capabilities.includes('completion') && !m.capabilities.includes('embedding')),
+      opts.prefer,
+    );
   }
   return {
     list,
     async capabilities(name) {
       try {
-        return await capabilitiesOf(name);
+        return (await show(name)).capabilities;
       } catch {
         return undefined;
       }

@@ -73,7 +73,7 @@ const app = createApp({
   // Says "loading the model" when Ollama has unloaded it (asked alongside each reply).
   modelLoaded: (think) => models.loaded(think ? models.thinkingModel() : models.model()),
   modelChoice: models.choice,
-  modelCatalog: ollamaModels(models.endpoint),
+  modelCatalog: ollamaModels(models.endpoint, { prefer: config.model }),
 });
 // Memory extraction waits while an admin's switch is active: a weaker model can merge or invent
 // memories. It catches up once the default is back.

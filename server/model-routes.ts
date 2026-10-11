@@ -34,10 +34,12 @@ export function registerModelRoutes(api: Hono<Env>, deps: Pick<ChatDeps, 'modelC
     } catch (err) {
       return c.json({ error: `Couldn't list Ollama's models: ${err instanceof Error ? err.message : err}` }, 502);
     }
-    // Only a chat model Ollama actually has: never an embedding model, never an arbitrary name.
-    if (!models.some((m) => m.name === name)) return c.json({ error: `"${name}" isn't one of Ollama's chat models.` }, 400);
-    choice.set(name, c.get('user').username);
-    console.log(`model: ${c.get('user').username} switched everyone to ${name}`);
+    // Only a chat model Ollama actually has: never an embedding model, never an arbitrary name. Another
+    // tag of the same weights counts as that model, stored under its main name.
+    const found = models.find((m) => m.name === name || m.aliases?.includes(name));
+    if (!found) return c.json({ error: `"${name}" isn't one of Ollama's chat models.` }, 400);
+    choice.set(found.name, c.get('user').username);
+    console.log(`model: ${c.get('user').username} switched everyone to ${found.name}`);
     return c.json({ active: choice.info() });
   });
 

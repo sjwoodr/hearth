@@ -44,7 +44,8 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
 /** `name` is the display name, or the username when none is set. An admin can switch the model. */
 export type Me = { username: string; name: string; role?: 'user' | 'admin'; isAdmin?: boolean };
 /** A chat model Ollama has; `capabilities` from Ollama (vision, thinking, tools). */
-export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[] };
+/** `aliases`: other tags of the same weights, shown once. */
+export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[]; aliases?: string[] };
 export type ActiveModel = { model: string; default: string; isDefault: boolean; since?: string; by?: string; lastUsed?: string };
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
 export type Source = { title: string; url: string };

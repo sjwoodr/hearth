@@ -112,7 +112,7 @@ async function askNewPassword(): Promise<string> {
 // Through the gateway when there is one (as the api and worker do), so this works inside the cluster.
 const modelEndpoint: Endpoint = config.gatewayUrl ? { url: config.gatewayUrl, token: config.gatewayToken } : config.ollamaUrl;
 const modelChoice = createModelChoice(db, config.model);
-const catalog = ollamaModels(modelEndpoint);
+const catalog = ollamaModels(modelEndpoint, { prefer: config.model });
 
 function modelShow(): string {
   const m = modelChoice.info();
@@ -129,7 +129,8 @@ async function modelList(): Promise<string> {
     [
       (m.name === current ? '* ' : '  ') + m.name.padEnd(36),
       `${(m.size / 1e9).toFixed(1)} GB`.padEnd(9),
-      ['vision', 'thinking', 'tools'].filter((c) => m.capabilities.includes(c)).join(', '),
+      ['vision', 'thinking', 'tools'].filter((c) => m.capabilities.includes(c)).join(', ') +
+        (m.aliases ? `  (also tagged ${m.aliases.join(', ')})` : ''),
     ].join(' '),
   );
   return [`  ${'MODEL'.padEnd(36)} ${'SIZE'.padEnd(9)} CAN`, ...rows].join('\n');
@@ -137,9 +138,13 @@ async function modelList(): Promise<string> {
 
 async function modelUse(name: string | undefined): Promise<void> {
   if (!name) fail('Say which model: hearth model use <name> (see hearth model list).');
-  if (!(await catalog.list()).some((m) => m.name === name)) fail(`"${name}" isn't one of Ollama's chat models (see hearth model list).`);
-  modelChoice.set(name!, 'admin console');
-  console.log(name === config.model ? `Back to the default, ${name}.` : `Everyone now talks to ${name}. Memory extraction waits until the default is back.`);
+  // Another tag of the same weights counts as that model, under its main name (no second copy loads).
+  const found = (await catalog.list()).find((m) => m.name === name || m.aliases?.includes(name!));
+  if (!found) fail(`"${name}" isn't one of Ollama's chat models (see hearth model list).`);
+  modelChoice.set(found!.name, 'admin console');
+  console.log(
+    found!.name === config.model ? `Back to the default, ${found!.name}.` : `Everyone now talks to ${found!.name}. Memory extraction waits until the default is back.`,
+  );
 }
 
 function modelReset(): void {

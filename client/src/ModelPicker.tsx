@@ -72,6 +72,7 @@ export function ModelPicker({ onClose, onSwitched }: { onClose: () => void; onSw
                       </span>
                     ))}
                   </span>
+                  {m.aliases && <span className="model-aliases muted">also tagged {m.aliases.join(', ')}</span>}
                 </button>
               </li>
             );
