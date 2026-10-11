@@ -259,7 +259,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
-  spans made entirely of known commands, outside code, so dollar amounts and real math survive.
+  spans made entirely of known commands, outside code, so dollar amounts and real math survive. The same pass drops
+  gpt-oss's own citation marks (`【5†source】`, from its trained browsing tool): sources show as chips.
 
 ## Code map
 
@@ -280,7 +281,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, embed and read-only lookups (`PASS_THROUGH`), never model management |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
-| `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters; imported by server and client |
+| `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |
 | `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |
 | `shared/pending-text.ts` | what the chat shows before a reply's first word (search, queue, thinking, loading, still working); tested in `server/pending-text.test.ts` |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |

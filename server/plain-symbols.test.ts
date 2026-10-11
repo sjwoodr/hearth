@@ -19,6 +19,13 @@ describe('plain symbols', () => {
     ];
     for (const text of untouched) expect(plainSymbols(text)).toBe(text);
   });
+
+  it("drops gpt-oss's citation marks, and only those", () => {
+    expect(plainSymbols('the primary QB through the 2026 season 【5†source】.')).toBe('the primary QB through the 2026 season.');
+    expect(plainSymbols('Two facts【1†L10-L20】 and more【3†source】!')).toBe('Two facts and more!');
+    const untouched = ['【重要】 ordinary brackets stay', 'Code keeps it: `【5†source】`', '```\n【1†source】\n```'];
+    for (const text of untouched) expect(plainSymbols(text)).toBe(text);
+  });
 });
 
 describe('saving replies', () => {
