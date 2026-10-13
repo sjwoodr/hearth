@@ -303,7 +303,7 @@ the exact memory section the model would get.
 
 ## Model
 
-`gemma4:26b-a4b-it-qat`, `num_ctx` 32768 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
+`gemma4:26b-a4b-it-qat`, `num_ctx` 65536 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
 active per token), 15 GB loaded, ~26 tokens/s on the Radeon 780M. Chosen with a 158-question French
 bench against nine other setups (Gemma 12B, Nemotron, Mistral Small/Nemo, Ministral, Qwen 3, Aya):
 153/158 at ~1.2 s per answer. A follow-up grading test found it marks about 1 in 30 correct answers
@@ -370,13 +370,13 @@ fits, so trimming changed the start every turn (~7 s). Prompts are kept to `HEAR
 verbatim. With Think on, the thinking budget
 (and the notes it produces) is held back from the window too.
 
-**Context window vs context budget: 32k loaded, 16k used.** Two settings, because they cost
+**Context window vs context budget: 64k loaded, 16k used.** Two settings, because they cost
 different things:
 
-- `HEARTH_NUM_CTX` (32768) is the window Ollama loads the model with. It costs memory, not speed:
+- `HEARTH_NUM_CTX` (65536) is the window Ollama loads the model with. It costs memory, not speed:
   15.79 GB loaded at 32k against 15.26 at 16k (two slots), and the same ~24-25 tokens/s
-  (2026-10-07). It's 32k to match agent harnesses that use a 32k tag of the same model (pi, via
-  `~/.prime/agent/Modelfile.gemma4-26b-a4b-32k`). Ollama keeps one copy per model file and reloads
+  (2026-10-07). It's 64k to match agent harnesses that use a 64k tag of the same model (via
+  `~/.prime/agent/Modelfile.gemma4-26b-a4b-64k`). Ollama keeps one copy per model file and reloads
   it when a request asks for another size, so with hearth at 16k each switch reloaded the model
   (measured 14.6 s and 4.8 s on two switches), emptied the cache, and could evict the embedding
   model (~1 s to bring back). At the same size, a request from either tag loads nothing (0.0 s).

@@ -13,7 +13,7 @@ function env(name: string, fallback: string): string {
 
 const isOff = (value: string) => ['0', 'false', 'off', 'no'].includes(value.trim().toLowerCase());
 
-const numCtx = Number(env('HEARTH_NUM_CTX', '32768'));
+const numCtx = Number(env('HEARTH_NUM_CTX', '65536'));
 
 export const config = {
   root,
@@ -41,10 +41,10 @@ export const config = {
     high: Number(env('HEARTH_THINKING_TOKEN_BUDGET_HIGH', '400')),
     max: Number(env('HEARTH_THINKING_TOKEN_BUDGET_MAX', '800')),
   },
-  // The context window Ollama loads the model with. 32k matches the 32k tag agent harnesses (pi) use
-  // for the same model: Ollama keeps one copy per model file and reloads it for a request at another
-  // size, so mismatched sizes evicted each other (5-15 s load, then a cold reread). With 2 slots it
-  // loads at 15.79 GB against 15.26 at 16k, with the same generation speed (2026-10-07).
+  // The context window Ollama loads the model with. 64k matches the 64k tag agent harnesses use for
+  // the same model: Ollama keeps one copy per model file and reloads it for a request at another
+  // size, so mismatched sizes evicted each other (5-15 s load, then a cold reread). The window costs
+  // memory, not speed: 15.26 GB at 16k, 15.79 at 32k (2 slots, 2026-10-07), about 0.7 GiB more at 64k.
   numCtx,
   // How much of that window hearth fills: history is trimmed to it and the summarizer scales with it
   // (summarize past half, keep a quarter). 16k: long chats fit without trimming, so follow-ups reuse
