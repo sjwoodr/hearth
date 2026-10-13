@@ -35,6 +35,23 @@ current one however well it grades.
 ¹ at 8k context; everything else is at hearth's 32k where measured. ² size on disk (not measured
 loaded). Dates are 2026. "—" means not run.
 
+## Cloud models (reference only)
+
+Ollama's cloud models, run through the local Ollama on the free plan's credits: none could run on
+this machine, so they are never candidates for hearth. They show how far a bigger model moves the
+grading score. Grading only (the quiz holds Aubemer's authored drills, which stay on the machine);
+fast mode, gpt-oss at low. Times are Ollama's servers plus the network, not this machine.
+
+| Model | Grading /300, fast | Tokens in / out, 300 items | Cost | Note | Tested |
+|---|---|---|---|---|---|
+| `gpt-oss:120b-cloud` | **297 (3 / 0)**, 0.4 s | 54k / 16k | ~2¢ | the only fast setup that caught every *tu* form missing its *-s* | 10-13 |
+| `gemma4:31b-cloud` (dense 31B) | 289 (2 / 9), 0.3 s | 38k / 2.8k | ~0.5¢ | same *tu* blind spot as the 26B (all 9 misses); barely better than the 26B | 10-13 |
+| `nemotron-3-ultra:cloud` | 285 (3 / 12), 0.8 s, worst 100 s | 37k / 1.8k | ~1¢ | rejected textbook *où* and *que*; queued, never refused (no 429s). Super skipped | 10-13 |
+
+The cloud ignores `format`, so these models got the JSON schema in the system prompt as well (one
+line the local runs don't have). The whole session (three runs plus checks) used ~2% of a month's
+free credits.
+
 ## The columns
 
 - **Loaded**: what `ollama ps` reports with the model in memory (`size_vram`). The machine's budget is
@@ -88,6 +105,7 @@ the rules above before testing anything.
 2. French bench (`~/src/other/french-model-bench`, private: its answer key never enters this repo):
    `node run.ts <model>` for the quiz, `QUIZ=grading.json RESULTS=results-grading node run.ts <model>`
    for grading, and `node budget.ts <model> 200` with `QUIZ`/`RESULTS` set the same way for thinking.
-   For a model that can't turn reasoning off, use `<model>+low`.
+   For a model that can't turn reasoning off, use `<model>+low`. A cloud model keeps its
+   `:cloud`/`-cloud` name, which `run.ts` uses to put the schema in the prompt.
 3. If it might take a background job: `node scripts/bench-extraction.ts --models <current>,<model>`.
 4. Apply the rule above, add the row, and keep the run's caveats in the verdict or a footnote.
