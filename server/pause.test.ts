@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pauseNote } from './pause.ts';
+import { timeGap } from '../shared/time-gap.ts';
 
 describe('pauseNote', () => {
   it('says nothing within one sitting', () => {
@@ -17,5 +18,14 @@ describe('pauseNote', () => {
   it('ignores times it cannot read, or out of order', () => {
     expect(pauseNote('not a time', '2026-10-16 09:00:00')).toBe('');
     expect(pauseNote('2026-10-17 09:00:00', '2026-10-16 09:00:00')).toBe('');
+  });
+});
+
+describe('timeGap (the chat divider)', () => {
+  it('words the same gaps the note does, and nothing within a sitting', () => {
+    expect(timeGap('2026-10-16 09:00:00', '2026-10-16 11:59:59')).toBe('');
+    expect(timeGap('2026-10-16 09:00:00', '2026-10-16 12:00:00')).toBe('3 hours');
+    expect(timeGap('2026-10-12 09:00:00', '2026-10-16 20:00:00')).toBe('4 days');
+    expect(timeGap('', '2026-10-16 20:00:00')).toBe('');
   });
 });

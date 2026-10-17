@@ -282,7 +282,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
-| `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker), model titles, history fitting (char estimate, ~3.5/token) |
+| `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
@@ -292,6 +292,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |
 | `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |
+| `shared/time-gap.ts` | a break between two messages in words (3 h or more): the model's pause note (`server/pause.ts`) and the chat's "4 days later" divider |
 | `shared/pending-text.ts` | what the chat shows before a reply's first word (search, queue, thinking, loading, still working); tested in `server/pending-text.test.ts` |
 | `server/migrations/NNN_name.sql` | applied in order, tracked in `PRAGMA user_version`; add a new file, never edit an old one. `db.ts`: `migrate`, `checkSchema`; `migrate.ts`: the `pnpm migrate` entry point |
 | `.github/workflows/ci.yml` | tests + types on every PR and on main (branches only via PRs, so one run per push); images built on PRs, pushed to GHCR from main (`sha-<short>`, `main`); then `deploy` commits the tag to the GitOps repo (environment `gitops`, main only: deploy key + repo name as secrets). `chart.yml`: the Helm chart (lint, kubeconform, helm unittest) when it changes |

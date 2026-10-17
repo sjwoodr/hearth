@@ -373,7 +373,8 @@ always-remembered memories and the running summary in the system prompt, then th
 recalled for each message change every time, so they're attached to that message (in the prompt only;
 the stored message is untouched). So is a note on how long the user was away, when the newest message
 comes 3 hours or more after the one before it ("Sent about 4 days after the previous message"): the
-history carries no times, so a chat picked up days later otherwise reads as one sitting. Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
+history carries no times, so a chat picked up days later otherwise reads as one sitting. The chat
+shows the same break as a divider ("4 days later"; `shared/time-gap.ts`). Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
 recall in the system prompt every reply reread the whole chat (~22 s), and at 8k the chat no longer
 fits, so trimming changed the start every turn (~7 s). Prompts are kept to `HEARTH_CONTEXT_BUDGET`
 (16k), and the summarizer scales with it: it summarizes past half the budget and keeps a quarter
@@ -435,7 +436,9 @@ tokens held back for the reply.
 Past half the context window it folds the oldest messages into a running summary stored on the chat
 (built on the previous summary), keeping the newest quarter of the window verbatim. Later messages
 send the summary, under "Earlier in this conversation", in place of what it covers. `hearth chats
-show` prints it.
+show` prints it. The percentage at the right of the title bar is that unsummarized part against the fold
+point (100% = fold; hover or tap it for "N% until auto-compact"); it's counted the way the summarizer
+counts, so it can read past 100% until the summary is written, and drops to around half after a fold.
 
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a
 2-6 word title, which reaches the sidebar through the reply stream. A chat the user has renamed is

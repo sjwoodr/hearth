@@ -16,6 +16,24 @@ export const SUMMARIZE_ABOVE_TOKENS = summaryThresholds(8192).above;
 export const KEEP_RECENT_TOKENS = summaryThresholds(8192).keep;
 const MAX_SUMMARY_CHARS = 2400;
 
+/** How far a chat is toward its next fold: unsummarized tokens (estimated) against the fold threshold. */
+export type ContextUse = { used: number; foldAt: number };
+
+const unsummarized = (db: DB, conversationId: number, through: number) =>
+  db
+    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
+    .all(conversationId, through) as MessageRow[];
+const messageText = (m: MessageRow) => withImageText(m.content, m.image_count, m.image_note);
+
+/** For the chat's context meter. Counted the way `summarizeIfLong` counts, so 100% is where it folds. */
+export function contextUse(db: DB, conversationId: number, budget = 8192): ContextUse {
+  const row = db.prepare('SELECT summary_through_message_id AS through FROM conversations WHERE id = ?').get(conversationId) as
+    | { through: number }
+    | undefined;
+  const messages = row ? unsummarized(db, conversationId, row.through) : [];
+  return { used: messages.reduce((n, m) => n + estimateTokens(messageText(m)), 0), foldAt: summaryThresholds(budget).above };
+}
+
 /** Folds older messages into the summary when the chat is long enough. Returns true if it did. */
 export async function summarizeIfLong(db: DB, conversationId: number, json: JsonFn, budget = 8192): Promise<boolean> {
   const { above, keep } = summaryThresholds(budget);
@@ -27,10 +45,8 @@ export async function summarizeIfLong(db: DB, conversationId: number, json: Json
     .get(conversationId) as { summary: string | null; through: number; name: string } | undefined;
   if (!chat) return false;
 
-  const messages = db
-    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
-    .all(conversationId, chat.through) as MessageRow[];
-  const text = (m: MessageRow) => withImageText(m.content, m.image_count, m.image_note);
+  const messages = unsummarized(db, conversationId, chat.through);
+  const text = messageText;
   const total = messages.reduce((n, m) => n + estimateTokens(text(m)), 0);
   if (total <= above) return false;
 

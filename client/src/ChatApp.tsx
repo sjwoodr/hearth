@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, onModelHeader, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
+import { api, ApiError, onModelHeader, type ContextUse, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
+import { ContextMeter } from './ContextMeter.tsx';
 import { ConversationView } from './ConversationView.tsx';
 import { MemoriesView } from './MemoriesView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
@@ -43,6 +44,8 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [modelNotice, setModelNotice] = useState('');
   const [picking, setPicking] = useState(false);
   const [revealChange, setRevealChange] = useState(false);
+  // The open chat's context use, reported by ConversationView.
+  const [context, setContext] = useState<ContextUse | null>(null);
   const seenModel = useRef<string | undefined>(undefined);
 
   useEffect(
@@ -272,6 +275,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             ☰
           </button>
           <span className="chat-title">{showMemories ? 'Memories' : (active?.title ?? 'New chat')}</span>
+          {!showMemories && context && <ContextMeter context={context} />}
           {/* Shown only when hearth runs as a Home Screen app (no browser toolbar, so no reload); the
               name at the top of the chat list reloads too. */}
           <button type="button" className="icon reload" aria-label="Reload hearth" title="Reload" onClick={() => location.reload()}>
@@ -315,6 +319,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             }}
             onChanged={refresh}
             onError={handleError}
+            onContext={setContext}
           />
         )}
       </main>

@@ -9,6 +9,7 @@
   --user-bubble: #efe6fa;
   --border: #e3d9ef;
   --error: #b3261e;
+  --warning: #a14a00;
   /* Code highlighting, each at least 4.8:1 on --surface and --user-bubble. */
   --code-keyword: #7a3fc0;
   --code-string: #1d6b38;
@@ -32,6 +33,7 @@
     --user-bubble: #2e2340;
     --border: #362c44;
     --error: #f2b8b5;
+    --warning: #f0b07a;
     --code-keyword: #c9a4ff;
     --code-string: #8fd6a0;
     --code-comment: #a797b8;
@@ -115,6 +117,15 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 /* Reload: only as a Home Screen app, where there's no browser toolbar (CSS display-mode). */
 .reload { display: none; margin-left: auto; padding: 0.2rem 0.5rem; font-size: 1.3rem; line-height: 1; color: var(--muted); }
 @media (display-mode: standalone) { .reload { display: inline-block; } }
+/* The chat's context use, at the right of the title bar; the detail shows on hover or tap. */
+.context-meter { position: relative; margin-left: auto; flex: none; padding: 0.15rem 0.45rem; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; cursor: help; }
+.context-meter + .reload { margin-left: 0; }
+.context-meter.near { color: var(--warning); border-color: currentColor; }
+.context-detail { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; width: max-content; max-width: min(260px, calc(100vw - 32px)); padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 0.85rem; text-align: left; white-space: normal; box-shadow: 0 4px 12px rgb(0 0 0 / 0.15); }
+.context-meter:hover .context-detail, .context-meter.open .context-detail { display: block; }
+/* A break of hours or days between two messages. */
+.time-gap { display: flex; align-items: center; gap: 0.75rem; margin: 0.25rem 0; color: var(--muted); font-size: 0.8rem; }
+.time-gap::before, .time-gap::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 .banner { padding: 0.5rem 16px; }
 
 .conversation { flex: 1; display: flex; flex-direction: column; min-height: 0; }

@@ -448,6 +448,28 @@ describe('summarizing long chats', () => {
     expect(ctx.model.afterReply).toContain(id);
   });
 
+  it('reports how close a chat is to its next fold, counted as the fold counts it', async () => {
+    const ctx = await signedIn();
+    const id = await newChat(ctx.app, ctx.alice);
+    const context = async () =>
+      ((await (await call(ctx.app, ctx.alice, 'GET', `/conversations/${id}`)).json()) as { context: { used: number; foldAt: number } }).context;
+    expect(await context()).toEqual({ used: 0, foldAt: SUMMARIZE_ABOVE_TOKENS });
+
+    seedMessages(ctx.db, id, 30, 1400);
+    const full = await context();
+    expect(full.used).toBeGreaterThan(full.foldAt);
+    const json: JsonFn = async () => 'Alice and hearth talked about many x characters.';
+    while (await summarizeIfLong(ctx.db, id, json));
+    const folded = await context();
+    expect(folded.used).toBeLessThanOrEqual(folded.foldAt);
+    expect(folded.used).toBeGreaterThanOrEqual(KEEP_RECENT_TOKENS - 500);
+
+    // A reply reports the chat with itself counted.
+    const done = (await say(ctx.app, ctx.alice, id, 'and then?')).find((e) => e.type === 'done') as unknown as { context: { used: number } };
+    expect(done.context).toEqual(await context());
+    expect(done.context.used).toBe(folded.used + estimateTokens('and then?') + estimateTokens('Hello there.'));
+  });
+
   it('leaves summarized messages out even when they would fit', async () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);

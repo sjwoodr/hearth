@@ -1,10 +1,11 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { api, ApiError, type Message, type Source, type StreamEvent } from './api.ts';
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { api, ApiError, type ContextUse, type Message, type Source, type StreamEvent } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
 import { pendingText } from '../../shared/pending-text.ts';
 import { EFFORT_LABEL, EFFORTS, higherEffort, isEffort, type Effort } from '../../shared/think-effort.ts';
+import { timeGap } from '../../shared/time-gap.ts';
 
 type Props = {
   id: number | undefined;
@@ -14,6 +15,8 @@ type Props = {
   onCreated: (id: number) => void;
   onChanged: () => void;
   onError: (err: unknown) => void;
+  /** How full the chat's context is, for the meter in the title bar; null when there's no chat. */
+  onContext: (context: ContextUse | null) => void;
 };
 
 /**
@@ -43,7 +46,8 @@ const localMessage = (role: Message['role'], content: string, previews: string[]
   image_count: previews.length,
   image_note: null,
   sources: null,
-  created_at: '',
+  // Now, in the server's format (SQLite UTC), so a break before a message just sent shows at once.
+  created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
   ...(previews.length ? { previews } : {}),
 });
 
@@ -98,7 +102,7 @@ const THINK_HELP: Record<ThinkSetting, string> = {
   off: 'Think: Off. Every reply is fast, with no reasoning first.',
 };
 
-export function ConversationView({ id, name, focusMessageId, onCreated, onChanged, onError }: Props) {
+export function ConversationView({ id, name, focusMessageId, onCreated, onChanged, onError, onContext }: Props) {
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   // When the current reply was asked for, and a clock that ticks while it's pending.
   const startedRef = useRef(0);
@@ -146,12 +150,14 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     setMessages([]);
     setSearchRequest(null);
     stickToBottom.current = focusMessageId === undefined;
+    onContext(null);
     if (id === undefined) return;
     let cancelled = false;
     api.conversation(id).then((r) => {
       if (cancelled) return;
       setMessages(r.messages);
       setSearchRequest(r.pendingSearch?.query ?? null);
+      onContext(r.context);
       if (focusMessageId !== undefined) setHighlight(focusMessageId);
       // Opened (or reloaded) while a reply is still being written: wait for it.
       if (r.replying) void catchUp(id);
@@ -159,7 +165,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     return () => {
       cancelled = true;
     };
-  }, [id, focusMessageId, onError]);
+  }, [id, focusMessageId, onError, onContext]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -207,6 +213,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         if (!r.replying) {
           setMessages(r.messages);
           setSearchRequest(r.pendingSearch?.query ?? null);
+          onContext(r.context);
           onChanged();
           return;
         }
@@ -289,6 +296,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             ? ` · thought first (${EFFORT_LABEL[thoughtEffort ?? 'medium']}${reason ? `, auto: ${reason}` : ''})`
             : '';
           keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected, event.sources);
+          if (event.context) onContext(event.context);
           setStreamText(null);
           setStartedAt(null);
         } else if (event.type === 'stopped') {
@@ -447,9 +455,20 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       >
         <div className="thread">
         {messages.length === 0 && !streaming && <p className="empty">What's on your mind, {name}?</p>}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} highlight={m.id === highlight} />
-        ))}
+        {messages.map((m, i) => {
+          // A break in the chat ("3 days later"): the model is told the same about the newest message.
+          const gap = i > 0 ? timeGap(messages[i - 1]!.created_at, m.created_at) : '';
+          return (
+            <Fragment key={m.id}>
+              {gap && (
+                <p className="time-gap" role="separator">
+                  <span>{gap} later</span>
+                </p>
+              )}
+              <MessageBubble message={m} highlight={m.id === highlight} />
+            </Fragment>
+          );
+        })}
         {streaming &&
           (streamText ? (
             <>
