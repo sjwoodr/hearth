@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { api, ApiError, type ContextUse, type Message, type Source, type StreamEvent } from './api.ts';
+import { api, ApiError, type ContextUse, type Message, type Source, type StreamEvent, type SummaryFold } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
@@ -50,6 +50,17 @@ const localMessage = (role: Message['role'], content: string, previews: string[]
   created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
   ...(previews.length ? { previews } : {}),
 });
+
+/** What the chat says where older messages were folded into the summary; the nth fold gets the nth line. */
+const FOLD_LINES = [
+  'This chat is going strong! I folded the earliest messages into my notes to make room.',
+  "Still going! The early part of our chat now lives in my summary, so I can keep up.",
+  "We've covered a lot of ground. I tucked the oldest messages into my notes and carried on.",
+  'Making room again: the start of this chat is now a summary I keep in mind.',
+];
+const foldLine = (n: number) => FOLD_LINES[n % FOLD_LINES.length]!;
+const foldDetail = (fold: SummaryFold) =>
+  `${fold.folded} message${fold.folded === 1 ? '' : 's'} folded into hearth's summary of this chat. They're still here to read; hearth now works from the summary instead.`;
 
 const DROPPED = 'The connection dropped before the reply finished. Reload to see what was saved.';
 /** How often a page that lost its stream checks whether the reply is saved yet. */
@@ -131,6 +142,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   const abortRef = useRef<AbortController | null>(null);
   // Set while the page waits for a reply the server kept writing after the stream dropped.
   const [catchingUp, setCatchingUp] = useState(false);
+  // Where older messages were folded into the chat's summary (auto-compact), each shown as a line.
+  const [folds, setFolds] = useState<SummaryFold[]>([]);
   // Bumped whenever the view changes chats, so a catch-up for the old one stops.
   const viewRef = useRef(0);
   // Set when this view created the conversation itself, so the id arriving via props
@@ -149,6 +162,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     setError('');
     setMessages([]);
     setSearchRequest(null);
+    setFolds([]);
     stickToBottom.current = focusMessageId === undefined;
     onContext(null);
     if (id === undefined) return;
@@ -158,6 +172,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setMessages(r.messages);
       setSearchRequest(r.pendingSearch?.query ?? null);
       onContext(r.context);
+      setFolds(r.folds);
       if (focusMessageId !== undefined) setHighlight(focusMessageId);
       // Opened (or reloaded) while a reply is still being written: wait for it.
       if (r.replying) void catchUp(id);
@@ -192,6 +207,22 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     return () => clearTimeout(timer);
   }, [highlight]);
 
+  /**
+   * The folds to show after messages[i]: made after it and before the next stored message. This page's
+   * own messages have negative ids until it reloads, so a fold is never placed after one of those.
+   */
+  function foldsAfter(i: number) {
+    const m = messages[i]!;
+    const next = messages[i + 1]?.id ?? Infinity;
+    if (m.id < 0) return [];
+    return folds.flatMap((f, n) => (f.afterMessageId >= m.id && (next < 0 || f.afterMessageId < next) ? [{ f, n }] : []));
+  }
+  const foldNote = ({ f, n }: { f: SummaryFold; n: number }) => (
+    <p key={`fold-${n}`} className="fold-note" role="note" title={foldDetail(f)}>
+      {foldLine(n)}
+    </p>
+  );
+
   const streaming = streamText !== null;
   const busy = streaming || catchingUp;
 
@@ -214,6 +245,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           setMessages(r.messages);
           setSearchRequest(r.pendingSearch?.query ?? null);
           onContext(r.context);
+          setFolds(r.folds);
           onChanged();
           return;
         }
@@ -297,6 +329,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             : '';
           keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected, event.sources);
           if (event.context) onContext(event.context);
+          if (event.folds) setFolds(event.folds);
           setStreamText(null);
           setStartedAt(null);
         } else if (event.type === 'stopped') {
@@ -458,6 +491,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         {messages.map((m, i) => {
           // A break in the chat ("3 days later"): the model is told the same about the newest message.
           const gap = i > 0 ? timeGap(messages[i - 1]!.created_at, m.created_at) : '';
+          // Folds after this message and before the next one; after the last, they go below its buttons.
+          const foldsHere = i < messages.length - 1 ? foldsAfter(i) : [];
           return (
             <Fragment key={m.id}>
               {gap && (
@@ -466,6 +501,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
                 </p>
               )}
               <MessageBubble message={m} highlight={m.id === highlight} />
+              {foldsHere.map(foldNote)}
             </Fragment>
           );
         })}
@@ -556,6 +592,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             })()}
           </div>
         )}
+        {messages.length > 0 && foldsAfter(messages.length - 1).map(foldNote)}
         </div>
       </div>
 

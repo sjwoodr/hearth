@@ -51,6 +51,8 @@ export type Conversation = { id: number; title: string | null; created_at: strin
 export type Source = { title: string; url: string };
 /** A chat's unsummarized history (estimated tokens) against where it gets folded into the summary. */
 export type ContextUse = { used: number; foldAt: number };
+/** A pass that folded older messages into the chat's summary; the chat shows a line after `afterMessageId`. */
+export type SummaryFold = { afterMessageId: number; folded: number };
 /**
  * `image_count` images came with the message; `image_note` is hearth's description of them, once
  * written. `sources`: the pages a reply drew on, when it followed a web search.
@@ -97,7 +99,7 @@ export type StreamEvent =
   | { type: 'searching'; query: string }
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
-  | { type: 'done'; messageId: number; selfCorrected?: boolean; sources?: Source[]; context?: ContextUse }
+  | { type: 'done'; messageId: number; selfCorrected?: boolean; sources?: Source[]; context?: ContextUse; folds?: SummaryFold[] }
   | { type: 'stopped'; messageId?: number }
   | { type: 'error'; error: string };
 
@@ -125,7 +127,7 @@ export const api = {
   conversations: () => request<Conversation[]>('GET', '/api/conversations'),
   createConversation: () => request<Conversation>('POST', '/api/conversations'),
   conversation: (id: number) =>
-    request<{ conversation: Conversation; messages: Message[]; pendingSearch: { query: string } | null; replying: boolean; context: ContextUse }>(
+    request<{ conversation: Conversation; messages: Message[]; pendingSearch: { query: string } | null; replying: boolean; context: ContextUse; folds: SummaryFold[] }>(
       'GET',
       `/api/conversations/${id}`,
     ),

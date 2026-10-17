@@ -438,7 +438,11 @@ Past half the context window it folds the oldest messages into a running summary
 send the summary, under "Earlier in this conversation", in place of what it covers. `hearth chats
 show` prints it. The percentage at the right of the title bar is that unsummarized part against the fold
 point (100% = fold; hover or tap it for "N% until auto-compact" and the estimated token count behind it); it's counted the way the summarizer
-counts, so it can read past 100% until the summary is written, and drops to around half after a fold.
+counts, so it can read past 100% until the summary is written, and drops to around half after a fold. Each fold
+also leaves a line in the chat where it happened ("This chat is going strong! I folded the earliest
+messages into my notes…", a different wording each time; hover for how many messages it took in).
+The folded messages stay on screen; only the model sees the summary in their place. Folds are
+recorded in `summary_folds` (since migration 010), so folds from before it have no line.
 
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a
 2-6 word title, which reaches the sidebar through the reply stream. A chat the user has renamed is

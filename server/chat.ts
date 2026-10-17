@@ -4,7 +4,7 @@ import { stream } from 'hono/streaming';
 import { ActiveReplies } from './active-replies.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote } from './pause.ts';
-import { contextUse } from './summarize.ts';
+import { contextUse, listFolds } from './summarize.ts';
 import {
   addMessage,
   createConversation,
@@ -204,6 +204,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       pendingSearch: search ? { query: search.query } : null,
       replying: replying.running(conversation.id, userId),
       context: contextUse(db, conversation.id, contextBudget),
+      folds: listFolds(db, conversation.id),
     });
   });
 
@@ -409,6 +410,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
             messageId,
             // Before any fold this reply sets off, so it can read past 100% until the summary is written.
             context: contextUse(db, conversationId, contextBudget),
+            // A fold the worker made since the page loaded shows up with the next reply.
+            folds: listFolds(db, conversationId),
             ...(sources.length ? { sources } : {}),
             // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
             ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),

@@ -470,6 +470,36 @@ describe('summarizing long chats', () => {
     expect(done.context.used).toBe(folded.used + estimateTokens('and then?') + estimateTokens('Hello there.'));
   });
 
+  it('records where each fold happened, for the line the chat shows', async () => {
+    const ctx = await signedIn();
+    const id = await newChat(ctx.app, ctx.alice);
+    const get = async () =>
+      (await (await call(ctx.app, ctx.alice, 'GET', `/conversations/${id}`)).json()) as { folds: { afterMessageId: number; folded: number }[] };
+    expect((await get()).folds).toEqual([]);
+
+    seedMessages(ctx.db, id, 30, 1400);
+    const newest = (ctx.db.prepare('SELECT max(id) AS id FROM messages').get() as { id: number }).id;
+    const json: JsonFn = async () => 'Alice and hearth talked about many x characters.';
+    while (await summarizeIfLong(ctx.db, id, json));
+    const { folds } = await get();
+    // Two passes (see above), both after the newest message at the time, together taking every folded message.
+    expect(folds.map((f) => f.afterMessageId)).toEqual([newest, newest]);
+    const through = (ctx.db.prepare('SELECT summary_through_message_id AS t FROM conversations WHERE id = ?').get(id) as { t: number }).t;
+    const foldedCount = (ctx.db.prepare('SELECT count(*) AS n FROM messages WHERE conversation_id = ? AND id <= ?').get(id, through) as { n: number }).n;
+    expect(folds.reduce((n, f) => n + f.folded, 0)).toBe(foldedCount);
+
+    // The next reply brings them too, for a page that loaded before the fold.
+    const done = (await say(ctx.app, ctx.alice, id, 'and then?')).find((e) => e.type === 'done') as unknown as { folds: unknown };
+    expect(done.folds).toEqual(folds);
+
+    // Another user's request for the chat gets nothing; deleting the chat removes its folds.
+    await createUser(ctx.db, 'mallory', 'a good password');
+    const mallory = sessionCookie(await login(ctx.app, 'mallory', 'a good password'));
+    expect((await call(ctx.app, mallory, 'GET', `/conversations/${id}`)).status).toBe(404);
+    await call(ctx.app, ctx.alice, 'DELETE', `/conversations/${id}`);
+    expect((ctx.db.prepare('SELECT count(*) AS n FROM summary_folds').get() as { n: number }).n).toBe(0);
+  });
+
   it('leaves summarized messages out even when they would fit', async () => {
     const ctx = await signedIn();
     const id = await newChat(ctx.app, ctx.alice);

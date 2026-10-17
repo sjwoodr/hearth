@@ -86,13 +86,30 @@ third person, under 200 words. Reply with the summary only.`,
   if (!summary) throw new Error('The model returned an empty summary.');
 
   // Only advance if nothing else summarized this chat in the meantime.
-  return (
+  const advanced =
     db
       .prepare(
         'UPDATE conversations SET summary = ?, summary_through_message_id = ? WHERE id = ? AND summary_through_message_id = ?',
       )
-      .run(summary, fold.at(-1)!.id, conversationId, chat.through).changes > 0
-  );
+      .run(summary, fold.at(-1)!.id, conversationId, chat.through).changes > 0;
+  // For the line the chat shows where this happened: after the newest message at the time.
+  if (advanced) {
+    db.prepare('INSERT INTO summary_folds (conversation_id, after_message_id, folded) VALUES (?, ?, ?)').run(
+      conversationId,
+      messages.at(-1)!.id,
+      fold.length,
+    );
+  }
+  return advanced;
+}
+
+/** A pass that folded messages into the chat's summary, for the line shown after `afterMessageId`. */
+export type SummaryFold = { afterMessageId: number; folded: number };
+
+export function listFolds(db: DB, conversationId: number): SummaryFold[] {
+  return db
+    .prepare('SELECT after_message_id AS afterMessageId, folded FROM summary_folds WHERE conversation_id = ? ORDER BY id')
+    .all(conversationId) as SummaryFold[];
 }
 
 /** Summarizes one chat if it's long, logging and counting the outcome. */

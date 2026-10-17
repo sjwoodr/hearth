@@ -127,6 +127,9 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 /* A break of hours or days between two messages. */
 .time-gap { display: flex; align-items: center; gap: 0.75rem; margin: 0.25rem 0; color: var(--muted); font-size: 0.8rem; }
 .time-gap::before, .time-gap::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+/* Where older messages were folded into the summary (auto-compact): hearth saying so, in passing. */
+.fold-note { align-self: center; max-width: 34rem; margin: 0.25rem 0; padding: 0.4rem 0.8rem; border: 1px dashed var(--border); border-radius: 999px; color: var(--muted); font-size: 0.85rem; font-style: italic; text-align: center; cursor: help; }
+.fold-note::before { content: '✦ '; font-style: normal; color: var(--accent); }
 .banner { padding: 0.5rem 16px; }
 
 .conversation { flex: 1; display: flex; flex-direction: column; min-height: 0; }
