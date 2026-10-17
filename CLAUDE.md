@@ -276,7 +276,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`search`/`error`/`title`), search approval route |
+| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
+| `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |

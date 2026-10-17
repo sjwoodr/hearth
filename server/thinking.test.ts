@@ -18,7 +18,10 @@ describe('the Think toggle', () => {
       });
     const id = ((await (await call('/conversations')).json()) as { id: number }).id;
     let res = await call(`/conversations/${id}/messages`, { content: 'Is « je suis allé » right?', think: path === 'messages' ? think : undefined });
-    if (path === 'retry') res = await call(`/conversations/${id}/retry`, { think });
+    if (path === 'retry') {
+      await res.text(); // the first reply finishes before the retry
+      res = await call(`/conversations/${id}/retry`, { think });
+    }
     const events = (await res.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l) as { type: string; tokens?: number; text?: string });
     return { ctx, events };
   }

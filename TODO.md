@@ -42,6 +42,9 @@
       which has been enough; may never be needed.
 - [ ] Users changing their own password or display name from the web (today it's CLI only, by design).
 - [x] Web search for current events; the model asks, the user approves each search on a card.
+- [ ] Share the list of replies in progress (`server/active-replies.ts`) if the api ever runs as
+      more than one pod: Redis, or a table. With one pod, memory is enough. A Stop or a catch-up
+      check that reaches a different pod than the reply would find nothing.
 - [ ] Automated front-end tests. Browser checks so far were ad hoc scripts driving headless Chrome with
       playwright-core borrowed from another project.
 

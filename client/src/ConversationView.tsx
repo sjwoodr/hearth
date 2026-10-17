@@ -48,6 +48,8 @@ const localMessage = (role: Message['role'], content: string, previews: string[]
 });
 
 const DROPPED = 'The connection dropped before the reply finished. Reload to see what was saved.';
+/** How often a page that lost its stream checks whether the reply is saved yet. */
+const CATCH_UP_POLL_MS = 2000;
 
 // The Think setting is a per-browser preference; storage can be unavailable (private mode).
 // Auto lets the server decide per message; On and Off override it.
@@ -123,6 +125,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   const [searchRequest, setSearchRequest] = useState<string | null>(null);
   const [searchingFor, setSearchingFor] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Set while the page waits for a reply the server kept writing after the stream dropped.
+  const [catchingUp, setCatchingUp] = useState(false);
+  // Bumped whenever the view changes chats, so a catch-up for the old one stops.
+  const viewRef = useRef(0);
   // Set when this view created the conversation itself, so the id arriving via props
   // doesn't trigger a reload that would wipe the reply still streaming in.
   const createdRef = useRef<number | undefined>(undefined);
@@ -132,6 +138,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   useEffect(() => {
     if (id !== undefined && id === createdRef.current) return;
     abortRef.current?.abort();
+    viewRef.current++;
+    setCatchingUp(false);
     createdRef.current = undefined;
     setStreamText(null);
     setError('');
@@ -145,6 +153,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setMessages(r.messages);
       setSearchRequest(r.pendingSearch?.query ?? null);
       if (focusMessageId !== undefined) setHighlight(focusMessageId);
+      // Opened (or reloaded) while a reply is still being written: wait for it.
+      if (r.replying) void catchUp(id);
     }, onError);
     return () => {
       cancelled = true;
@@ -177,10 +187,56 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   }, [highlight]);
 
   const streaming = streamText !== null;
+  const busy = streaming || catchingUp;
+
+  /**
+   * The stream dropped (a locked phone, a network change) but the server carries on with the reply.
+   * Waits until the page is visible again, then checks every couple of seconds until the reply is
+   * saved, and shows the chat as stored.
+   */
+  async function catchUp(conversationId: number) {
+    const view = viewRef.current;
+    setError('');
+    setCatchingUp(true);
+    try {
+      for (;;) {
+        if (document.hidden) await new Promise((r) => document.addEventListener('visibilitychange', r, { once: true }));
+        if (viewRef.current !== view) return;
+        const r = await api.conversation(conversationId);
+        if (viewRef.current !== view) return;
+        if (!r.replying) {
+          setMessages(r.messages);
+          setSearchRequest(r.pendingSearch?.query ?? null);
+          onChanged();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, CATCH_UP_POLL_MS));
+      }
+    } catch (err) {
+      if (viewRef.current !== view) return;
+      if (err instanceof ApiError && err.status === 401) onError(err);
+      else setError(DROPPED);
+    } finally {
+      if (viewRef.current === view) setCatchingUp(false);
+    }
+  }
+
+  /** Stop asks the server; closing the stream alone would let the reply carry on. */
+  async function stop() {
+    const conversationId = id ?? createdRef.current;
+    if (conversationId === undefined) return abortRef.current?.abort();
+    try {
+      await api.stop(conversationId);
+    } catch {
+      abortRef.current?.abort();
+    }
+  }
 
   /** Reads one reply stream into the message list. Returns false if it was refused up front. */
-  async function readReply(events: AsyncIterable<StreamEvent>, controller: AbortController): Promise<boolean> {
+  async function readReply(events: AsyncIterable<StreamEvent>, controller: AbortController, conversationId: number): Promise<boolean> {
     let reply = '';
+    // The stream ended early, but the server keeps writing: catch up once this stream is cleaned up.
+    let dropped = false;
     // Moves the streamed text into the message list. The text is copied first: setMessages
     // runs its updater later, and by then `reply` has been reset.
     const elapsed = () => seconds(performance.now() - startedRef.current);
@@ -235,6 +291,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           keepReply(event.messageId, `Answered in ${elapsed()} seconds${how}`, event.selfCorrected, event.sources);
           setStreamText(null);
           setStartedAt(null);
+        } else if (event.type === 'stopped') {
+          keepReply(event.messageId, `Stopped after ${elapsed()} seconds`);
+          setStreamText(null);
         } else if (event.type === 'error') {
           keepReply();
           setStreamText(null);
@@ -243,11 +302,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           onChanged();
         }
       }
-      // The stream ended without done or error: the server went away mid-reply.
-      if (reply) {
-        keepReply();
-        setError(DROPPED);
-      }
+      // The stream ended without done, stopped or error: the connection dropped mid-reply.
+      if (reply) dropped = true;
       return true;
     } catch (err) {
       if (controller.signal.aborted) keepReply(undefined, `Stopped after ${elapsed()} seconds`);
@@ -255,11 +311,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         setError(err.message);
         return false;
       } else if (err instanceof ApiError) onError(err);
-      else {
-        // Network failure mid-stream: keep what arrived rather than dropping it.
-        keepReply();
-        setError(DROPPED);
-      }
+      // Network failure mid-stream: the server finishes the reply; fetch it when the page is back.
+      else dropped = true;
       return true;
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -272,7 +325,9 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setSearchingFor(null);
       setStreamText(null);
       setStartedAt(null);
-      onChanged();
+      // After a drop the sidebar refresh would fail too; catching up refreshes it once the reply is in.
+      if (dropped) void catchUp(conversationId);
+      else onChanged();
     }
   }
 
@@ -318,7 +373,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     e?.preventDefault();
     const text = draft.trim();
     const images = attachments;
-    if ((!text && images.length === 0) || streaming) return;
+    if ((!text && images.length === 0) || busy) return;
     setDraft('');
     setAttachments([]);
     setSearchRequest(null);
@@ -341,7 +396,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       onError(err);
       return;
     }
-    if (!(await readReply(api.sendMessage(conversationId, text, images, wire(think), effort, controller.signal), controller))) {
+    if (!(await readReply(api.sendMessage(conversationId, text, images, wire(think), effort, controller.signal), controller, conversationId))) {
       // Refused before it was saved: take the message back out and restore the draft.
       setMessages((m) => m.filter((msg) => msg !== pending));
       setDraft(text);
@@ -354,21 +409,21 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   // and "think harder" after a reply that thought).
   async function retry(thinkAt?: Effort) {
     const conversationId = id ?? createdRef.current;
-    if (conversationId === undefined || streaming) return;
+    if (conversationId === undefined || busy) return;
     setMessages((m) => (m.at(-1)?.role === 'assistant' ? m.slice(0, -1) : m));
     setSearchRequest(null);
     const controller = begin();
     const events = thinkAt ? api.retry(conversationId, true, thinkAt, controller.signal) : api.retry(conversationId, wire(think), effort, controller.signal);
-    await readReply(events, controller);
+    await readReply(events, controller, conversationId);
   }
 
   // The answer to a search card. Only Search sends the query anywhere; the server enforces it.
   async function answerSearch(approve: boolean) {
     const conversationId = id ?? createdRef.current;
-    if (conversationId === undefined || streaming) return;
+    if (conversationId === undefined || busy) return;
     setSearchRequest(null);
     const controller = begin();
-    await readReply(api.answerSearch(conversationId, approve, controller.signal), controller);
+    await readReply(api.answerSearch(conversationId, approve, controller.signal), controller, conversationId);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -388,7 +443,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         }}
         aria-live="polite"
-        aria-busy={streaming}
+        aria-busy={busy}
       >
         <div className="thread">
         {messages.length === 0 && !streaming && <p className="empty">What's on your mind, {name}?</p>}
@@ -426,7 +481,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             {error}
           </p>
         )}
-        {!streaming && searchRequest && (
+        {catchingUp && !streaming && (
+          <div className="message assistant pending">Still writing… the reply carried on while you were away</div>
+        )}
+        {!busy && searchRequest && (
           <div className="search-card" role="group" aria-label="Web search request">
             <p>hearth wants to search the web for:</p>
             <p className="search-query">{searchRequest}</p>
@@ -443,7 +501,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             </div>
           </div>
         )}
-        {!streaming && !searchRequest && messages.length > 0 && (
+        {!busy && !searchRequest && messages.length > 0 && (
           <div className="retry-row">
             <button type="button" className="link" onClick={() => retry()}>
               {messages.at(-1)!.role === 'assistant' ? '↻ Regenerate' : '↻ Retry'}
@@ -562,8 +620,8 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
             {EFFORT_LABEL[effort]}
           </button>
         )}
-        {streaming ? (
-          <button type="button" className="stop" onClick={() => abortRef.current?.abort()}>
+        {busy ? (
+          <button type="button" className="stop" onClick={() => void stop()}>
             Stop
           </button>
         ) : (

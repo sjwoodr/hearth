@@ -1,6 +1,7 @@
 import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchCount, thinkingTokens } from './metrics.ts';
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
+import { ActiveReplies } from './active-replies.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote } from './pause.ts';
 import {
@@ -181,6 +182,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   // Which message each image-carrying prompt message came from. A waiting search is saved without
   // image bytes (images are never stored), so this is how they're put back when it runs.
   const imageSource = new WeakMap<ChatMessage, number>();
+  const replying = new ActiveReplies();
+  const busy = { error: 'A reply is still being written in this chat. Wait for it, or stop it.' };
 
   api.get('/conversations', (c) => c.json(listConversations(db, c.get('user').id)));
 
@@ -198,6 +201,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       conversation,
       messages: listMessages(db, userId, conversation.id),
       pendingSearch: search ? { query: search.query } : null,
+      replying: replying.running(conversation.id, userId),
     });
   });
 
@@ -215,6 +219,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   api.delete('/conversations/:id', (c) => {
     const id = parseId(c.req.param('id'));
     if (!id || !deleteConversation(db, c.get('user').id, id)) return c.json(notFound, 404);
+    replying.stop(id, c.get('user').id);
     pendingImages.forget(id);
     pendingSearches.forget(id);
     return c.json({ ok: true });
@@ -287,145 +292,155 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const tools = deps.webSearch && opts.search !== false && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : undefined;
     c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
     c.header('Cache-Control', 'no-cache');
+    // Not tied to the connection: a reply runs to the end even if the browser goes away, and only
+    // POST /stop (or deleting the chat) stops it. `release` marks it finished for GET and the busy check.
+    const controller = new AbortController();
+    const release = replying.start(conversationId, user.id, controller);
     return stream(c, async (s) => {
       const startedAt = performance.now();
-      const controller = new AbortController();
-      s.onAbort(() => controller.abort());
-      // One queue for every write: thinking progress arrives from a callback while text streams. A
-      // failed write means the client has gone, which the abort signal already handles.
-      let writes: Promise<unknown> = Promise.resolve();
-      const send = (event: object) =>
-        (writes = writes.then(() => s.write(`${JSON.stringify(event)}\n`)).catch(() => undefined));
-      const think = opts.decision.think && !!deps.thinkingChat;
-      const generate = think ? deps.thinkingChat! : chat;
-      const effort = think ? (opts.decision.effort ?? 'medium') : undefined;
-      const thinkingBudget = think ? budgetFor(opts.decision) : undefined;
-      let lastReported = 0;
-      let thoughtTokens = 0;
-      // Anything from the model (a word, a thought) or the end of the reply: a loading notice would be stale.
-      let heard = false;
-      const onThinking = (tokens: number) => {
-        heard = true;
-        thoughtTokens = tokens;
-        // Enough to show progress without an event per token.
-        if (tokens === 1 || tokens - lastReported >= 10) {
-          lastReported = tokens;
-          void send({ type: 'thinking', tokens });
-        }
-      };
-      // The last count, which progress every 10 tokens would otherwise miss (191 of a 200 cap).
-      const onThinkingEnd = (tokens: number, cut: boolean) => {
-        thinkingTokens.observe({ effort: effort ?? 'medium', ended: cut ? 'cut' : 'finished' }, tokens);
-        if (tokens > 0 && tokens !== lastReported) void send({ type: 'thinking', tokens });
-      };
-
-      deps.modelChoice?.touch();
-      await send({
-        type: 'start',
-        userMessageId: opts.userMessageId,
-        ...(opts.model ? { model: opts.model } : {}),
-        think,
-        // How hard, and the cap, so the client can show progress against it.
-        ...(effort ? { effort } : {}),
-        ...(thinkingBudget ? { budget: thinkingBudget } : {}),
-        // Why Auto chose to think, so the client can say so.
-        ...(think && opts.decision.auto && opts.decision.reason ? { reason: opts.decision.reason } : {}),
-      });
-      if (opts.searching) await send({ type: 'searching', query: opts.searching });
-      const { prompt, sources = [] } = await turnReady;
-      noticeLoading(deps.modelLoaded?.(think), () => !heard, send);
-      let reply = '';
-      let call: { raw: ToolCall; query: string } | undefined;
-      const unusable: ToolCall[] = [];
-      const onToolCall = (raw: ToolCall) => {
-        const query = searchQuery(raw);
-        if (query && !call) call = { raw, query };
-        else if (!query) unusable.push(raw);
-      };
       try {
-        // The scheduler (in deps.chat) makes room by preempting background work, or, when every slot
-        // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
-        const onQueued = () => void send({ type: 'queued' });
-        const callOpts = { onThinking, onThinkingEnd, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
-        const labels = { think: String(think), effort: effort ?? 'none' };
-        const sinceStart = () => (performance.now() - startedAt) / 1000;
-        for await (const text of generate(prompt, controller.signal, callOpts)) {
+        // One queue for every write: thinking progress arrives from a callback while text streams. A
+        // failed write means the client has gone; the reply carries on and is saved all the same.
+        let writes: Promise<unknown> = Promise.resolve();
+        const send = (event: object) =>
+          (writes = writes.then(() => s.write(`${JSON.stringify(event)}\n`)).catch(() => undefined));
+        const think = opts.decision.think && !!deps.thinkingChat;
+        const generate = think ? deps.thinkingChat! : chat;
+        const effort = think ? (opts.decision.effort ?? 'medium') : undefined;
+        const thinkingBudget = think ? budgetFor(opts.decision) : undefined;
+        let lastReported = 0;
+        let thoughtTokens = 0;
+        // Anything from the model (a word, a thought) or the end of the reply: a loading notice would be stale.
+        let heard = false;
+        const onThinking = (tokens: number) => {
           heard = true;
-          if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
-          reply += text;
-          // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
-          // mustn't hold a model slot that other replies are waiting for. The text buffers here
-          // instead; awaiting `done` below flushes it.
-          void send({ type: 'delta', text });
-        }
-        heard = true; // over, even with no words (a search request, or nothing)
-        if (call) {
-          // Nothing is searched here. The request waits for the user's tap on the card.
-          const saved = withoutImages([...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }], imageSource);
-          pendingSearches.set(conversationId, {
-            userId: user.id,
-            userMessageId: opts.userMessageId,
-            query: call.query,
-            prompt: saved.prompt,
-            images: saved.images,
-            decision: opts.decision,
-            firstMessage: opts.firstMessage,
-            searches: searches + 1,
-            sources,
-          });
-          searchCount.inc({ outcome: 'asked' });
-          replies.inc({ ...labels, outcome: 'search' });
+          thoughtTokens = tokens;
+          // Enough to show progress without an event per token.
+          if (tokens === 1 || tokens - lastReported >= 10) {
+            lastReported = tokens;
+            void send({ type: 'thinking', tokens });
+          }
+        };
+        // The last count, which progress every 10 tokens would otherwise miss (191 of a 200 cap).
+        const onThinkingEnd = (tokens: number, cut: boolean) => {
+          thinkingTokens.observe({ effort: effort ?? 'medium', ended: cut ? 'cut' : 'finished' }, tokens);
+          if (tokens > 0 && tokens !== lastReported) void send({ type: 'thinking', tokens });
+        };
+
+        deps.modelChoice?.touch();
+        await send({
+          type: 'start',
+          userMessageId: opts.userMessageId,
+          ...(opts.model ? { model: opts.model } : {}),
+          think,
+          // How hard, and the cap, so the client can show progress against it.
+          ...(effort ? { effort } : {}),
+          ...(thinkingBudget ? { budget: thinkingBudget } : {}),
+          // Why Auto chose to think, so the client can say so.
+          ...(think && opts.decision.auto && opts.decision.reason ? { reason: opts.decision.reason } : {}),
+        });
+        if (opts.searching) await send({ type: 'searching', query: opts.searching });
+        const { prompt, sources = [] } = await turnReady;
+        noticeLoading(deps.modelLoaded?.(think), () => !heard, send);
+        let reply = '';
+        let call: { raw: ToolCall; query: string } | undefined;
+        const unusable: ToolCall[] = [];
+        const onToolCall = (raw: ToolCall) => {
+          const query = searchQuery(raw);
+          if (query && !call) call = { raw, query };
+          else if (!query) unusable.push(raw);
+        };
+        try {
+          // The scheduler (in deps.chat) makes room by preempting background work, or, when every slot
+          // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
+          const onQueued = () => void send({ type: 'queued' });
+          const callOpts = { onThinking, onThinkingEnd, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
+          const labels = { think: String(think), effort: effort ?? 'none' };
+          const sinceStart = () => (performance.now() - startedAt) / 1000;
+          for await (const text of generate(prompt, controller.signal, callOpts)) {
+            heard = true;
+            if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
+            reply += text;
+            // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
+            // mustn't hold a model slot that other replies are waiting for. The text buffers here
+            // instead; awaiting `done` below flushes it.
+            void send({ type: 'delta', text });
+          }
+          heard = true; // over, even with no words (a search request, or nothing)
+          if (call) {
+            // Nothing is searched here. The request waits for the user's tap on the card.
+            const saved = withoutImages([...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }], imageSource);
+            pendingSearches.set(conversationId, {
+              userId: user.id,
+              userMessageId: opts.userMessageId,
+              query: call.query,
+              prompt: saved.prompt,
+              images: saved.images,
+              decision: opts.decision,
+              firstMessage: opts.firstMessage,
+              searches: searches + 1,
+              sources,
+            });
+            release();
+            searchCount.inc({ outcome: 'asked' });
+            replies.inc({ ...labels, outcome: 'search' });
+            replySeconds.observe(labels, sinceStart());
+            await send({ type: 'search', query: call.query });
+            return;
+          }
+          if (!reply.trim()) {
+            // Rare and not yet reproduced: log enough to tell an unusable tool call from a thinking
+            // cut that left the model with nothing to say.
+            console.error(
+              `empty reply: chat ${conversationId}, think ${think} (${thoughtTokens} reasoning tokens), ` +
+                `searches ${searches}, prompt ends with ${prompt.at(-1)?.role}, unusable tool calls ${JSON.stringify(unusable)}`,
+            );
+            throw new Error('The model returned an empty reply. Retry usually works.');
+          }
+          reply = plainSymbols(reply);
+          const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
+          release(); // saved: before `done`, whose write can wait on a client that's gone quiet
+          replies.inc({ ...labels, outcome: 'done' });
           replySeconds.observe(labels, sinceStart());
-          await send({ type: 'search', query: call.query });
+          await send({
+            type: 'done',
+            messageId,
+            ...(sources.length ? { sources } : {}),
+            // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
+            ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
+          });
+        } catch (err) {
+          heard = true;
+          replies.inc({ think: String(think), effort: effort ?? 'none', outcome: controller.signal.aborted ? 'stopped' : 'error' });
+          // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
+          // (Not into a chat deleted mid-reply, which is what stopped it.)
+          const keep = reply.trim() && getConversation(db, user.id, conversationId);
+          const messageId = keep ? addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources }) : undefined;
+          release();
+          if (controller.signal.aborted) await send({ type: 'stopped', ...(messageId ? { messageId } : {}) });
+          else await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });
           return;
         }
-        if (!reply.trim()) {
-          // Rare and not yet reproduced: log enough to tell an unusable tool call from a thinking
-          // cut that left the model with nothing to say.
-          console.error(
-            `empty reply: chat ${conversationId}, think ${think} (${thoughtTokens} reasoning tokens), ` +
-              `searches ${searches}, prompt ends with ${prompt.at(-1)?.role}, unusable tool calls ${JSON.stringify(unusable)}`,
-          );
-          throw new Error('The model returned an empty reply. Retry usually works.');
-        }
-        reply = plainSymbols(reply);
-        const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
-        replies.inc({ ...labels, outcome: 'done' });
-        replySeconds.observe(labels, sinceStart());
-        await send({
-          type: 'done',
-          messageId,
-          ...(sources.length ? { sources } : {}),
-          // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
-          ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
-        });
-      } catch (err) {
-        heard = true;
-        replies.inc({ think: String(think), effort: effort ?? 'none', outcome: controller.signal.aborted ? 'stopped' : 'error' });
-        // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
-        if (reply.trim()) addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources });
-        if (!controller.signal.aborted) {
-          await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });
-        }
-        return;
-      }
 
-      if (opts.firstMessage && deps.titleFor && !controller.signal.aborted) {
-        try {
-          const title = await deps.titleFor(opts.firstMessage, reply);
-          if (title && setAutoTitle(db, conversationId, title)) await send({ type: 'title', title });
-          job('title', 'ok');
-        } catch (err) {
-          job('title', isPreempted(err) ? 'preempted' : 'failed');
-          // The first-message title stays; a failed or preempted title isn't worth an error.
-          if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
+        if (opts.firstMessage && deps.titleFor && !controller.signal.aborted) {
+          try {
+            const title = await deps.titleFor(opts.firstMessage, reply);
+            if (title && setAutoTitle(db, conversationId, title)) await send({ type: 'title', title });
+            job('title', 'ok');
+          } catch (err) {
+            job('title', isPreempted(err) ? 'preempted' : 'failed');
+            // The first-message title stays; a failed or preempted title isn't worth an error.
+            if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
+          }
         }
+        if (deps.describeImages) {
+          const turn = { conversationId, answeredId: opts.userMessageId, prompt, reply };
+          describeWaitingImages(db, pendingImages, deps.describeImages, turn);
+        }
+        deps.afterReply?.(conversationId);
+      } finally {
+        release(); // a backstop: every path above releases once the reply is saved or has failed
       }
-      if (deps.describeImages) {
-        const turn = { conversationId, answeredId: opts.userMessageId, prompt, reply };
-        describeWaitingImages(db, pendingImages, deps.describeImages, turn);
-      }
-      deps.afterReply?.(conversationId);
     });
   }
 
@@ -434,6 +449,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const id = parseId(c.req.param('id'));
     const conversation = id ? getConversation(db, user.id, id) : undefined;
     if (!conversation) return c.json(notFound, 404);
+    if (replying.running(conversation.id, user.id)) return c.json(busy, 409);
 
     const body = await c.req.json().catch(() => null);
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
@@ -481,6 +497,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const id = parseId(c.req.param('id'));
     const conversation = id ? getConversation(db, user.id, id) : undefined;
     if (!conversation) return c.json(notFound, 404);
+    if (replying.running(conversation.id, user.id)) return c.json(busy, 409);
 
     const messages = listMessages(db, user.id, conversation.id);
     const last = messages.at(-1);
@@ -512,6 +529,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     });
   });
 
+  // Stop is its own request: a closed connection (a locked phone) lets the reply finish.
+  api.post('/conversations/:id/stop', (c) => {
+    const id = parseId(c.req.param('id'));
+    return c.json({ stopped: !!id && replying.stop(id, c.get('user').id) });
+  });
+
   // The user's answer to a search card. This is the only place a web search ever runs: the model
   // can ask, but only an approval here sends the query out. Declining tells the model to answer
   // without it.
@@ -521,6 +544,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const id = parseId(c.req.param('id'));
     const conversation = id ? getConversation(db, user.id, id) : undefined;
     if (!conversation) return c.json(notFound, 404);
+    if (replying.running(conversation.id, user.id)) return c.json(busy, 409);
     if (typeof body?.approve !== 'boolean') return c.json({ error: 'Say whether to search (approve: true or false).' }, 400);
     const waiting = pendingSearches.take(conversation.id, user.id);
     // Gone if a newer message or a retry replaced it, or it waited longer than a day.

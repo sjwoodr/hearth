@@ -226,3 +226,94 @@ describe('the "loading the model" notice', () => {
     expect(ctx.model.loadedChecks).toEqual([true]);
   });
 });
+
+describe('a reply outlives its connection', () => {
+  type Event = { type: string; text?: string; messageId?: number };
+  /** Reads a reply stream until `until` matches an event; returns the reader (still open) and what came. */
+  async function readUntil(res: Response, until: (e: Event) => boolean) {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const events: Event[] = [];
+    let buffered = '';
+    while (!events.some(until)) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split('\n');
+      buffered = lines.pop()!;
+      events.push(...lines.filter(Boolean).map((l) => JSON.parse(l) as Event));
+    }
+    return { reader, events };
+  }
+  const state = async (app: TestApp, cookie: string, id: number) =>
+    (await (await call(app, cookie, 'GET', `/conversations/${id}`)).json()) as {
+      replying: boolean;
+      messages: { id: number; role: string; content: string }[];
+    };
+  async function untilDone(app: TestApp, cookie: string, id: number) {
+    for (let i = 0; i < 200; i++) {
+      const now = await state(app, cookie, id);
+      if (!now.replying) return now;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error('still replying');
+  }
+
+  async function midReply() {
+    const ctx = setupApp();
+    const cookie = await signIn(ctx, 'alice');
+    const id = await newChat(ctx.app, cookie);
+    ctx.model.reply = ['Bon', 'jour', ', ça', ' va', ' ?'];
+    ctx.model.chunkDelayMs = 20;
+    const res = await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'Salut' });
+    const { reader, events } = await readUntil(res, (e) => e.type === 'delta');
+    return { ctx, cookie, id, reader, events };
+  }
+
+  it('finishes and saves the whole reply when the browser goes away (a locked phone)', async () => {
+    const { ctx, cookie, id, reader } = await midReply();
+    expect((await state(ctx.app, cookie, id)).replying).toBe(true);
+    await reader.cancel(); // what the server sees when the connection closes
+    const after = await untilDone(ctx.app, cookie, id);
+    expect(after.messages.map((m) => m.content)).toEqual(['Salut', 'Bonjour, ça va ?']);
+  });
+
+  it('stops on request, keeps what was written, and says so on the stream', async () => {
+    const { ctx, cookie, id, reader } = await midReply();
+    const res = await call(ctx.app, cookie, 'POST', `/conversations/${id}/stop`);
+    expect(await res.json()).toEqual({ stopped: true });
+    const rest: Event[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rest.push(...new TextDecoder().decode(value).split('\n').filter(Boolean).map((l) => JSON.parse(l) as Event));
+    }
+    const stopped = rest.find((e) => e.type === 'stopped');
+    const after = await state(ctx.app, cookie, id);
+    expect(after.replying).toBe(false);
+    const saved = after.messages.at(-1)!;
+    expect(saved.role).toBe('assistant');
+    expect(stopped?.messageId).toBe(saved.id);
+    expect('Bonjour, ça va ?'.startsWith(saved.content)).toBe(true);
+    expect(saved.content).not.toBe('Bonjour, ça va ?');
+  });
+
+  it('refuses a second reply in the same chat while one is being written', async () => {
+    const { ctx, cookie, id, reader } = await midReply();
+    const second = await call(ctx.app, cookie, 'POST', `/conversations/${id}/messages`, { content: 'Allô ?' });
+    expect(second.status).toBe(409);
+    expect((await call(ctx.app, cookie, 'POST', `/conversations/${id}/retry`, {})).status).toBe(409);
+    await reader.cancel();
+    const after = await untilDone(ctx.app, cookie, id);
+    expect(after.messages.map((m) => m.content)).toEqual(['Salut', 'Bonjour, ça va ?']);
+  });
+
+  it("can't be seen or stopped by another user", async () => {
+    const { ctx, cookie, id, reader } = await midReply();
+    const bob = await signIn(ctx, 'bob');
+    expect(await (await call(ctx.app, bob, 'POST', `/conversations/${id}/stop`)).json()).toEqual({ stopped: false });
+    expect((await call(ctx.app, bob, 'GET', `/conversations/${id}`)).status).toBe(404);
+    await reader.cancel();
+    expect((await untilDone(ctx.app, cookie, id)).messages.at(-1)!.content).toBe('Bonjour, ça va ?');
+  });
+});

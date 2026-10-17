@@ -232,6 +232,13 @@ certificates, but any reverse proxy fits.
 - **Shutdown:** on SIGTERM each process stops accepting connections, lets open requests finish
   (a reply mid-stream ends normally), closes the database and exits; anything still open after
   `HEARTH_SHUTDOWN_GRACE_MS` (25 s, under Kubernetes' 30) is cut off.
+- **Replies outlive the connection:** a reply runs to the end even if the browser goes away (a
+  phone's screen locking closes the stream), and is saved whole. Stop is its own request
+  (`POST /api/conversations/:id/stop`), and a second message in that chat waits (409) until the
+  reply is done. A page that lost its stream shows "Still writing…", and once it's visible again
+  checks every 2 s (`replying` on `GET /api/conversations/:id`) until the reply is saved. The list of
+  replies in progress is in the api's memory, which is enough for one api process; a shutdown
+  doesn't wait for a reply whose browser has already gone.
 - **Metrics:** `/metrics` (Prometheus) on the backend, the worker and the gateway (behind its
   token there): reply time and time to first word, outcomes (done, search, error, stopped),
   Ollama's own tokens per second and prompt reading time (short when its cache held the chat),

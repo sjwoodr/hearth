@@ -96,6 +96,7 @@ export type StreamEvent =
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
   | { type: 'done'; messageId: number; selfCorrected?: boolean; sources?: Source[] }
+  | { type: 'stopped'; messageId?: number }
   | { type: 'error'; error: string };
 
 /** Yields a reply's stream events as they arrive. */
@@ -122,7 +123,7 @@ export const api = {
   conversations: () => request<Conversation[]>('GET', '/api/conversations'),
   createConversation: () => request<Conversation>('POST', '/api/conversations'),
   conversation: (id: number) =>
-    request<{ conversation: Conversation; messages: Message[]; pendingSearch: { query: string } | null }>(
+    request<{ conversation: Conversation; messages: Message[]; pendingSearch: { query: string } | null; replying: boolean }>(
       'GET',
       `/api/conversations/${id}`,
     ),
@@ -145,6 +146,8 @@ export const api = {
   retry: async function* (conversationId: number, think: boolean | 'auto', effort: Effort, signal: AbortSignal) {
     yield* readEvents(await send('POST', `/api/conversations/${conversationId}/retry`, { think, effort }, signal));
   },
+  /** Stops the reply being written in that chat. Closing the connection doesn't: the reply carries on. */
+  stop: (conversationId: number) => request<{ stopped: boolean }>('POST', `/api/conversations/${conversationId}/stop`),
   /** The user's answer to a search card: only `approve: true` runs the search. */
   answerSearch: async function* (conversationId: number, approve: boolean, signal: AbortSignal) {
     yield* readEvents(await send('POST', `/api/conversations/${conversationId}/search`, { approve }, signal));
