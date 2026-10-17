@@ -290,6 +290,23 @@ describe('memories in chat and over the API', () => {
     expect(stored).toEqual([{ content: 'qui ou que?' }, { content: 'and my dog?' }]);
   });
 
+  it('tells the model how long the user was away, on the newest message only', async () => {
+    const ctx = await signedIn();
+    const id = ((await (await call(ctx.app, ctx.alice, 'POST', '/conversations')).json()) as { id: number }).id;
+    await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'à demain !' })).text();
+    // Four days pass: back-date what was said so far.
+    ctx.db.prepare("UPDATE messages SET created_at = datetime('now', '-4 days')").run();
+    await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'me revoilà' })).text();
+    await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'et alors ?' })).text();
+
+    const [first, second, third] = ctx.model.calls;
+    expect(first!.at(-1)!.content).toBe('à demain !');
+    expect(second!.at(-1)!.content).toMatch(/^\[Sent about 4 days after the previous message in this chat\.\]\n\n\[alice's message\]\nme revoilà$/);
+    // A minute later: no note, and the earlier message reads as stored.
+    expect(third!.at(-1)!.content).toBe('et alors ?');
+    expect(third!.find((m) => m.content.includes('me revoilà'))!.content).toBe('me revoilà');
+  });
+
   it('holds back room for thinking when Think is on', async () => {
     // Medium's 118-token budget holds back 2 × 118 + 64 = 300 tokens.
     const ctx = setupApp({ contextBudget: 1024 + 400, thinkingBudgets: { medium: 118, high: 118, max: 118 } });

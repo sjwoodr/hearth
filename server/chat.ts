@@ -2,6 +2,7 @@ import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchC
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { fitHistory } from './context.ts';
+import { pauseNote } from './pause.ts';
 import {
   addMessage,
   createConversation,
@@ -245,7 +246,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     search = !!deps.webSearch,
   ): Promise<ChatMessage[]> {
     const state = getContextState(db, conversationId);
-    const messages = listMessages(db, user.id, conversationId).filter((m) => m.id > state.summary_through_message_id);
+    const all = listMessages(db, user.id, conversationId);
+    const messages = all.filter((m) => m.id > state.summary_through_message_id);
     const history: ChatMessage[] = messages.map((m) => {
       const pending = m.image_count > 0 ? pendingImages.get(m.id) : undefined;
       if (pending) {
@@ -257,8 +259,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     });
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
-    if (recalled && last?.role === 'user') {
-      const withRecall = { ...last, content: `${recalled}\n\n[${user.name}'s message]\n${last.content}` };
+    // Measured from the message before it even when that one is folded into the summary.
+    const [before, newest] = all.slice(-2);
+    const pause = before && newest?.role === 'user' ? pauseNote(before.created_at, newest.created_at) : '';
+    const notes = [recalled, pause].filter(Boolean).join('\n\n');
+    if (notes && last?.role === 'user') {
+      const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);
       if (source !== undefined) imageSource.set(withRecall, source);
       history[history.length - 1] = withRecall;
