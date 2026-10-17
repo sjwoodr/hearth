@@ -41,12 +41,20 @@ export const WEB_SEARCH_TOOL = {
  * Appended to the system prompt. Without the date and the push to call the tool, Gemma 4 asked to
  * search for 1 of 10 questions that needed it (it said "I'd have to search the web" instead); with
  * them, 9 of 10, and never for the 10 that didn't (French practice, grammar, chat, well-known facts).
+ *
+ * The recommendations paragraph (2026-10-17): from memory, 31% of the artists, albums and games it
+ * recommended didn't exist (130 checked; every reply on niche music had one). Without the paragraph
+ * it searched 0 of 50 times; with "unless you are certain" still 2 of 50 (it always is); with this
+ * wording 47 of 50, and 4 of 25 needless searches on famous lists (Beatles albums, Puccini operas),
+ * none on French or theory questions.
  */
 export function searchInstructions(now: Date): string {
   const today = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return `Today is ${today}. Your training data stops well before that.
 
 You have a web_search tool. Call it, instead of answering, whenever the reply depends on anything that changes or that you might have wrong: news, results, releases, versions, schedules, opening hours, prices, weather, tours, or any specific date, number or name you aren't certain of. Never tell the user to check elsewhere or that you can't look it up: call the tool, and the user decides whether the search runs. Don't search for French practice, grammar, translation, explanations of well-known ideas, opinions, or chat.
+
+When the user asks for recommendations (artists, albums, songs, books, films, podcasts, games or products), call web_search before answering, even if you think you know some: from memory you often name ones that sound right but do not exist.
 
 Build search queries from today's date: words like "this season", "latest" or "next" refer to the current year in that date, never to years you remember from training.`;
 }

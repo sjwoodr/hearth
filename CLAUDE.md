@@ -254,7 +254,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   20-message probe, so small). The last line ("this season", "latest", "next" mean the current
   year) was added after a 2026-10-06 probe (fast mode, 4 runs per question): "what's the latest
   iPhone model?" searched 1/4 without it, 4/4 with; the Bears' and Formula 1 schedules already
-  searched 8/8 (7 naming 2026, none a stale year), and named 2026 in 8/8 with it. Leaving `tools` out of a request didn't force a full prompt reread
+  searched 8/8 (7 naming 2026, none a stale year), and named 2026 in 8/8 with it. **Recommendations
+  search first** (2026-10-17, owner's call): from memory, 31% of 130 recommended names (bands, albums,
+  games) didn't exist and every niche-music reply had one; the paragraph "call web_search before
+  answering, even if you think you know some" took searching from 0/50 to 47/50 (fast and Medium).
+  A softer "unless you are certain" did nothing (2/50), so don't add that escape back without a
+  probe. Cost: 4 of 25 controls searched needlessly, all famous lists (Beatles albums, Puccini).
+  Known leftover: queries sometimes gain "2026" ("underrated shoegaze bands 2026") from the
+  current-year line. Probe script and results were ad hoc (scratchpad), not committed; **cap the
+  rate of any bulk SearXNG checking** (~50 quick queries got the home IP rate-limited by Brave,
+  Google and DuckDuckGo, which took hearth's search down too). Leaving `tools` out of a request didn't force a full prompt reread
   (measured ~1.4 s vs 7.6 s cold), so background calls without tools still hit the cache.
 - **Free prose from background jobs is plain text, not a JSON schema** (summaries, titles, image
   descriptions: `json(messages, null)`). Under Ollama's `format` grammar, a `"` the model meant to open
