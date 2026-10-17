@@ -123,6 +123,7 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .context-meter.near { color: var(--warning); border-color: currentColor; }
 .context-detail { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; width: max-content; max-width: min(260px, calc(100vw - 32px)); padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 0.85rem; text-align: left; white-space: normal; box-shadow: 0 4px 12px rgb(0 0 0 / 0.15); }
 .context-meter:hover .context-detail, .context-meter.open .context-detail { display: block; }
+.context-count { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.8rem; }
 /* A break of hours or days between two messages. */
 .time-gap { display: flex; align-items: center; gap: 0.75rem; margin: 0.25rem 0; color: var(--muted); font-size: 0.8rem; }
 .time-gap::before, .time-gap::after { content: ''; flex: 1; border-top: 1px solid var(--border); }

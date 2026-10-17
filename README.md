@@ -437,7 +437,7 @@ Past half the context window it folds the oldest messages into a running summary
 (built on the previous summary), keeping the newest quarter of the window verbatim. Later messages
 send the summary, under "Earlier in this conversation", in place of what it covers. `hearth chats
 show` prints it. The percentage at the right of the title bar is that unsummarized part against the fold
-point (100% = fold; hover or tap it for "N% until auto-compact"); it's counted the way the summarizer
+point (100% = fold; hover or tap it for "N% until auto-compact" and the estimated token count behind it); it's counted the way the summarizer
 counts, so it can read past 100% until the summary is written, and drops to around half after a fold.
 
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a
