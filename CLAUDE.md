@@ -187,6 +187,15 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   running summary (all in the system prompt), then history. Recalled facts change every message, so
   they are prepended to the **newest user message in the prompt only**, never stored. Putting them in
   the system prompt made every reply reread a ~7k-token chat (~22 s vs ~1 s).
+  **The reply after a searched one rereads most of the chat** (expected, not a bug). Search results
+  are in the prompt for one turn only, so the next prompt is shorter mid-history and the cache stops
+  matching there. Gemma 4's sliding-window attention (`n_swa = 1024`) means llama.cpp can only resume
+  from saved context checkpoints, and the nearest one is often near the start: measured 2026-10-17
+  (live, ~6k-token chat, Medium) as ~5.3k tokens reread on both the thinking and the answer call,
+  54.8 s vs the usual 24-29 s. One reply, then back to normal. To find where a prompt diverged:
+  `journalctl -u ollama` shows `checking checkpoint with [a, b] against N` (N = the first token that
+  differs) and `restored context checkpoint (... pos_max = M)` (resumed at M; `prompt eval time`
+  is the reread). A large M-to-N gap is this effect; a small N means the system prompt changed.
 - **Context: 64k loaded (`HEARTH_NUM_CTX`), 16k used (`HEARTH_CONTEXT_BUDGET`).** The budget is
   what trimming and the summarizer use (fold past half, keep the newest quarter verbatim): at 8k
   long chats no longer fit and trimming changed the prompt start every turn (~7 s per reply), and a
