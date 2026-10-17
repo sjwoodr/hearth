@@ -53,6 +53,8 @@ export type ChatMessage = {
  */
 export type ChatOptions = {
   onThinking?: (tokens: number) => void;
+  /** Called once when a thinking reply's reasoning ends: its total, and whether the budget cut it off. */
+  onThinkingEnd?: (tokens: number, cut: boolean) => void;
   /** For a thinking reply: this request's reasoning cap (its Think effort), instead of the default. */
   thinkingBudget?: number;
   tools?: object[];
@@ -153,6 +155,12 @@ export function ollamaThinkingChat(endpoint: Endpoint, model: ModelName, numCtx:
     // Whether the model wrote anything or asked for a tool. Reasoning that stops short of the budget
     // with neither would otherwise end as an empty reply; it gets the same "answer now" turn as a cut.
     let answered = false;
+    let ended = false;
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      opts?.onThinkingEnd?.(tokens, cut);
+    };
     try {
       const body = await startChat(
         endpoint,
@@ -170,18 +178,22 @@ export function ollamaThinkingChat(endpoint: Endpoint, model: ModelName, numCtx:
           opts?.onThinking?.(tokens);
           if (tokens >= budget) {
             cut = true;
+            end();
             break;
           }
         }
         for (const call of data.message?.tool_calls ?? []) {
           answered = true;
+          end();
           opts?.onToolCall?.(call);
         }
         if (data.message?.content) {
           answered = true;
+          end();
           yield data.message.content;
         }
       }
+      end(); // reasoning that stopped short of the budget with nothing said
     } catch (err) {
       // Leaving the stream at the cap can throw while it shuts down; anything before the cap is real.
       if (!cut) throw err;

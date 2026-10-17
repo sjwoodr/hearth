@@ -235,7 +235,8 @@ certificates, but any reverse proxy fits.
 - **Metrics:** `/metrics` (Prometheus) on the backend, the worker and the gateway (behind its
   token there): reply time and time to first word, outcomes (done, search, error, stopped),
   Ollama's own tokens per second and prompt reading time (short when its cache held the chat),
-  slot waits, preemptions, searches asked/approved/declined/failed, background jobs by outcome,
+  reasoning tokens per thinking reply by effort, cut by the budget or finished on its own
+  (`hearth_thinking_tokens`), slot waits, preemptions, searches asked/approved/declined/failed, background jobs by outcome,
   whether Ollama answers (`hearth_ollama_up`, from the gateway, or from hearth on its own), and
   Node's process metrics. Every series carries `service` (hearth, worker, gateway). Counters start
   at 0 for every outcome, so "none yet" reads as 0 rather than a missing series.

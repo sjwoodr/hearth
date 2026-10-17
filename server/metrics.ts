@@ -40,6 +40,15 @@ export const replies = new Counter({
   registers,
 });
 
+// Tokens: the Think budgets are 200 (Medium), 400 (High) and 800 (Max).
+export const thinkingTokens = new Histogram({
+  name: 'hearth_thinking_tokens',
+  help: 'Reasoning tokens per thinking reply. ended: cut (the budget stopped it) or finished (it stopped on its own).',
+  labelNames: ['effort', 'ended'],
+  buckets: [25, 50, 100, 150, 200, 300, 400, 600, 800],
+  registers,
+});
+
 export const searches = new Counter({
   name: 'hearth_searches_total',
   help: 'Web searches: asked for by the model, approved or declined by the user, failed.',

@@ -8,7 +8,7 @@ import { createGateway } from './gateway.ts';
 import { registry } from './metrics.ts';
 import { ollamaChat, ollamaJson } from './ollama.ts';
 import { createSummarySweep } from './summarize.ts';
-import { ORIGIN, setupApp, signIn } from './testing.ts';
+import { ORIGIN, setupApp, signIn, THINKING_TOKENS } from './testing.ts';
 
 // The registry is shared by every test in the process, so each test reads a counter before and
 // after and checks the difference.
@@ -65,6 +65,17 @@ describe('reply and search metrics', () => {
     expect(await delta('hearth_replies_total', done, () => post(ctx.app, cookie, `/conversations/${id}/messages`, { content: 'Salut' }))).toBe(1);
     expect(await histogramPart('hearth_reply_first_token_seconds', 'count', { think: 'false' })).toBe(firsts + 1);
     expect(await histogramPart('hearth_reply_seconds', 'count', { think: 'false' })).toBe(totals + 1);
+  });
+
+  it('record how far a thinking reply reasoned, by effort and how it ended', async () => {
+    const ctx = setupApp({ thinkingBudgets: { medium: 200, high: 400, max: 800 } });
+    const cookie = await signIn(ctx, 'steve');
+    const id = await newChat(ctx.app, cookie);
+    const labels = { effort: 'high', ended: 'finished' };
+    const [count, sum] = [await histogramPart('hearth_thinking_tokens', 'count', labels), await histogramPart('hearth_thinking_tokens', 'sum', labels)];
+    await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: 'Why the subjunctive?', think: true, effort: 'high' });
+    expect(await histogramPart('hearth_thinking_tokens', 'count', labels)).toBe(count + 1);
+    expect(await histogramPart('hearth_thinking_tokens', 'sum', labels)).toBe(sum + THINKING_TOKENS);
   });
 
   it('count a failed reply as an error, and titles by outcome', async () => {

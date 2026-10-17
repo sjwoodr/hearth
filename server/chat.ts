@@ -1,4 +1,4 @@
-import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchCount } from './metrics.ts';
+import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchCount, thinkingTokens } from './metrics.ts';
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { fitHistory } from './context.ts';
@@ -307,6 +307,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           void send({ type: 'thinking', tokens });
         }
       };
+      // The last count, which progress every 10 tokens would otherwise miss (191 of a 200 cap).
+      const onThinkingEnd = (tokens: number, cut: boolean) => {
+        thinkingTokens.observe({ effort: effort ?? 'medium', ended: cut ? 'cut' : 'finished' }, tokens);
+        if (tokens > 0 && tokens !== lastReported) void send({ type: 'thinking', tokens });
+      };
 
       deps.modelChoice?.touch();
       await send({
@@ -335,7 +340,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         // The scheduler (in deps.chat) makes room by preempting background work, or, when every slot
         // holds a reply, queues this one and says so. Ceiling: other Ollama clients are invisible.
         const onQueued = () => void send({ type: 'queued' });
-        const callOpts = { onThinking, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
+        const callOpts = { onThinking, onThinkingEnd, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
         const labels = { think: String(think), effort: effort ?? 'none' };
         const sinceStart = () => (performance.now() - startedAt) / 1000;
         for await (const text of generate(prompt, controller.signal, callOpts)) {

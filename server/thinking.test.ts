@@ -35,7 +35,7 @@ describe('the Think toggle', () => {
     expect(ctx.model.calls).toHaveLength(0);
     expect(ctx.model.thinkingCalls).toHaveLength(1);
     const progress = events.filter((e) => e.type === 'thinking').map((e) => e.tokens);
-    expect(progress).toEqual([1, 11, 21]); // the first token, then every 10, not all 25
+    expect(progress).toEqual([1, 11, 21, 25]); // the first token, every 10, and the total, not all 25
     expect(progress.length).toBeLessThan(THINKING_TOKENS);
     expect(events.findIndex((e) => e.type === 'thinking')).toBeLessThan(events.findIndex((e) => e.type === 'delta'));
     expect(events.filter((e) => e.type === 'delta').map((e) => e.text).join('')).toBe('Considered answer.');
@@ -214,6 +214,26 @@ describe('budget-capped thinking against a fake Ollama', () => {
     expect(out).toBe('Correct.');
     expect(seen).toBe(5);
     expect(requests).toHaveLength(1);
+  });
+
+  it('reports where reasoning ended, once: finished under the budget, or cut at it', async () => {
+    const ends: [number, boolean][] = [];
+    const onThinkingEnd = (tokens: number, cut: boolean) => ends.push([tokens, cut]);
+    const finished = await fakeOllama({ thoughts: 5, answer: 'Correct.' });
+    for await (const text of ollamaThinkingChat(finished.url, 'm', 8192, 10)(messages, new AbortController().signal, { onThinkingEnd })) {
+      expect([text, ends.length]).toEqual(['Correct.', 1]); // reported before the first word
+    }
+    server?.close();
+    const cut = await fakeOllama({ thoughts: 500, plain: 'Correct, with notes.' });
+    await collect(ollamaThinkingChat(cut.url, 'm', 8192, 10)(messages, new AbortController().signal, { onThinkingEnd }));
+    server?.close();
+    const silent = await fakeOllama({ thoughts: 5, plain: 'Recovered.' });
+    await collect(ollamaThinkingChat(silent.url, 'm', 8192, 10)(messages, new AbortController().signal, { onThinkingEnd }));
+    expect(ends).toEqual([
+      [5, false],
+      [10, true],
+      [5, false],
+    ]);
   });
 
   it("uses a request's own budget over the default", async () => {

@@ -155,6 +155,7 @@ export function setupApp(
       model.thinkingCalls.push(messages);
       model.thinkingBudgets.push(o?.thinkingBudget);
       for (let t = 1; t <= THINKING_TOKENS; t++) o?.onThinking?.(t);
+      o?.onThinkingEnd?.(THINKING_TOKENS, false);
       if (askedToSearch(o)) return;
       yield 'Considered answer.';
     }),
