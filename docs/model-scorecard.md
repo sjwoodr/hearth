@@ -14,6 +14,7 @@ current one however well it grades.
 | Model | Type | Loaded | Speed | Thinking | Vision | Quiz /158 | Grading /300, fast | Grading /300, thinking ≤200 | Medium reply | Extraction | Coding /16 | Verdict | Tested |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **`gemma4:26b-a4b-it-qat`** | MoE 26B, ~4B active | 15.8 GB | **25.5** | on/off, cap | yes | 153 (156 thinking) | 286 (5 / 9), 1.2 s | **300 (0 / 0)**, 12.0 s | **17.3 s** | **12/12**, judge 34/36 | 14 / 16, 11 s | **Current: chat and background** | 09-29, 10-10 |
+| `hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL`³ | MoE 26B, ~4B active (QAT, mixed precision) | 15.6 GB | 25.6 | on/off, cap | yes | 154 | 286 (6 / 8), 0.9 s | 299 (1 / 0), 10.1 s | — | 9/9, judge 36/36⁴ | 14 / 16, 11 s | Candidate: ~6% faster than the current build run back to back (25.6 vs 24.1), level on everything else | 10-21 |
 | `gemma4:26b-a4b-it-mtp-q4_K_M` | MoE + MTP draft | ~17.5 GB | 19.0 | on/off, cap | yes | **155** | **291 (3 / 6)**, 1.2 s | 300 (0 / 0), 9.9 s | 18.6 s | — | — | No: bigger and slower; MTP doesn't pay on this iGPU | 10-10 |
 | `qwen3.6:35b-a3b` | MoE 35B, ~3B active | 22.1 GB¹ | 25.3 | on/off, cap | yes | 148 | 283 (4 / 13), 1.2 s | 293 (3 / 4), always hit the cap | — | — | — | No: bigger, not faster, less accurate | 10-10 |
 | `qwen3-coder:30b` | MoE 30B, ~3.3B active | 22.0 GB | **32.7** | none | **no** | 134 | 221 (54 / 25), 0.7 s | — | — | — | 14 / 16, **7 s** | No: very fast, but a weak grader, and no thinking or vision | 10-11 |
@@ -33,7 +34,12 @@ current one however well it grades.
 | `ministral-3:3b` | small, for background | ~4.2 GB | — | none | yes | — | — | — | — | 9/12, judge 18/36, 16 unwanted updates | — | No: merges unrelated memories, invents facts | 10-10 |
 
 ¹ at 8k context; everything else is at hearth's 32k where measured. ² size on disk (not measured
-loaded). Dates are 2026. "—" means not run.
+loaded). ³ Unsloth's quantization of Google's QAT checkpoint, with its more sensitive layers kept at
+higher precision. Pulled from Hugging Face, Ollama runs it with a generic template, so thinking and
+tool calls aren't separated; it needs its own tag with `RENDERER gemma4` and `PARSER gemma4` (and
+Gemma's sampling settings) to match the library model. ⁴ The generic cases only, run side by side
+with the current build, which scored the same 9/9 and 35/36 on that run. Dates are 2026. "—" means
+not run.
 
 ## Cloud models (reference only)
 
