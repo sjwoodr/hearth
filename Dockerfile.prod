@@ -7,7 +7,7 @@
 # Base images are pinned by digest so a rebuild can't change underneath; bump them deliberately.
 
 # ---- build: install everything, compile better-sqlite3, build the front end, drop dev deps ----
-FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS build
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/* \
@@ -20,7 +20,7 @@ COPY . .
 RUN pnpm build && pnpm prune --prod
 
 # ---- server: Node, production dependencies and the code; no compilers ----
-FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS server
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS server
 # tini as PID 1 passes SIGTERM to Node, so graceful shutdown works (server/shutdown.ts).
 # npm isn't needed to run, so it goes (smaller, and less for a scanner to flag).
 RUN apt-get update \
