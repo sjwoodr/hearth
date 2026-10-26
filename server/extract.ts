@@ -108,6 +108,8 @@ Never record what hearth said, general knowledge, guesses, or one-off small talk
   mistake can't happen again.
 - Write each memory as one short, specific sentence in the third person, using the name ${username}.
   Don't include dates; hearth records when each memory was learned.
+- Leave out what only matters on the day (tonight's plans, what ${username} is doing or watching right
+  now, a score): keep only the part that will still be true next month, or record nothing.
 - If nothing is worth remembering, return empty lists.
 - "name": only if ${username} explicitly tells you their name or what to call them ("I'm Sam",
   "call me Sam"), put just that name here. Otherwise leave it empty. Never guess.`;
@@ -124,6 +126,48 @@ export const NEAR_DUPLICATE_CANDIDATE = 0.85;
 export const UPDATED_CANDIDATE = 0.7;
 const MAX_CANDIDATES_CHECKED = 3;
 const SAME_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'] };
+
+const LASTING_SCHEMA = { type: 'object', properties: { lasting: { type: 'boolean' } }, required: ['lasting'] };
+
+/**
+ * Whether `memory` will still be true and worth knowing in a month. Live chats about a game became
+ * "is currently watching UCF vs. BYU, tied 24-24 in the 4th quarter", "is going to a game tonight
+ * with seats in row 2" and "notes it is still dark at 6:30 am"; a result hearth got wrong
+ * ("BYU won 28-24") was saved and then updated with more play-by-play. Judged on the memory alone,
+ * so the call is short. Applied to additions and updates; any failure keeps the memory.
+ */
+export async function isLasting(json: JsonFn, username: string, memory: string): Promise<boolean> {
+  const raw = (await json(
+    [
+      {
+        role: 'system',
+        content:
+          `You check one memory about ${username} that a chat companion will keep for months. Answer lasting=true ` +
+          'if it will probably still be true and worth knowing a month from now: who they are, family, friends and ' +
+          'pets, where they live, likes and dislikes, teams they support, habits, opinions, skills, what they are ' +
+          'learning, ongoing projects and goals, plans or situations that run for weeks or longer, and stories ' +
+          'from their past (a trip, someone they met). Answer ' +
+          'lasting=false if it is only about one moment or one day: what they are doing, watching or feeling right ' +
+          "now, today's or tonight's plans, the weather or the time of day, or the score, result or play-by-play of a " +
+          'single game or event. If part of it is lasting, answer true.',
+      },
+      { role: 'user', content: `MEMORY: ${memory}` },
+    ],
+    LASTING_SCHEMA,
+  )) as { lasting?: unknown };
+  return raw?.lasting !== false;
+}
+
+/** A yes/no check that keeps the memory when it fails (other than a preemption, which abandons the run). */
+async function keptIfFails(what: string, check: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await check();
+  } catch (err) {
+    if (isPreempted(err)) throw err;
+    console.error(`memory: ${what} check failed, keeping it:`, err instanceof Error ? err.message : err);
+    return true;
+  }
+}
 
 const STATED_SCHEMA = { type: 'object', properties: { stated: { type: 'boolean' } }, required: ['stated'] };
 
@@ -234,6 +278,8 @@ export type ExtractResult = {
   duplicates: number;
   /** Additions dropped because the user never said them about themselves (a lookup, a guess). */
   unstated: number;
+  /** Additions dropped, and updates not made, because they were about one moment (a live score, tonight). */
+  fleeting: number;
   named: boolean;
 };
 
@@ -258,7 +304,7 @@ export async function extractMemories(
   const unread = db
     .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
     .all(conversation.id, conversation.memory_through_message_id) as MessageRow[];
-  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, named: false };
+  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false };
   if (unread.length === 0) return none;
   const lastId = unread.at(-1)!.id;
 
@@ -297,23 +343,25 @@ export async function extractMemories(
   );
   const changes = sanitizeExtraction(raw, existing);
   const named = changes.name !== undefined && conversation.display_name === null;
-  // Each new memory must be something the user said about themselves, not a question they asked.
-  // Updates aren't checked: they rewrite a memory the user already has. Any failure keeps the memory.
+  // Each new memory must outlast the day, then be something the user said about themselves, not a
+  // question they asked. Updates are only checked for lasting: they rewrite a memory the user
+  // already has, and a fleeting one leaves it as it was. Any failure keeps the memory.
+  const { username } = conversation;
   const stated: { content: string }[] = [];
   let unstated = 0;
+  let fleeting = 0;
   for (const add of changes.add) {
-    let keep = true;
-    try {
-      keep = await statedByUser(json, conversation.username, transcript.join('\n\n'), add.content);
-    } catch (err) {
-      if (isPreempted(err)) throw err;
-      console.error('memory: stated check failed, keeping it:', err instanceof Error ? err.message : err);
-    }
-    if (keep) stated.push(add);
+    if (!(await keptIfFails('lasting', () => isLasting(json, username, add.content)))) fleeting++;
+    else if (await keptIfFails('stated', () => statedByUser(json, username, transcript.join('\n\n'), add.content))) stated.push(add);
     else unstated++;
   }
+  const updates: Extraction['update'] = [];
+  for (const u of changes.update) {
+    if (await keptIfFails('lasting', () => isLasting(json, username, u.content))) updates.push(u);
+    else fleeting++;
+  }
   const { kept, skipped } = embed
-    ? await dropNearDuplicates(db, conversation.user_id, stated, changes.update, json, embed)
+    ? await dropNearDuplicates(db, conversation.user_id, stated, updates, json, embed)
     : { kept: stated as NewMemory[], skipped: 0 };
 
   db.transaction(() => {
@@ -326,7 +374,7 @@ export async function extractMemories(
     const update = db.prepare(
       "UPDATE memories SET content = ?, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
     );
-    for (const u of changes.update) update.run(u.content, u.id, conversation.user_id);
+    for (const u of updates) update.run(u.content, u.id, conversation.user_id);
     db.prepare('UPDATE conversations SET memory_through_message_id = ? WHERE id = ?').run(lastId, conversation.id);
     // A learned name only fills a blank; it never replaces one someone set.
     if (named) db.prepare('UPDATE users SET display_name = ? WHERE id = ? AND display_name IS NULL').run(changes.name, conversation.user_id);
@@ -336,9 +384,10 @@ export async function extractMemories(
     conversationId,
     read: unread.length,
     added: kept.length,
-    updated: changes.update.length,
+    updated: updates.length,
     duplicates: skipped,
     unstated,
+    fleeting,
     named,
   };
 }

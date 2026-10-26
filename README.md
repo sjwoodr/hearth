@@ -291,6 +291,14 @@ instead of gaining a second, competing one. It never deletes. Progress is stored
 (`memory_through_message_id`), so a restart loses nothing; a chat whose
 extraction fails waits 15 minutes before a retry.
 
+**Only what lasts.** Each new memory, and each update, is first asked: will this still be true and worth
+knowing in a month? "Is watching the game live, tied 24-24", "is going to a game tonight, row 2"
+and "notes it is still dark at 6:30 am" are not; a hobby, a project, a plan for next year or a story from
+the past are. A fleeting addition is dropped, and a fleeting update leaves the memory as it was. The
+extraction prompt also asks the model to leave the passing details out of a memory, so "a Bears fan
+watching tonight's game" keeps only the Bears. On real chats this cut the noise saved from about half the
+fleeting moments to 6 in 100, without dropping a lasting fact; a failed check keeps the memory.
+
 **Only what the user said.** Each new memory gets one more yes/no question before it's saved:
 did the user say this about themselves, or only ask about it? A lone lookup ("who is the Jaguars'
 quarterback?") used to become "interested in the Jaguars" about 1 time in 7; with the check, 0 in 20.

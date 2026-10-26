@@ -235,6 +235,22 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   duplicate add of a correction stopped appearing. Trade-off: interests implied only by questions are
   dropped too (a Diablo comparison chat no longer adds "interested in Diablo 4"). Updates aren't checked;
   any failure keeps the memory.
+- **Every memory must last beyond the day** (`isLasting` in `extract.ts`): a yes/no on the memory text
+  alone (short and cheap), for additions (before `statedByUser`) and updates (a fleeting rewrite leaves
+  the old memory). Live memories included "is currently watching UCF vs. BYU, tied 24-24", "going to a
+  game tonight" (with the seat numbers), "notes it is still dark at 6:30 am", and a score hearth got wrong
+  ("BYU won 28-24") that a later, unchecked update padded with play-by-play. Measured 2026-10-25 on 18
+  real extraction windows rebuilt from the live history (`data/bench/extraction-lasting.json`, private),
+  live UD model: noise kept 21/45 before, **6/100** after (the rest: "lives in Florida, where it is still
+  dark at 6:30", and one about where free tickets come from); lasting facts lost unchanged and none by the
+  check (20 runs with `dropped` counts: the misses were facts the extractor never proposed); the generic
+  suite unchanged (updates 30/30, judge 120/120). On all 79 live memories x3 the check flagged exactly the
+  six bad ones every time, plus one good one (about a phone's battery) once in 219. Two wording lessons:
+  "if part of it is lasting, answer true" let mixed memories through ("a hockey fan **attending a game
+  tonight**", 10/10), and a stricter "mixed means false" dropped good ones; what fixed it was the
+  extraction prompt line "leave out what only matters on the day" (mixed memories stopped being written).
+  Without "stories from their past" the check dropped "his wife met a famous ballplayer" 3/3. The bench's
+  `expect.keep`/`expect.avoid` regexes score this; keep both rates, and treat a lost fact as the worse error.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
 - **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands
@@ -307,7 +323,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
-| `server/memories.ts`, `extract.ts` | recall and background extraction (+ near-duplicate check) |
+| `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |
@@ -395,5 +411,10 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   image + transcription + thinking 1/3, text only 3/3), far too small to decide anything. Worth a bench
   section (printed and handwritten photos, right and wrong) before trusting photo grading; if images
   grade worse than text, transcribe first and grade the transcript.
+- **A memory can carry a claim hearth made.** `statedByUser` judges a memory as a whole, so in "was
+  rooting for UCF, but BYU won 28-24" the rooting passed and hearth's wrong score rode along. `isLasting`
+  removes this case (a game's result is a one-day fact) but not the class: a lasting memory with a detail
+  only hearth said would still pass. It didn't reproduce in the 5 baseline runs of each real window, so it is rare;
+  a fix would be a narrower check ("is every detail something the user said?"), measured first.
 - Every local model invents specifics on niche topics (commands, IDs). hearth's system prompt asks it
   to say when it is unsure; don't trust it for anything you'll act on without checking.

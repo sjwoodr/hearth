@@ -393,3 +393,53 @@ describe('checking that the user said it', () => {
     await expect(extractWith(() => new PreemptedError())).rejects.toBeInstanceOf(PreemptedError);
   });
 });
+
+describe('checking that a memory lasts', () => {
+  // The extraction proposes a fleeting and a lasting addition, plus an update of each kind.
+  async function extractWith(lasting: (memory: string) => boolean | Error) {
+    const { db, alice } = await seed();
+    const score = addMemory(db, alice.id, 'fact', 'Alice was rooting for Lyon.');
+    const bees = addMemory(db, alice.id, 'fact', 'Alice keeps bees.');
+    const chat = chatWith(db, alice.id, [['user', "It's 2-2 at half time! I keep two hives now, by the way."]]);
+    const stated: string[] = [];
+    const json: JsonFn = async (messages, schema) => {
+      if (schema === EXTRACTION_SCHEMA) {
+        return {
+          add: [{ content: 'Alice is watching Lyon, tied 2-2 at half time.' }, { content: 'Alice supports Lyon.' }],
+          update: [
+            { id: score.id, content: 'Alice was rooting for Lyon, 2-2 at half time.' },
+            { id: bees.id, content: 'Alice keeps two hives of bees.' },
+          ],
+        };
+      }
+      const memory = /MEMORY: (.*)$/.exec(messages.at(-1)!.content)![1]!;
+      if (!messages[0]!.content.includes('lasting=true')) {
+        stated.push(memory);
+        return { stated: true };
+      }
+      const verdict = lasting(memory);
+      if (verdict instanceof Error) throw verdict;
+      return { lasting: verdict };
+    };
+    const result = await extractMemories(db, chat, json);
+    return { result, stated, stored: (memoriesOf(db, alice.id) as { content: string }[]).map((m) => m.content) };
+  }
+
+  it('drops a fleeting addition and leaves a memory as it was rather than update it with one', async () => {
+    const { result, stated, stored } = await extractWith((m) => !m.includes('2-2'));
+    expect(stored).toEqual(['Alice was rooting for Lyon.', 'Alice keeps two hives of bees.', 'Alice supports Lyon.']);
+    expect(result).toMatchObject({ added: 1, updated: 1, fleeting: 2 });
+    // A fleeting addition never reaches the "did they say it?" check.
+    expect(stated).toEqual(['Alice supports Lyon.']);
+  });
+
+  it('keeps the memory when the check fails', async () => {
+    const { stored } = await extractWith(() => new Error('model down'));
+    expect(stored).toHaveLength(4);
+    expect(stored).toContain('Alice was rooting for Lyon, 2-2 at half time.');
+  });
+
+  it('abandons the run, writing nothing, when a reply preempts the check', async () => {
+    await expect(extractWith(() => new PreemptedError())).rejects.toBeInstanceOf(PreemptedError);
+  });
+});

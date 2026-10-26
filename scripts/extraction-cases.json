@@ -1,5 +1,5 @@
 {
-  "about": "Generic cases for scripts/bench-extraction.ts. Memories are keyed by label; an extraction case's expect.update lists the labels that must be rewritten, and any other update counts as unwanted. expect.adds is none (adding anything is a miss), some (at least one), or any. Duplicate pairs give the right answer to the yes/no 'same memory?' judge: same=true only if the new memory adds nothing beyond the existing one.",
+  "about": "Generic cases for scripts/bench-extraction.ts. Memories are keyed by label; an extraction case's expect.update lists the labels that must be rewritten, and any other update counts as unwanted. expect.adds is none (adding anything is a miss), some (at least one), or any. Duplicate pairs give the right answer to the yes/no 'same memory?' judge: same=true only if the new memory adds nothing beyond the existing one. expect.keep / expect.avoid (optional regexes): each keep must match a memory afterwards; no avoid may match a memory the run added or changed.",
   "extraction": [
     {
       "name": "correction: the mug is for home",
@@ -262,6 +262,67 @@
       "expect": {
         "update": [],
         "adds": "some"
+      }
+    },
+    {
+      "name": "fleeting: a live match, then a lasting fact",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        [
+          "user",
+          "Watching OL right now, it's 2-2 at half time and I can't breathe."
+        ],
+        [
+          "assistant",
+          "A 2-2 first half is a lot. Who has been better?"
+        ],
+        [
+          "user",
+          "Lyon, easily. I've supported them since I was a kid, my dad took me to Gerland."
+        ],
+        [
+          "assistant",
+          "Gerland days, that's real loyalty."
+        ]
+      ],
+      "expect": {
+        "update": [],
+        "adds": "some",
+        "keep": [
+          "supports|supporter|fan"
+        ],
+        "avoid": [
+          "2-2|half.time|right now|watching"
+        ]
+      }
+    },
+    {
+      "name": "fleeting: tonight's plan",
+      "user": "alice",
+      "memories": {
+        "bees": "Alice keeps bees.",
+        "lyon": "Alice lives in Lyon."
+      },
+      "messages": [
+        [
+          "user",
+          "We got free tickets to the opera tonight, row 3! Any tips for a first visit?"
+        ],
+        [
+          "assistant",
+          "Row 3 is close. Arrive early, read the synopsis, and don't clap between movements."
+        ]
+      ],
+      "expect": {
+        "update": [],
+        "adds": "any",
+        "avoid": [
+          "tonight|row 3|free tickets"
+        ]
       }
     }
   ],

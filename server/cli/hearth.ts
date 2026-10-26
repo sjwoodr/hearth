@@ -378,6 +378,7 @@ async function memoryExtract(chatId: number): Promise<void> {
   const extras = [
     r.duplicates ? `skipped ${r.duplicates} duplicate(s)` : '',
     r.unstated ? `dropped ${r.unstated} the user never said` : '',
+    r.fleeting ? `dropped ${r.fleeting} that won't last` : '',
     r.named ? 'learned their name' : '',
   ]
     .filter(Boolean)

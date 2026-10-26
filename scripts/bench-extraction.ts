@@ -6,6 +6,9 @@
 // - corrections/extensions: cases whose expect.update names memories that must be rewritten. Pass =
 //   every one was updated. Unwanted = any other memory updated (that's the costly mistake).
 // - adds: cases with expect.adds "none" count a miss for any new memory; "some" for none at all.
+// - keep/avoid (optional, regexes, case-insensitive): every keep must match some memory afterwards
+//   (a lasting fact lost); no avoid may match a memory the run added or changed (noise kept). One
+//   chat can then hold both, like a live game that ends with "I'm a Notre Dame fan".
 // - pairs: the yes/no "same memory?" judge on pairs with a known answer. False "same" merges two
 //   different facts (one is lost); false "different" only keeps a duplicate.
 // - summaries: written to the results file for reading; only their time is scored.
@@ -48,7 +51,7 @@ type ExtractionCase = {
   user: string;
   memories: Record<string, string>;
   messages: [Role, string][];
-  expect: { update: string[]; adds: 'none' | 'some' | 'any' };
+  expect: { update: string[]; adds: 'none' | 'some' | 'any'; keep?: string[]; avoid?: string[] };
 };
 type Pair = { existing: string; candidate: string; same: boolean };
 type SummaryCase = { name: string; user: string; messages: [Role, string][]; budget: number };
@@ -105,8 +108,11 @@ for (const model of args.models.split(',')) {
       const before = new Map(memoriesOf(db).map((m) => [m.id, m.content]));
       const t = performance.now();
       let error: string | undefined;
+      let dropped: { fleeting: number; unstated: number; duplicates: number } | undefined;
       try {
-        await extractMemories(db, chat, json, embed);
+        // What the checks dropped, so a lost fact can be told apart from one the model never proposed.
+        const { fleeting, unstated, duplicates } = await extractMemories(db, chat, json, embed);
+        dropped = { fleeting, unstated, duplicates };
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
       }
@@ -118,18 +124,24 @@ for (const model of args.models.split(',')) {
       const missing = c.expect.update.filter((l) => !updatedLabels.includes(l));
       const unwanted = updatedLabels.filter((l) => !c.expect.update.includes(l));
       const addMiss = (c.expect.adds === 'none' && added.length > 0) || (c.expect.adds === 'some' && added.length === 0);
+      const lost = (c.expect.keep ?? []).filter((k) => !after.some((m) => new RegExp(k, 'i').test(m.content)));
+      const changed = [...updated, ...added];
+      const noise = (c.expect.avoid ?? []).filter((a) => changed.some((m) => new RegExp(a, 'i').test(m.content)));
       extraction.push({
         case: c.name,
         run: r,
-        pass: !error && missing.length === 0 && unwanted.length === 0 && !addMiss,
+        pass: !error && missing.length === 0 && unwanted.length === 0 && !addMiss && lost.length === 0 && noise.length === 0,
         missing,
         unwanted,
         addMiss,
+        lost,
+        noise,
         error,
+        dropped,
         updated: updated.map((m) => ({ label: labels.get(m.id), content: m.content })),
         added: added.map((m) => m.content),
       });
-      process.stdout.write(missing.length || unwanted.length || addMiss || error ? 'x' : '.');
+      process.stdout.write(missing.length || unwanted.length || addMiss || lost.length || noise.length || error ? 'x' : '.');
     }
   }
 
@@ -172,6 +184,8 @@ for (const model of args.models.split(',')) {
     const rows = extraction.filter((e) => names.has(e.case as string));
     return { rows, pass: rows.filter((e) => e.pass).length };
   };
+  const count = (k: 'lost' | 'noise') => extraction.reduce((n, e) => n + (e[k] as string[]).length, 0);
+  const checks = (k: 'keep' | 'avoid') => cases.extraction.reduce((n, c) => n + (c.expect[k]?.length ?? 0), 0) * runs;
   const toUpdate = kind((c) => c.expect.update.length > 0);
   const controls = kind((c) => c.expect.update.length === 0);
   const row = {
@@ -180,6 +194,8 @@ for (const model of args.models.split(',')) {
     'updates done': `${toUpdate.pass}/${toUpdate.rows.length}`,
     'clean controls': `${controls.pass}/${controls.rows.length}`,
     'unwanted updates': extraction.reduce((n, e) => n + (e.unwanted as string[]).length, 0),
+    'facts lost': `${count('lost')}/${checks('keep')}`,
+    'noise kept': `${count('noise')}/${checks('avoid')}`,
     'pairs right': `${pairs.filter((p) => p.ok).length}/${pairs.length}`,
     'false same': pairs.filter((p) => p.said === true && !p.same).length,
     'extract s': (median(times.extraction) / 1000).toFixed(1),
