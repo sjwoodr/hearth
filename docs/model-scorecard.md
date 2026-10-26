@@ -24,6 +24,8 @@ current one however well it grades.
 | `aya-expanse:32b` | dense 32B | ~19 GB² | ~3.7 | none | **no** | 138 | 250 (23 / 27), 2.8 s | — | — | — | — | No: slowest and worst grader | 10-11 |
 | `gemma4:12b-it-qat` | dense 12B | 7.7 GB | ~10 | on/off, cap | yes | 150 (157 thinking) | 280 (15 / 5), 1.7 s | 40/40 on a 40-item subset, 27 s | — | — | — | Previous model; replaced by the 26B | 09-29 |
 | `Nemotron 3.5 30B-A3B` (IQ4_NL) | MoE 30B, ~3B active | 20.3 GB | 23.6 | off | no? | 142 | 268 (12 / 20), 1.4 s | — | — | — | — | No: bigger, slower, and a much weaker grader | 09-29, 10-11 |
+| `hf.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF:UD-Q8_K_XL`⁵ | NVIDIA's tune of Gemma 4 E4B, ~4B effective | 6.1 GB | 14.4 | on/off, cap | yes | 146 | 264 (17 / 19), 1.0 s | 295 (5 / 0), 13.5 s | — | — | 10 / 16 (15 with retry), 18 s | No: smaller but much slower, and more false corrections than the 26B in both modes | 10-25 |
+| `gemma4:e4b-it-q8_0` | small, ~4B effective | ~9 GB² | — | on/off | yes | — | — | — | — | — | — | Pending: French bench running. pi edit suite 15/15, 83 s per task (26B UD 15/15, 38 s)⁶ | 10-22 |
 | `mistral-small3.2:24b` | dense 24B | ~16 GB | — | none | yes | 141 | — | — | — | — | — | No: weaker grading | 09-29 |
 | `ministral-3:14b` | dense 14B | 8.9 GB | — | none | yes | 140 | — | — | — | — | — | No: weaker grading | 09-29 |
 | `qwen3:14b` | dense 14B | ~10 GB | — | on/off | **no** | 138 | — | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
@@ -38,7 +40,13 @@ loaded). ³ Unsloth's quantization of Google's QAT checkpoint, with its more sen
 higher precision. Pulled from Hugging Face, Ollama runs it with a generic template, so thinking and
 tool calls aren't separated; it needs its own tag with `RENDERER gemma4` and `PARSER gemma4` (and
 Gemma's sampling settings) to match the library model: [deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](../deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile). ⁴ The generic cases only, run side by side
-with the current build, which scored the same 9/9 and 35/36 on that run. Dates are 2026. "—" means
+with the current build, which scored the same 9/9 and 35/36 on that run. ⁵ Q8, as the local tag
+`nemotron-3.5-bolt-e4b-q8`: like ³ it needs `RENDERER gemma4` and `PARSER gemma4`, or thinking isn't
+separated. Loaded is `ollama ps`'s `size_vram`; the file is 9.2 GB. The thinking run's worst answer
+(107 s) came while another model was being tested alongside and Ollama swapped them, so its times may
+be slightly high; the scores aren't affected. ⁶ `~/src/other/agent-bench` (local, no remote): pi
+changes one value in a Dockerfile, Terraform, Helm, k8s and Actions file, each with a lookalike line
+to leave alone; 5 tasks x 3 runs at thinking high (800-token cap), 2026-10-22. Dates are 2026. "—" means
 not run.
 
 ## Cloud models (reference only)
