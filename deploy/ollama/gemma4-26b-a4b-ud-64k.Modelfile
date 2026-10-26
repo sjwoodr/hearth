@@ -1,0 +1,14 @@
+# hearth's model: Unsloth's UD-Q4_K_XL build of Google's QAT Gemma 4 26B-A4B (docs/model-scorecard.md).
+# Pulled from Hugging Face it gets a generic template, so thinking and tool calls aren't separated;
+# Gemma's renderer and parser fix that, with Gemma's sampling settings and hearth's 64k window
+# (HEARTH_NUM_CTX: a different num_ctx makes Ollama reload the model between callers).
+#   ollama pull hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL
+#   ollama create gemma4-26b-a4b-ud-64k -f deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile
+FROM hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL
+RENDERER gemma4
+PARSER gemma4
+TEMPLATE {{ .Prompt }}
+PARAMETER temperature 1
+PARAMETER top_k 64
+PARAMETER top_p 0.95
+PARAMETER num_ctx 65536

@@ -29,11 +29,12 @@ export const config = {
   // runs `pnpm migrate` as its own step; hearth then only checks the schema version.
   autoMigrate: !isOff(env('HEARTH_AUTO_MIGRATE', '1')),
   ollamaUrl: env('OLLAMA_URL', 'http://127.0.0.1:11434'),
-  // Chosen by the French bench (docs/model-selection.md): 153/158 at 1.2 s/answer.
-  model: env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat'),
+  // Gemma 4 26B-A4B, chosen by the French bench (docs/model-selection.md); this is Unsloth's UD build
+  // of it, a local tag made from deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile (docs/model-scorecard.md).
+  model: env('HEARTH_MODEL', 'gemma4-26b-a4b-ud-64k'),
   // Used, with thinking on, when the in-app Think toggle is on. The same model as HEARTH_MODEL keeps
   // one copy in memory; a different one loads a second model.
-  thinkingModel: env('HEARTH_MODEL_THINKING', env('HEARTH_MODEL', 'gemma4:26b-a4b-it-qat')),
+  thinkingModel: env('HEARTH_MODEL_THINKING', env('HEARTH_MODEL', 'gemma4-26b-a4b-ud-64k')),
   // Reasoning-token caps for the three Think effort levels (shared/think-effort.ts). Medium's 200 kept
   // all of unlimited thinking's grading accuracy on the French bench; High and Max are unmeasured.
   thinkingBudgets: {

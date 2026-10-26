@@ -24,7 +24,7 @@ import { parseArgs } from 'node:util';
 import { readLines, type StreamLine } from '../server/ollama.ts';
 
 const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434';
-const MODEL = process.env.HEARTH_MODEL ?? 'gemma4:26b-a4b-it-qat';
+const MODEL = process.env.HEARTH_MODEL ?? 'gemma4-26b-a4b-ud-64k';
 const NUM_CTX = 16384;
 const REPLY_TOKENS = 256;
 

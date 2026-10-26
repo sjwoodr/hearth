@@ -311,8 +311,12 @@ the exact memory section the model would get.
 
 ## Model
 
-`gemma4:26b-a4b-it-qat`, `num_ctx` 65536 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
-active per token), 15 GB loaded, ~26 tokens/s on the Radeon 780M. Chosen with a 158-question French
+Gemma 4 26B-A4B as `gemma4-26b-a4b-ud-64k`, `num_ctx` 65536 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
+active per token), 15.6 GB loaded, ~26 tokens/s on the Radeon 780M. The tag is Unsloth's UD-Q4_K_XL build
+of Google's QAT checkpoint with Gemma's renderer and parser; create it from
+[deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile) (the file
+says how). It replaced Ollama's library build, `gemma4:26b-a4b-it-qat`, on 2026-10-21: a little faster,
+level on accuracy. Chosen with a 158-question French
 bench against nine other setups (Gemma 12B, Nemotron, Mistral Small/Nemo, Ministral, Qwen 3, Aya):
 153/158 at ~1.2 s per answer. A follow-up grading test found it marks about 1 in 30 correct answers
 wrong in fast mode and none with capped thinking, which is what Think: Auto is for. The method, every

@@ -75,7 +75,7 @@ timezone: ""
 searxngUrl: "off"
 
 # Extra HEARTH_* settings for api and worker (models, num_ctx, ...); the app's defaults apply
-# otherwise. Example: {HEARTH_MODEL: "gemma4:26b-a4b-it-qat"}
+# otherwise. Example: {HEARTH_MODEL: "gemma4-26b-a4b-ud-64k"}
 env: {}
 
 # A replacement system prompt, mounted as a file (edits apply on the next message, no restart).

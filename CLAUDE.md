@@ -61,10 +61,18 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 
 | Role | Model | Notes |
 |---|---|---|
-| Chat (`HEARTH_MODEL`) | `gemma4:26b-a4b-it-qat` | thinking off, ~1.2 s/answer, ~26 tok/s, 15 GB loaded |
+| Chat (`HEARTH_MODEL`) | `gemma4-26b-a4b-ud-64k` | Gemma 4 26B-A4B, Unsloth's UD-Q4_K_XL build of the QAT checkpoint; thinking off, ~0.9 s/answer, ~26 tok/s, 15.6 GB loaded |
 | Thinking (`HEARTH_MODEL_THINKING`) | same model, `think: true` | same model = one copy in memory; a different one loads a second |
 | Background (titles, summaries, extraction, duplicate checks) | `HEARTH_MODEL` via `ollamaJson` | never thinks; `format` JSON schema (extraction) or plain text, temperature 0.2 |
 | Embeddings (`HEARTH_EMBED_MODEL`) | `embeddinggemma:300m-qat-q8_0` | memory recall and near-duplicate candidates |
+
+The chat model is a **local tag**, made with `ollama create gemma4-26b-a4b-ud-64k -f
+deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile` after pulling
+`hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL`: pulled as is, Ollama gives it a generic
+template, so thinking and tool calls aren't separated. It replaced `gemma4:26b-a4b-it-qat` (the same
+model, Ollama's library build) after the 2026-10-21 bench: ~6% faster run back to back, level on
+everything else ([docs/model-scorecard.md](docs/model-scorecard.md)). The benches below were run on
+the library build.
 
 Defaults live in `server/config.ts`; `.env` overrides them; the real environment overrides both.
 `.env.example` mirrors the defaults and is read by nothing.

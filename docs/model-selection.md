@@ -180,6 +180,25 @@ same 300 questions went to Gemma 26B with the 200-token thinking cap:
 So Auto's design is backed by the data: answer fast by default, and think briefly exactly when
 correctness of French is at stake.
 
+### 7. A better build of the same model (2026-10-21)
+
+The model stayed; its build changed. Unsloth publishes its own quantization of Google's QAT
+checkpoint of Gemma 4 26B-A4B (UD-Q4_K_XL), which keeps the layers most sensitive to rounding at
+higher precision. Run back to back with Ollama's library build on the same benches:
+
+| Build | Speed, back to back | Quiz /158 | Grading /300, fast | Grading /300, thinking ≤200 | Loaded |
+|---|---|---|---|---|---|
+| Ollama library (`gemma4:26b-a4b-it-qat`) | 24.1 tok/s | 153 | 286, 1.2 s | 300, 12.0 s | 15.8 GB |
+| **Unsloth UD-Q4_K_XL** | **25.6 tok/s** | 154 | 286, 0.9 s | 299, 10.1 s | 15.6 GB |
+
+About 6% faster, a little smaller, and level on accuracy (one quiz item either way, one grading
+item with thinking: well inside the noise of a single run). By the replacement rule (smaller must be
+faster and as accurate), it qualifies, and hearth switched to it. One catch: pulled from Hugging
+Face, Ollama runs it with a generic template, so thinking and tool calls come back mixed into the
+text. A local tag with Gemma's renderer and parser fixes that
+([deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](../deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile)).
+Every other result in this write-up was measured on the library build.
+
 ## Other things the measurements changed
 
 - **Prompt caching mattered more than context size.** Ollama reuses its cached conversation up to the
