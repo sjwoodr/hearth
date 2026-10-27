@@ -329,7 +329,7 @@ bench against nine other setups (Gemma 12B, Nemotron, Mistral Small/Nemo, Minist
 153/158 at ~1.2 s per answer. A follow-up grading test found it marks about 1 in 30 correct answers
 wrong in fast mode and none with capped thinking, which is what Think: Auto is for. The method, every
 result and the design decisions they led to are in [docs/model-selection.md](docs/model-selection.md).
-The bench lives in `~/src/other/french-model-bench`, outside this repo, because its answer key comes
+The bench lives in `~/src/other/model-bench/french`, outside this repo, because its answer key comes
 from private content.
 
 **Switching the model (admins).** The sidebar shows the model in use; an admin's **Change** opens a

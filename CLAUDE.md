@@ -79,7 +79,8 @@ Defaults live in `server/config.ts`; `.env` overrides them; the real environment
 
 ## How the model was chosen: the French bench
 
-The bench lives in `~/src/other/french-model-bench` (local git, **no remote**). Its answer key is
+The bench lives in `~/src/other/model-bench/french` (model-bench: local git, **no remote**; it
+holds every model bench, see its README). Its answer key is
 generated from Aubemer's private content at run time and is never committed, and must never be
 copied into this public repo.
 
@@ -89,13 +90,13 @@ gender data was measured unreliable and is not used), Aubemer's authored drills 
 is flagged for review, not auto-failed), and bench-written relative-pronoun items (spot-check them).
 
 ```
-cd ~/src/other/french-model-bench
-~/src/other/aubemer/web/node_modules/.bin/vite-node gen.ts           # quiz.json (158 items)
-~/src/other/aubemer/web/node_modules/.bin/vite-node gen-grading.ts   # grading.json (150 right + 150 wrong)
-node run.ts [model ...]                  # "+think" suffix enables thinking; results/<label>.json
-node budget.ts <model> 50 100 200        # budget-capped thinking on the grading section
-QUIZ=grading.json RESULTS=results-grading node run.ts <model>     # keep other quizzes' results apart
+cd ~/src/other/model-bench/french
+./bench.sh gen                       # quiz.json (158 items) + grading.json (150 right + 150 wrong), from Aubemer
+./bench.sh quiz [model ...]          # "+think" suffix enables thinking; results/<label>.json
+./bench.sh budget <model> 50 100 200 # budget-capped thinking on the grading section
+./bench.sh grading <model>           # the 300 grading answers, into results-grading/
 ```
+`bench.sh` skips with a note when Aubemer isn't next to model-bench (`AUBEMER=` overrides).
 
 Fixed seed, temperature 0, one model loaded at a time, run overnight. Grading scores two errors
 separately, and **false corrections are the one that matters**: marking a right answer wrong teaches
