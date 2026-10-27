@@ -27,6 +27,8 @@ current one however well it grades.
 | `hf.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF:UD-Q8_K_XL`⁵ | NVIDIA's tune of Gemma 4 E4B, ~4B effective | 6.1 GB | 14.4 | on/off, cap | yes | 146 | 264 (17 / 19), 1.0 s | 295 (5 / 0), 13.5 s | — | — | 10 / 16 (15 with retry), 18 s | No: smaller but much slower, and more false corrections than the 26B in both modes | 10-25 |
 | `gemma4:e4b-it-q8_0` | small, ~4B effective | 5.9 GB | 14.5 | on/off, cap | yes | 145 | 263 (17 / 20), 1.1 s | 105/109 (2 / 2), 16.9 s⁸ | — | — | — | No: smaller but slower, and a weak grader without thinking. pi edit suite 15/15, 83 s per task (26B UD 15/15, 38 s)⁶ | 10-22, 10-26 |
 | `hf.co/unsloth/LFM2.5-24B-A2B-GGUF:UD-Q6_K_XL`⁷ | MoE 24B, ~2B active | 22.5 GB | 30.2 | always (off ignored) | **no** | 154 (thinking) | 287 (7 / 3) thinking, unlimited, ~62 s | stopped: ~25 s per answer⁷ | — | — | 9 / 16 (10 with retry), 119 s | No: fast tokens, but it thinks 1,000-1,800 tokens per answer, so every answer is slow, and with unlimited thinking it grades no better than the 26B in fast mode; no vision | 10-25 |
+| `hf.co/unsloth/Qwen3-Coder-Next-GGUF:UD-IQ3_XXS`¹⁰ | MoE 80B, ~3B active (coding) | 29 GB | 21.8 | none | **no** | — | — | — | — | — | — | No for hearth: bigger, slower, no thinking or vision. pi: edits 15/15, 43 s; lookups 9/12 (ignored the upgrade policy twice), 69 s, the fastest | 10-27 |
+| `nemotron-3.5-bolt:74b-a9b-iq2`¹⁰ | MoE 74B, ~9B active (NVIDIA 2-bit) | 24 GB | 11.1 | off/on/medium | yes | — | — | — | — | — | — | No: bigger and less than half the speed. pi: edits 15/15, 49 s; lookups 12/12, 204 s | 10-27 |
 | `mistral-small3.2:24b` | dense 24B | ~16 GB | — | none | yes | 141 | — | — | — | — | — | No: weaker grading | 09-29 |
 | `ministral-3:14b` | dense 14B | 8.9 GB | — | none | yes | 140 | — | — | — | — | — | No: weaker grading | 09-29 |
 | `qwen3:14b` | dense 14B | ~10 GB | — | on/off | **no** | 138 | — | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
@@ -58,7 +60,7 @@ is wrong. The GPU's own counter (amdgpu GTT) at 32k: 21.5 GB, against 17.0 GB fo
 `ollama ps` puts at 15.6; so ~20 GB on this table's scale. Extraction run side by side with the UD
 build on the generic cases plus the 18 real windows, 3 runs each (2026-10-26): MTP lost 9 of 48 lasting
 facts (UD 0), made 10 unwanted updates (UD 4) and kept 61/78 controls clean (UD 70/78); it kept no
-noise (0/30, UD 4/30), but a lost fact is the worse error. Dates are 2026. "—" means
+noise (0/30, UD 4/30), but a lost fact is the worse error. ¹⁰ Big MoE models at 2-3 bits, tried for pi only (no French run), loaded and timed at 64k through Ollama's API (thinking off; cold prompt reads: Coder-Next 194/s, Nemotron 130/s). Coder-Next as the local tag `qwen3-coder-next-iq3-64k` with the library model's `RENDERER`/`PARSER qwen3-coder` and sampling. agent-bench, 3 runs per task at thinking high (2026-10-27): the edit suite as in ⁶ (UD 15/15, 38 s, from 10-22), and the lookup suite (find the version an upgrade policy allows for actions/cache, an nginx digest, a Helm chart and the AWS provider, then edit), run with the UD as baseline: UD 12/12 done, 155 s; Nemotron 12/12, 204 s; Coder-Next 9/12, 69 s (actions/cache@v5 against the policy 2 of 3 times, and `~> 5.94.1` for `~> 5.94` once). The grader's "stopped" check flagged 4 Nemotron runs, 3 of them only for a `cd` before read-only commands; the fourth put the bench's fake-tool folder on `PATH`. Dates are 2026. "—" means
 not run.
 
 ## Cloud models (reference only)
