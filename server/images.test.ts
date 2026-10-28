@@ -3,7 +3,7 @@ import { PreemptedError } from './busy.ts';
 import { fitHistory } from './context.ts';
 import { IMAGE_TOKENS, MAX_IMAGE_BYTES, MAX_IMAGES, parseImages, PendingImages, withImageText } from './images.ts';
 import { summarizeIfLong } from './summarize.ts';
-import { call, setupApp, signIn, type TestApp } from './testing.ts';
+import { call, newest, setupApp, signIn, type TestApp } from './testing.ts';
 
 const b64 = (bytes: number[], padding = 32) => Buffer.from([...bytes, ...Array(padding).fill(7)]).toString('base64');
 const PNG = b64([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -86,7 +86,7 @@ describe('images in a chat', () => {
 
     const { res } = await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: 'What does this say?', images: [PNG] });
     expect(res.status).toBe(200);
-    expect(ctx.model.calls[0]!.at(-1)).toEqual({ role: 'user', content: 'What does this say?', images: [PNG] });
+    expect(ctx.model.calls[0]!.at(-1)).toEqual({ role: 'user', content: newest('alice', 'What does this say?'), images: [PNG] });
 
     // Described as a continuation of the prompt just answered, so Ollama can reuse its cache.
     await vi.waitFor(() => expect(ctx.model.describeCalls).toHaveLength(1));
@@ -129,7 +129,7 @@ describe('images in a chat', () => {
     expect((await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: '', images: [] })).res.status).toBe(400);
     const { res } = await post(ctx.app, cookie, `/conversations/${id}/messages`, { content: '', images: [PNG, JPEG] });
     expect(res.status).toBe(200);
-    expect(ctx.model.calls[0]!.at(-1)).toEqual({ role: 'user', content: '', images: [PNG, JPEG] });
+    expect(ctx.model.calls[0]!.at(-1)).toEqual({ role: 'user', content: newest('alice', ''), images: [PNG, JPEG] });
     expect(ctx.model.recallQueries.at(-1)!.message).toBe('');
   });
 

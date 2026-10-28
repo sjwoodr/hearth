@@ -7,7 +7,7 @@ import { addMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { searchMessages, toFtsQuery } from './search.ts';
 import { KEEP_RECENT_TOKENS, SUMMARIZE_ABOVE_TOKENS, summarizeIfLong } from './summarize.ts';
-import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
+import { login, newest, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { cleanTitle } from './titles.ts';
 import { createUser } from './users.ts';
 
@@ -99,7 +99,7 @@ describe('retry', () => {
     const evs = await events(await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/retry`));
     expect(evs.map((e) => e.type)).toContain('done');
     expect((await chatOf(ctx.app, ctx.alice, id)).messages.map((m) => m.content)).toEqual(['Question?', 'Answer.']);
-    expect(ctx.model.calls.at(-1)!.at(-1)).toEqual({ role: 'user', content: 'Question?' });
+    expect(ctx.model.calls.at(-1)!.at(-1)).toEqual({ role: 'user', content: newest('alice', 'Question?') });
   });
 
   it('replaces the last reply instead of adding a second one', async () => {
@@ -511,7 +511,7 @@ describe('summarizing long chats', () => {
     await say(ctx.app, ctx.alice, id, 'a new question');
     const sent = ctx.model.calls.at(-1)!.map((m) => m.content);
     expect(sent).not.toContain('the old question');
-    expect(sent.at(-1)).toBe('a new question');
+    expect(sent.at(-1)).toBe(newest('alice', 'a new question'));
     expect(sent[0]).toContain('They discussed an old question.');
   });
 

@@ -317,7 +317,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
   `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
   this path, and never add a log line with message text.
-- **Questions and length are capped in the system prompt** (2026-10-28). Replies ending with a question
+- **Questions and length are capped in the system prompt, and length again per message** (2026-10-28). Replies ending with a question
   climbed from 27% (before 2026-10-10) to 44-48% after the warmer personality ("enjoys talking with
   this person", "be interested in them") and **80%** in the first full week on the UD build, with
   replies ~9x the length of the message they answered (live weekly numbers: `bin/hearth chats stats`,
@@ -329,6 +329,17 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   long replies deep in real discussions weren't reproduced, so the length line is unmeasured there:
   watch `chats stats`. If chats start to feel like dead ends, soften "often the best ending is simply
   your last thought" before removing the line. Probe script was ad hoc (scratchpad), not committed.
+  **The length line alone didn't shorten real chats, so a reminder rides on the newest message**
+  (`REPLY_LENGTH` in `chat.ts`, with recall: prompt only, never stored). The owner's real 34-turn chat
+  (a job vent, replayed locally at 9 turns x3, plus 6 explain/how-to/quiz requests x3) still got
+  ~1,250-character, 3-4 paragraph replies to one-line messages under the new system prompt; a firmer
+  system-prompt line ("one paragraph, under about 80 words") barely moved it (~1,000). A blunt
+  reminder ("reply at about the length of this message") cut casual turns to ~300 but also cut
+  explanations 60-75% (a passé composé vs imparfait explanation ~1,800 → ~500), so it was rejected.
+  The shipped wording, with "if it asks you to explain, teach, compare or give steps, answer fully",
+  kept explanations, how-tos and comparisons at the old length and took casual turns to ~560-870
+  (1-2 paragraphs), question endings 2 of 15. Known quirk: "what can i do" reads as asking for steps
+  and came out longer (~2,200). If explanations start coming back short, the exemption list is the knob.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short

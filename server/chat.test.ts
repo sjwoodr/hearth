@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { estimateTokens, fitHistory } from './context.ts';
 import { titleFrom } from './conversations.ts';
 import type { ChatMessage } from './ollama.ts';
-import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
+import { login, newest, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { createUser } from './users.ts';
 
 async function signIn(ctx: ReturnType<typeof setupApp>, username: string) {
@@ -58,7 +58,7 @@ describe('chatting', () => {
     ]);
     expect(ctx.model.calls[0]).toEqual([
       { role: 'system', content: 'You are hearth.' },
-      { role: 'user', content: 'Tell me about   contesting.' },
+      { role: 'user', content: newest('alice', 'Tell me about   contesting.') },
     ]);
   });
 
@@ -73,7 +73,7 @@ describe('chatting', () => {
       'system:You are hearth.',
       'user:First',
       'assistant:Hello there.',
-      'user:Second',
+      `user:${newest('alice', 'Second')}`,
     ]);
     expect((await stored(ctx.app, cookie, id)).conversation.title).toBe('First');
   });

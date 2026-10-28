@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { PRIVATE_SEARCH_TTL_MS } from './private-chat.ts';
-import { call, listen, ORIGIN, NOW, setupApp, signIn, type TestApp } from './testing.ts';
+import { call, listen, newest, ORIGIN, NOW, setupApp, signIn, type TestApp } from './testing.ts';
 import type { DB } from './db.ts';
 
 const CHAT = 'a1b2c3d4-private';
@@ -58,7 +58,7 @@ describe('private chats', () => {
       { role: 'system', content: 'You are hearth.' },
       { role: 'user', content: 'My boss is driving me nuts.' },
       { role: 'assistant', content: 'That sounds rough. What happened?' },
-      { role: 'user', content: "Alice works at a bakery.\n\n[alice's message]\nHe moved every deadline up a week." },
+      { role: 'user', content: newest('alice', 'He moved every deadline up a week.', 'Alice works at a bakery.') },
     ]);
   });
 
@@ -98,7 +98,7 @@ describe('private chats', () => {
     expect(ctx.model.calls[0]!.slice(1)).toEqual([
       { role: 'user', content: '[Attached an image, no longer available]\n\nLook at this' },
       { role: 'assistant', content: 'A cat.\n\n[Sources: https://example.com/cats]' },
-      { role: 'user', content: 'And this?', images: [PNG.split(',')[1]] },
+      { role: 'user', content: newest('alice', 'And this?'), images: [PNG.split(',')[1]] },
     ]);
   });
 

@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import type { ModelChoice } from './active-model.ts';
 import { createApp } from './app.ts';
 import { createModelScheduler } from './busy.ts';
+import { REPLY_LENGTH } from './chat.ts';
 import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions, ModelInfo } from './ollama.ts';
 import { createUser } from './users.ts';
@@ -49,6 +50,10 @@ export type FakeModel = {
 };
 
 /** Pinned so the date in the search instructions is predictable. */
+/** The newest user message as the model sees it: any notes, the length reminder, then the words. */
+export const newest = (name: string, text: string, ...notes: string[]) =>
+  `${[...notes, REPLY_LENGTH].join('\n\n')}\n\n[${name}'s message]\n${text}`;
+
 export const NOW = new Date('2026-10-02T12:00:00Z');
 
 export const THINKING_TOKENS = 25;
