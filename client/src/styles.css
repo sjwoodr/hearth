@@ -138,8 +138,10 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .banner { padding: 0.5rem 16px; }
 /* New chat, and its ▾ menu with a private chat. */
 .new-chat { position: relative; display: flex; }
+/* Compact: no taller than the name beside it. */
+.new-chat > button { padding: 0.25rem 0.7rem; font-size: 0.95rem; line-height: 1.25; }
 .new-chat > button:first-child { white-space: nowrap; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.new-chat-more { padding: 0.55rem 0.55rem; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-color: color-mix(in srgb, var(--accent-text) 35%, var(--accent)); }
+.new-chat > .new-chat-more { padding: 0.25rem 0.4rem; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-color: color-mix(in srgb, var(--accent-text) 35%, var(--accent)); }
 .new-chat-menu {
   position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: flex; flex-direction: column;
   min-width: 13rem; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
