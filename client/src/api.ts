@@ -67,6 +67,9 @@ export type Message = {
   created_at: string;
 };
 
+/** A private chat's message as sent back with each new one. */
+export type PrivateMessage = { role: 'user' | 'assistant'; content: string; imageCount?: number; sources?: Source[] | null };
+
 export type SearchHit = {
   conversationId: number;
   title: string | null;
@@ -89,7 +92,7 @@ export type Memory = {
 
 export type StreamEvent =
   /** `effort` and `budget`: how hard a thinking reply may think, and its cap in reasoning tokens. */
-  | { type: 'start'; userMessageId: number; model?: string; think?: boolean; effort?: Effort; budget?: number; reason?: string }
+  | { type: 'start'; userMessageId?: number; model?: string; think?: boolean; effort?: Effort; budget?: number; reason?: string }
   | { type: 'queued' }
   /** Ollama had unloaded the model; this reply waits while it loads (~15 s). */
   | { type: 'loading' }
@@ -99,7 +102,8 @@ export type StreamEvent =
   | { type: 'searching'; query: string }
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
-  | { type: 'done'; messageId: number; selfCorrected?: boolean; sources?: Source[]; context?: ContextUse; folds?: SummaryFold[] }
+  /** No `messageId` in a private chat: nothing was saved. */
+  | { type: 'done'; messageId?: number; selfCorrected?: boolean; sources?: Source[]; context?: ContextUse; folds?: SummaryFold[] }
   | { type: 'stopped'; messageId?: number }
   | { type: 'error'; error: string };
 
@@ -156,6 +160,26 @@ export const api = {
   answerSearch: async function* (conversationId: number, approve: boolean, signal: AbortSignal) {
     yield* readEvents(await send('POST', `/api/conversations/${conversationId}/search`, { approve }, signal));
   },
+  /**
+   * A private chat: the whole chat goes with each message, since the server keeps none of it.
+   * `images` belong to the last message (sent again for a retry); earlier ones are gone.
+   */
+  privateMessage: async function* (
+    chatId: string,
+    messages: PrivateMessage[],
+    images: string[],
+    think: boolean | 'auto',
+    effort: Effort,
+    signal: AbortSignal,
+  ) {
+    yield* readEvents(await send('POST', `/api/private/${chatId}/messages`, { messages, images, think, effort }, signal));
+  },
+  privateSearch: async function* (chatId: string, approve: boolean, signal: AbortSignal) {
+    yield* readEvents(await send('POST', `/api/private/${chatId}/search`, { approve }, signal));
+  },
+  privateStop: (chatId: string) => request<{ stopped: boolean }>('POST', `/api/private/${chatId}/stop`),
+  /** Ends a private chat on the server: stops its reply and drops a waiting search. */
+  endPrivate: (chatId: string) => request('DELETE', `/api/private/${chatId}`),
   search: (q: string) => request<SearchHit[]>('GET', `/api/search?q=${encodeURIComponent(q)}`),
   memories: () => request<Memory[]>('GET', '/api/memories'),
   addMemory: (kind: MemoryKind, content: string) => request<Memory>('POST', '/api/memories', { kind, content }),

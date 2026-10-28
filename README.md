@@ -2,7 +2,7 @@
 
 A private, local chat companion with long-term memory. It runs on a local
 model through Ollama, keeps full chat history, and remembers your likes and
-the topics you discuss across sessions. Nothing leaves the machine, except a web search you
+the topics you discuss across sessions (except in a private chat, which is never saved). Nothing leaves the machine, except a web search you
 approve (see **Web search** below).
 
 ## Plan
@@ -518,3 +518,19 @@ latest iPhone model?" was searched 1 of 4 times (the rest answered from training
 every query carrying the current year.
 Setup: SearXNG in Docker on 127.0.0.1:8888 with `json` in `search.formats`
 (`HEARTH_SEARXNG_URL`; `off` never offers the tool).
+
+**Private chats.** **New chat ▾ → New private chat** opens a chat that is never saved: nothing goes
+into the database, so it isn't remembered (no memory extraction), summarized, titled, searchable or
+in a backup, and `bin/hearth` can't show it. The browser holds the conversation and sends all of it
+with each message (`POST /api/private/:chatId/messages`, a random id made by the page); the server
+builds the prompt, streams the reply and forgets it. It still reads what hearth already remembers
+about you (recall and always-remembered memories), so it knows who "my boss" is, but learns nothing
+new. The view is greyer, with a lock in the title bar and a note at the top. Leaving it (or reloading
+or closing the tab) ends it, and the page asks first once it has messages. A long private chat drops
+its oldest messages to fit, since there's no summary. A reply stops when its connection closes,
+because nobody could come back for it. An image works on its own message (and a Regenerate) but isn't
+described, so later turns only know one was there. Web search works as usual (asked for, then
+approved on the card), but the waiting request is held in server memory only, for an hour; a restart
+drops it and Retry asks again. "Not saved" means not on disk in hearth: while a reply is being written
+the text passes through Ollama (which keeps it in its cache until other chats push it out) and your
+reverse proxy, and an approved search sends its query out like any other.

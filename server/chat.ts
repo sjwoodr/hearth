@@ -28,6 +28,7 @@ import { isEffort, type Effort } from '../shared/think-effort.ts';
 import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
 import type { ChatFn, ChatMessage, ToolCall } from './ollama.ts';
+import { parsePrivateHistory, PRIVATE_CHAT_ID, PrivateSearches } from './private-chat.ts';
 import { searchMessages } from './search.ts';
 import type { SessionUser } from './sessions.ts';
 import {
@@ -101,7 +102,8 @@ const withSources = (content: string, sources: Source[] | null) =>
   sources?.length ? `${content}\n\n[Sources: ${sources.map((s) => s.url).join(', ')}]` : content;
 
 type ReplyOpts = {
-  userMessageId: number;
+  /** The stored message being answered (private chats have none). */
+  userMessageId?: number;
   firstMessage?: string;
   decision: ReplyDecision;
   /** Searches already asked for while answering this message. */
@@ -180,6 +182,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   const notFound = { error: 'Chat not found.' };
   const pendingImages = new PendingImages();
   const pendingSearches = new PendingSearches(db, deps.now);
+  const privateSearches = new PrivateSearches(deps.now);
   // Which message each image-carrying prompt message came from. A waiting search is saved without
   // image bytes (images are never stored), so this is how they're put back when it runs.
   const imageSource = new WeakMap<ChatMessage, number>();
@@ -265,19 +268,32 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       }
       return { role: m.role, content: withSources(withImageText(m.content, m.image_count, m.image_note), m.sources) };
     });
-    const { stable, recalled } = await memoryContext(user, latest);
-    const last = history.at(-1);
     // Measured from the message before it even when that one is folded into the summary.
     const [before, newest] = all.slice(-2);
     const pause = before && newest?.role === 'user' ? pauseNote(before.created_at, newest.created_at) : '';
-    const notes = [recalled, pause].filter(Boolean).join('\n\n');
+    return assemble(user, history, latest, decision, search, { summary: state.summary, pause });
+  }
+
+  // The rest of a prompt, for stored and private chats alike: memory, recall on the newest message,
+  // search instructions, and as much history as fits.
+  async function assemble(
+    user: SessionUser,
+    history: ChatMessage[],
+    latest: string,
+    decision: ReplyDecision | undefined,
+    search: boolean,
+    extra: { summary?: string | null; pause?: string } = {},
+  ): Promise<ChatMessage[]> {
+    const { stable, recalled } = await memoryContext(user, latest);
+    const last = history.at(-1);
+    const notes = [recalled, extra.pause].filter(Boolean).join('\n\n');
     if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);
       if (source !== undefined) imageSource.set(withRecall, source);
       history[history.length - 1] = withRecall;
     }
-    const earlier = state.summary ? `## Earlier in this conversation\n\n${state.summary}` : '';
+    const earlier = extra.summary ? `## Earlier in this conversation\n\n${extra.summary}` : '';
     const tool = search ? searchInstructions(deps.now?.() ?? new Date()) : '';
     const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
@@ -285,10 +301,69 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return fitHistory(system, history, contextBudget - reserve);
   }
 
+  // Where a reply ends up. A stored chat saves it and runs the work after it (title, image
+  // descriptions, summary); a private chat (private-chat.ts) keeps nothing, so it needs none of that.
+  type ReplyTarget = {
+    /** The key for ActiveReplies: a stored chat's id, or a private chat's key. */
+    key: number | string;
+    /** How log lines name the chat: never its content. */
+    label: string;
+    /** Saves a finished reply, or what was written before a stop or failure; its id, if it was saved. */
+    save: (reply: string, sources: Source[], partial: boolean) => number | undefined;
+    /** Holds the model's search request until the user answers the card. */
+    holdSearch: (search: Omit<PendingSearch, 'askedAt'>) => void;
+    /** More for the `done` event. */
+    doneExtras?: () => object;
+    /** Work after a finished reply. */
+    after?: (send: (event: object) => Promise<unknown>, prompt: ChatMessage[], reply: string, stopped: boolean) => Promise<void>;
+    /** Stops the reply when its connection closes, because nobody could come back for it. */
+    endsWithConnection?: boolean;
+  };
+
+  function storedTarget(user: SessionUser, conversationId: number, opts: { userMessageId: number; firstMessage?: string }): ReplyTarget {
+    return {
+      key: conversationId,
+      label: `chat ${conversationId}`,
+      save: (reply, sources, partial) => {
+        // Not into a chat deleted mid-reply, which is what stopped it.
+        if (partial && !getConversation(db, user.id, conversationId)) return undefined;
+        return addMessage(db, conversationId, 'assistant', reply, { sources });
+      },
+      holdSearch: (search) => {
+        const saved = withoutImages(search.prompt, imageSource);
+        pendingSearches.set(conversationId, { ...search, prompt: saved.prompt, images: saved.images });
+      },
+      doneExtras: () => ({
+        // Before any fold this reply sets off, so it can read past 100% until the summary is written.
+        context: contextUse(db, conversationId, contextBudget),
+        // A fold the worker made since the page loaded shows up with the next reply.
+        folds: listFolds(db, conversationId),
+      }),
+      after: async (send, prompt, reply, stopped) => {
+        if (opts.firstMessage && deps.titleFor && !stopped) {
+          try {
+            const title = await deps.titleFor(opts.firstMessage, reply);
+            if (title && setAutoTitle(db, conversationId, title)) await send({ type: 'title', title });
+            job('title', 'ok');
+          } catch (err) {
+            job('title', isPreempted(err) ? 'preempted' : 'failed');
+            // The first-message title stays; a failed or preempted title isn't worth an error.
+            if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
+          }
+        }
+        if (deps.describeImages) {
+          const turn = { conversationId, answeredId: opts.userMessageId, prompt, reply };
+          describeWaitingImages(db, pendingImages, deps.describeImages, turn);
+        }
+        deps.afterReply?.(conversationId);
+      },
+    };
+  }
+
   // Streams a reply as NDJSON: start, optional searching, queued and loading, delta..., then done or error,
   // and after a chat's first reply, title. If the model asks to search instead, it ends with search
-  // (the query for the card) and the reply continues from POST /search once the user answers.
-  function streamReply(c: Context<Env>, conversationId: number, turnReady: Turn | Promise<Turn>, opts: ReplyOpts) {
+  // (the query for the card) and the reply continues from the search route once the user answers.
+  function streamReply(c: Context<Env>, target: ReplyTarget, turnReady: Turn | Promise<Turn>, opts: ReplyOpts) {
     const user = c.get('user');
     const searches = opts.searches ?? 0;
     // Past the limit the tool is withheld, so the model has to answer with what it found.
@@ -298,8 +373,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // Not tied to the connection: a reply runs to the end even if the browser goes away, and only
     // POST /stop (or deleting the chat) stops it. `release` marks it finished for GET and the busy check.
     const controller = new AbortController();
-    const release = replying.start(conversationId, user.id, controller);
+    const release = replying.start(target.key, user.id, controller);
     return stream(c, async (s) => {
+      if (target.endsWithConnection) s.onAbort(() => controller.abort());
       const startedAt = performance.now();
       try {
         // One queue for every write: thinking progress arrives from a callback while text streams. A
@@ -333,7 +409,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         deps.modelChoice?.touch();
         await send({
           type: 'start',
-          userMessageId: opts.userMessageId,
+          ...(opts.userMessageId !== undefined ? { userMessageId: opts.userMessageId } : {}),
           ...(opts.model ? { model: opts.model } : {}),
           think,
           // How hard, and the cap, so the client can show progress against it.
@@ -372,13 +448,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           heard = true; // over, even with no words (a search request, or nothing)
           if (call) {
             // Nothing is searched here. The request waits for the user's tap on the card.
-            const saved = withoutImages([...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }], imageSource);
-            pendingSearches.set(conversationId, {
+            target.holdSearch({
               userId: user.id,
-              userMessageId: opts.userMessageId,
+              userMessageId: opts.userMessageId ?? 0,
               query: call.query,
-              prompt: saved.prompt,
-              images: saved.images,
+              prompt: [...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }],
+              images: [],
               decision: opts.decision,
               firstMessage: opts.firstMessage,
               searches: searches + 1,
@@ -395,23 +470,20 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
             // Rare and not yet reproduced: log enough to tell an unusable tool call from a thinking
             // cut that left the model with nothing to say.
             console.error(
-              `empty reply: chat ${conversationId}, think ${think} (${thoughtTokens} reasoning tokens), ` +
+              `empty reply: ${target.label}, think ${think} (${thoughtTokens} reasoning tokens), ` +
                 `searches ${searches}, prompt ends with ${prompt.at(-1)?.role}, unusable tool calls ${JSON.stringify(unusable)}`,
             );
             throw new Error('The model returned an empty reply. Retry usually works.');
           }
           reply = plainSymbols(reply);
-          const messageId = addMessage(db, conversationId, 'assistant', reply, { sources });
+          const messageId = target.save(reply, sources, false);
           release(); // saved: before `done`, whose write can wait on a client that's gone quiet
           replies.inc({ ...labels, outcome: 'done' });
           replySeconds.observe(labels, sinceStart());
           await send({
             type: 'done',
-            messageId,
-            // Before any fold this reply sets off, so it can read past 100% until the summary is written.
-            context: contextUse(db, conversationId, contextBudget),
-            // A fold the worker made since the page loaded shows up with the next reply.
-            folds: listFolds(db, conversationId),
+            ...(messageId !== undefined ? { messageId } : {}),
+            ...target.doneExtras?.(),
             ...(sources.length ? { sources } : {}),
             // A fast reply that caught itself mid-answer ("wait, no, that's wrong") is worth re-asking with thinking.
             ...(!think && SELF_CORRECTION.test(reply) ? { selfCorrected: true } : {}),
@@ -420,31 +492,14 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           heard = true;
           replies.inc({ think: String(think), effort: effort ?? 'none', outcome: controller.signal.aborted ? 'stopped' : 'error' });
           // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
-          // (Not into a chat deleted mid-reply, which is what stopped it.)
-          const keep = reply.trim() && getConversation(db, user.id, conversationId);
-          const messageId = keep ? addMessage(db, conversationId, 'assistant', plainSymbols(reply), { sources }) : undefined;
+          const messageId = reply.trim() ? target.save(plainSymbols(reply), sources, true) : undefined;
           release();
           if (controller.signal.aborted) await send({ type: 'stopped', ...(messageId ? { messageId } : {}) });
           else await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });
           return;
         }
 
-        if (opts.firstMessage && deps.titleFor && !controller.signal.aborted) {
-          try {
-            const title = await deps.titleFor(opts.firstMessage, reply);
-            if (title && setAutoTitle(db, conversationId, title)) await send({ type: 'title', title });
-            job('title', 'ok');
-          } catch (err) {
-            job('title', isPreempted(err) ? 'preempted' : 'failed');
-            // The first-message title stays; a failed or preempted title isn't worth an error.
-            if (!isPreempted(err)) console.error(`title: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
-          }
-        }
-        if (deps.describeImages) {
-          const turn = { conversationId, answeredId: opts.userMessageId, prompt, reply };
-          describeWaitingImages(db, pendingImages, deps.describeImages, turn);
-        }
-        deps.afterReply?.(conversationId);
+        await target.after?.(send, prompt, reply, controller.signal.aborted);
       } finally {
         release(); // a backstop: every path above releases once the reply is saved or has failed
       }
@@ -487,7 +542,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
     if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
     const prompt = await buildPrompt(user, conversation.id, content, decision, search);
-    return streamReply(c, conversation.id, { prompt }, {
+    const target = storedTarget(user, conversation.id, { userMessageId, firstMessage: isFirst ? firstMessage : undefined });
+    return streamReply(c, target, { prompt }, {
       userMessageId,
       firstMessage: isFirst ? firstMessage : undefined,
       decision,
@@ -527,9 +583,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     );
     const search = searchFor(model);
     const prompt = await buildPrompt(user, conversation.id, question.content, decision, search);
-    return streamReply(c, conversation.id, { prompt }, {
+    const firstMessage = messages.length <= 2 ? question.content : undefined;
+    return streamReply(c, storedTarget(user, conversation.id, { userMessageId: question.id, firstMessage }), { prompt }, {
       userMessageId: question.id,
-      firstMessage: messages.length <= 2 ? question.content : undefined,
+      firstMessage,
       decision,
       search,
       model: model.name,
@@ -568,9 +625,98 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const turn = approved ? searchTurn(pending, deps.webSearch!, conversation.id) : declinedTurn(pending);
     // The model may have been switched while the card waited.
     const model = await modelNow();
-    return streamReply(c, conversation.id, turn, {
+    const target = storedTarget(user, conversation.id, { userMessageId: pending.userMessageId, firstMessage: pending.firstMessage });
+    return streamReply(c, target, turn, {
       userMessageId: pending.userMessageId,
       firstMessage: pending.firstMessage,
+      decision: thinkingFor(model, pending.decision),
+      searches: pending.searches,
+      search: searchFor(model),
+      model: model.name,
+      ...(approved ? { searching: pending.query } : {}),
+    });
+  });
+
+  // Private chats (private-chat.ts): the browser sends the whole chat with each message, and nothing
+  // here writes to the database. Recall still reads the user's memories; nothing new is learned.
+  const privateKey = (userId: number, chatId: string) => `private:${userId}:${chatId}`;
+  const privateChat = (c: Context<Env>) => {
+    const chatId = c.req.param('chatId') ?? '';
+    return PRIVATE_CHAT_ID.test(chatId) ? privateKey(c.get('user').id, chatId) : undefined;
+  };
+  const privateTarget = (key: string): ReplyTarget => ({
+    key,
+    label: 'a private chat',
+    save: () => undefined,
+    holdSearch: (search) => privateSearches.set(key, search),
+    // Nobody can come back for a private reply (it isn't saved), so a closed tab stops it.
+    endsWithConnection: true,
+  });
+
+  api.post('/private/:chatId/messages', async (c) => {
+    const user = c.get('user');
+    const key = privateChat(c);
+    if (!key) return c.json(notFound, 404);
+    if (replying.running(key, user.id)) return c.json(busy, 409);
+    const body = await c.req.json().catch(() => null);
+    const parsed = parsePrivateHistory(body?.messages, MAX_MESSAGE_CHARS);
+    if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+    const parsedImages = parseImages(body?.images);
+    if ('error' in parsedImages) return c.json({ error: parsedImages.error }, 400);
+    const { images } = parsedImages;
+    const { messages } = parsed;
+    const latest = messages.at(-1)!;
+    if (!latest.content.trim() && images.length === 0) return c.json({ error: 'Message is empty.' }, 400);
+
+    const model = await modelNow();
+    if (images.length > 0 && !can(model, 'vision')) {
+      return c.json({ error: `The current model (${model.name}) can't read images. Send the message without them, or ask an admin to switch back.` }, 400);
+    }
+    const previousReply = messages.findLast((m) => m.role === 'assistant')?.content;
+    const decision = thinkingFor(model, decideThinking(body?.think, body?.effort, latest.content, previousReply, images.length > 0));
+    const search = searchFor(model);
+    privateSearches.forget(key);
+    // Images go with the message they came with (sent again for a retry); earlier ones are gone.
+    const history: ChatMessage[] = messages.map((m, i) =>
+      i === messages.length - 1 && images.length
+        ? { role: m.role, content: m.content, images }
+        : { role: m.role, content: withSources(withImageText(m.content, m.imageCount, null), m.sources) },
+    );
+    const prompt = await assemble(user, history, latest.content, decision, search);
+    return streamReply(c, privateTarget(key), { prompt }, { decision, search, model: model.name });
+  });
+
+  api.post('/private/:chatId/stop', (c) => {
+    const key = privateChat(c);
+    return c.json({ stopped: !!key && replying.stop(key, c.get('user').id) });
+  });
+
+  // Ending a private chat: stops its reply and drops a waiting search card.
+  api.delete('/private/:chatId', (c) => {
+    const key = privateChat(c);
+    if (!key) return c.json(notFound, 404);
+    replying.stop(key, c.get('user').id);
+    privateSearches.forget(key);
+    return c.json({ ok: true });
+  });
+
+  api.post('/private/:chatId/search', async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const user = c.get('user');
+    const key = privateChat(c);
+    if (!key) return c.json(notFound, 404);
+    if (replying.running(key, user.id)) return c.json(busy, 409);
+    if (typeof body?.approve !== 'boolean') return c.json({ error: 'Say whether to search (approve: true or false).' }, 400);
+    const waiting = privateSearches.take(key, user.id);
+    if (!waiting) {
+      return c.json({ error: 'That search request is gone (it expired, or hearth restarted). Tap Retry to ask again.' }, 409);
+    }
+    const pending = { ...waiting, prompt: withTodaysDate(waiting.prompt, waiting.askedAt, deps.now?.() ?? new Date()) };
+    const approved = body.approve === true && !!deps.webSearch;
+    searchCount.inc({ outcome: approved ? 'approved' : 'declined' });
+    const turn = approved ? searchTurn(pending, deps.webSearch!, 'a private chat') : declinedTurn(pending);
+    const model = await modelNow();
+    return streamReply(c, privateTarget(key), turn, {
       decision: thinkingFor(model, pending.decision),
       searches: pending.searches,
       search: searchFor(model),

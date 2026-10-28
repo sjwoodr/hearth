@@ -127,7 +127,7 @@ export const declinedTurn = (pending: PendingSearch): Turn => ({
 });
 
 /** The user said yes: runs the search and hands the results to the model; a failure tells it so. */
-export async function searchTurn(pending: PendingSearch, search: SearchFn, conversationId: number): Promise<Turn> {
+export async function searchTurn(pending: PendingSearch, search: SearchFn, chat: number | string): Promise<Turn> {
   try {
     const results = await search(pending.query);
     return {
@@ -136,7 +136,7 @@ export async function searchTurn(pending: PendingSearch, search: SearchFn, conve
     };
   } catch (err) {
     const why = err instanceof Error ? err.message : 'unknown error';
-    console.error(`web search: chat ${conversationId} failed:`, why);
+    console.error(`web search: ${typeof chat === 'number' ? `chat ${chat}` : chat} failed:`, why);
     searches.inc({ outcome: 'failed' });
     return { prompt: [...pending.prompt, toolResult(searchFailed(why))], sources: pending.sources };
   }

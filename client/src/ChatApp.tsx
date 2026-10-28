@@ -10,6 +10,8 @@ const readHash = (): number | undefined => {
   return match ? Number(match[1]) : undefined;
 };
 const onMemoriesPage = () => location.hash === '#/memories';
+const onPrivatePage = () => location.hash === '#/private';
+const LEAVE_PRIVATE = "Leave this private chat? It isn't saved anywhere, so it will be gone.";
 
 /** A search snippet with its \u0002…\u0003 matches as <mark>, never as HTML. */
 function Snippet({ text }: { text: string }) {
@@ -33,6 +35,10 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState(readHash);
   const [showMemories, setShowMemories] = useState(onMemoriesPage);
+  // A private chat in progress: a fresh number per private chat, so starting another starts clean.
+  const [privateChat, setPrivateChat] = useState<number | null>(() => (onPrivatePage() ? 1 : null));
+  const privateHasMessages = useRef(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [focusMessageId, setFocusMessageId] = useState<number | undefined>(undefined);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -99,6 +105,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     const onHash = () => {
       setActiveId(readHash());
       setShowMemories(onMemoriesPage());
+      setPrivateChat((p) => (onPrivatePage() ? (p ?? 1) : null));
     };
     window.addEventListener('hashchange', onHash);
     window.addEventListener('popstate', onHash);
@@ -108,7 +115,17 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     };
   }, []);
 
+  /** True when it's fine to leave the current view: not a private chat with messages, or the user agreed. */
+  const mayLeave = () => privateChat === null || !privateHasMessages.current || window.confirm(LEAVE_PRIVATE);
+  const leavePrivate = () => {
+    privateHasMessages.current = false;
+    setPrivateChat(null);
+  };
+
   const open = (id: number | undefined, messageId?: number) => {
+    setNewMenuOpen(false);
+    if (!mayLeave()) return;
+    leavePrivate();
     history.pushState(null, '', id ? `#/c/${id}` : location.pathname);
     setActiveId(id);
     setFocusMessageId(messageId);
@@ -117,7 +134,21 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     setError('');
   };
 
+  const openPrivate = () => {
+    setNewMenuOpen(false);
+    if (!mayLeave()) return;
+    privateHasMessages.current = false;
+    history.pushState(null, '', '#/private');
+    setPrivateChat((p) => (p ?? 0) + 1);
+    setActiveId(undefined);
+    setShowMemories(false);
+    setSidebarOpen(false);
+    setError('');
+  };
+
   const openMemories = () => {
+    if (!mayLeave()) return;
+    leavePrivate();
     history.pushState(null, '', '#/memories');
     setActiveId(undefined);
     setShowMemories(true);
@@ -139,6 +170,10 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     refresh();
   }
 
+  const onPrivateMessages = useCallback((has: boolean) => {
+    privateHasMessages.current = has;
+  }, []);
+
   const active = conversations.find((c) => c.id === activeId);
 
   return (
@@ -154,9 +189,33 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
               hearth
             </button>
           </h1>
-          <button type="button" onClick={() => open(undefined)}>
-            New chat
-          </button>
+          {/* New chat, with a menu (▾) for a private one. */}
+          <div className="new-chat" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setNewMenuOpen(false)}>
+            <button type="button" onClick={() => open(undefined)}>
+              New chat
+            </button>
+            <button
+              type="button"
+              className="new-chat-more"
+              aria-label="More ways to start a chat"
+              aria-haspopup="menu"
+              aria-expanded={newMenuOpen}
+              onClick={() => setNewMenuOpen((o) => !o)}
+            >
+              ▾
+            </button>
+            {newMenuOpen && (
+              <div className="new-chat-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => open(undefined)}>
+                  New chat
+                </button>
+                <button type="button" role="menuitem" onClick={openPrivate}>
+                  New private chat
+                  <span className="small muted">Not saved, not remembered</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="search">
           <label className="visually-hidden" htmlFor="chat-search">
@@ -263,7 +322,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
       </aside>
       <button type="button" className="scrim" aria-label="Close chat list" tabIndex={-1} onClick={() => setSidebarOpen(false)} />
 
-      <main className="chat-main">
+      <main className={`chat-main${privateChat !== null && !showMemories ? ' private' : ''}`}>
         <header className="chat-top">
           <button
             type="button"
@@ -274,8 +333,10 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           >
             ☰
           </button>
-          <span className="chat-title">{showMemories ? 'Memories' : (active?.title ?? 'New chat')}</span>
-          {!showMemories && context && <ContextMeter context={context} />}
+          <span className="chat-title">
+            {showMemories ? 'Memories' : privateChat !== null ? 'Private chat' : (active?.title ?? 'New chat')}
+          </span>
+          {!showMemories && privateChat === null && context && <ContextMeter context={context} />}
           {/* Shown only when hearth runs as a Home Screen app (no browser toolbar, so no reload); the
               name at the top of the chat list reloads too. */}
           <button type="button" className="icon reload" aria-label="Reload hearth" title="Reload" onClick={() => location.reload()}>
@@ -310,6 +371,9 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           <MemoriesView onOpenChat={open} onError={handleError} />
         ) : (
           <ConversationView
+            key={privateChat !== null ? `private-${privateChat}` : 'stored'}
+            privateChat={privateChat !== null}
+            onPrivateMessages={onPrivateMessages}
             id={activeId}
             focusMessageId={focusMessageId}
             name={me.name}

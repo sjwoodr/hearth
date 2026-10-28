@@ -307,6 +307,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   reasoning off, so "fast" sends it `think: "low"` (`fastThink`). Other users learn of a switch from
   `X-Hearth-Model` on their next request; no push channel (an occasional poll is a TODO). Admin is
   `users.role`, granted only by `bin/hearth users role`.
+- **Private chats write nothing** (`server/private-chat.ts`, the `/private/:chatId` routes in
+  `chat.ts`; owner's call, 2026-10-28). The browser holds the transcript and sends it whole each
+  turn; the routes build the prompt with the same `assemble()` as stored chats and stream through the
+  same `streamReply`, with a `ReplyTarget` whose `save` does nothing. So: no extraction, summary,
+  title, image description or search index, and nothing in backups. Search stays on (owner: it is
+  still an explicit choice per search); its waiting request is in memory (`PrivateSearches`, 1 h),
+  never `pending_searches`. Recall still reads memories. Replies end with their connection
+  (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
+  `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
+  this path, and never add a log line with message text.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -319,7 +329,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes, `buildPrompt`, NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
+| `server/chat.ts` | chat routes (stored and `/private`), `buildPrompt` + `assemble`, `ReplyTarget` (where a reply is saved, or not), NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
 | `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
@@ -333,6 +343,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, embed and read-only lookups (`PASS_THROUGH`), never model management |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
+| `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |
 | `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |
 | `shared/time-gap.ts` | a break between two messages in words (3 h or more): the model's pause note (`server/pause.ts`) and the chat's "4 days later" divider |

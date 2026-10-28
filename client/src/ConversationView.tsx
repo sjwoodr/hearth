@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { api, ApiError, type ContextUse, type Message, type Source, type StreamEvent, type SummaryFold } from './api.ts';
+import { api, ApiError, type ContextUse, type Message, type PrivateMessage, type Source, type StreamEvent, type SummaryFold } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
@@ -17,6 +17,13 @@ type Props = {
   onError: (err: unknown) => void;
   /** How full the chat's context is, for the meter in the title bar; null when there's no chat. */
   onContext: (context: ContextUse | null) => void;
+  /**
+   * A private chat: held in this page only and sent whole with each message; the server saves none
+   * of it. `id` is ignored. Leaving the view (or the page) ends it.
+   */
+  privateChat?: boolean;
+  /** A private chat reports whether it has messages, so leaving it can ask first. */
+  onPrivateMessages?: (has: boolean) => void;
 };
 
 /**
@@ -63,6 +70,14 @@ const foldDetail = (fold: SummaryFold) =>
   `${fold.folded} message${fold.folded === 1 ? '' : 's'} folded into hearth's summary of this chat. They're still here to read; hearth now works from the summary instead.`;
 
 const DROPPED = 'The connection dropped before the reply finished. Reload to see what was saved.';
+const PRIVATE_DROPPED = "The connection dropped before the reply finished. A private reply isn't kept anywhere, so it's lost: Retry to ask again.";
+
+/** A private chat's id: random, made here. Not crypto.randomUUID, which needs HTTPS (hearth runs on plain HTTP on a LAN). */
+const newPrivateId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+/** The chat as a private request sends it: no ids, dates or image bytes. */
+const privateHistory = (messages: ViewMessage[]): PrivateMessage[] =>
+  messages.map((m) => ({ role: m.role, content: m.content, imageCount: m.image_count, sources: m.sources }));
 /** How often a page that lost its stream checks whether the reply is saved yet. */
 const CATCH_UP_POLL_MS = 2000;
 
@@ -113,8 +128,11 @@ const THINK_HELP: Record<ThinkSetting, string> = {
   off: 'Think: Off. Every reply is fast, with no reasoning first.',
 };
 
-export function ConversationView({ id, name, focusMessageId, onCreated, onChanged, onError, onContext }: Props) {
+export function ConversationView({ id: storedId, name, focusMessageId, onCreated, onChanged, onError, onContext, privateChat = false, onPrivateMessages }: Props) {
+  const id = privateChat ? undefined : storedId;
   const [messages, setMessages] = useState<ViewMessage[]>([]);
+  // A private chat's id for the server (its reply, stop and search card), for the life of this view.
+  const [privateId] = useState(newPrivateId);
   // When the current reply was asked for, and a clock that ticks while it's pending.
   const startedRef = useRef(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -183,6 +201,23 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   }, [id, focusMessageId, onError, onContext]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Leaving a private chat ends it: the server stops its reply and drops a waiting search.
+  useEffect(() => {
+    if (!privateChat) return;
+    return () => void api.endPrivate(privateId).catch(() => undefined);
+  }, [privateChat, privateId]);
+
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    if (!privateChat) return;
+    onPrivateMessages?.(hasMessages);
+    if (!hasMessages) return;
+    // Closing or reloading the tab loses it: browsers that allow it ask first.
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [privateChat, hasMessages, onPrivateMessages]);
 
   useEffect(() => {
     if (startedAt === null) return;
@@ -262,6 +297,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
 
   /** Stop asks the server; closing the stream alone would let the reply carry on. */
   async function stop() {
+    if (privateChat) {
+      await api.privateStop(privateId).catch(() => abortRef.current?.abort());
+      return;
+    }
     const conversationId = id ?? createdRef.current;
     if (conversationId === undefined) return abortRef.current?.abort();
     try {
@@ -272,7 +311,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   }
 
   /** Reads one reply stream into the message list. Returns false if it was refused up front. */
-  async function readReply(events: AsyncIterable<StreamEvent>, controller: AbortController, conversationId: number): Promise<boolean> {
+  async function readReply(events: AsyncIterable<StreamEvent>, controller: AbortController, conversationId?: number): Promise<boolean> {
     let reply = '';
     // The stream ended early, but the server keeps writing: catch up once this stream is cleaned up.
     let dropped = false;
@@ -367,8 +406,10 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
       setStreamText(null);
       setStartedAt(null);
       // After a drop the sidebar refresh would fail too; catching up refreshes it once the reply is in.
-      if (dropped) void catchUp(conversationId);
-      else onChanged();
+      // A private reply can't be caught up on: the server never kept it.
+      if (dropped && conversationId === undefined) setError(PRIVATE_DROPPED);
+      else if (dropped) void catchUp(conversationId!);
+      else if (!privateChat) onChanged();
     }
   }
 
@@ -421,6 +462,15 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
     const pending = localMessage('user', text, images);
     setMessages((m) => [...m, pending]);
     const controller = begin();
+    if (privateChat) {
+      const events = api.privateMessage(privateId, privateHistory([...messages, pending]), images, wire(think), effort, controller.signal);
+      if (!(await readReply(events, controller))) {
+        setMessages((m) => m.filter((msg) => msg !== pending));
+        setDraft(text);
+        setAttachments(images);
+      }
+      return;
+    }
 
     let conversationId = id ?? createdRef.current;
     try {
@@ -449,6 +499,21 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   // `thinkAt` forces thinking at that effort regardless of the settings (the self-correction offer,
   // and "think harder" after a reply that thought).
   async function retry(thinkAt?: Effort) {
+    if (privateChat) {
+      if (busy) return;
+      const asked = messages.at(-1)?.role === 'assistant' ? messages.slice(0, -1) : messages;
+      setMessages(asked);
+      setSearchRequest(null);
+      const controller = begin();
+      // The question's images, if this page still has them, go again.
+      const images = asked.at(-1)?.previews ?? [];
+      const history = privateHistory(asked);
+      const events = thinkAt
+        ? api.privateMessage(privateId, history, images, true, thinkAt, controller.signal)
+        : api.privateMessage(privateId, history, images, wire(think), effort, controller.signal);
+      await readReply(events, controller);
+      return;
+    }
     const conversationId = id ?? createdRef.current;
     if (conversationId === undefined || busy) return;
     setMessages((m) => (m.at(-1)?.role === 'assistant' ? m.slice(0, -1) : m));
@@ -460,6 +525,13 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
 
   // The answer to a search card. Only Search sends the query anywhere; the server enforces it.
   async function answerSearch(approve: boolean) {
+    if (privateChat) {
+      if (busy) return;
+      setSearchRequest(null);
+      const controller = begin();
+      await readReply(api.privateSearch(privateId, approve, controller.signal), controller);
+      return;
+    }
     const conversationId = id ?? createdRef.current;
     if (conversationId === undefined || busy) return;
     setSearchRequest(null);
@@ -475,7 +547,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
   }
 
   return (
-    <div className="conversation">
+    <div className={`conversation${privateChat ? ' private' : ''}`}>
       <div
         className="messages"
         ref={scrollRef}
@@ -487,7 +559,13 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         aria-busy={busy}
       >
         <div className="thread">
-        {messages.length === 0 && !streaming && <p className="empty">What's on your mind, {name}?</p>}
+        {privateChat && (
+          <p className="private-note" role="note">
+            Private chat: not saved and not remembered. hearth still knows what it remembers about you, but
+            nothing from here is kept. It ends when you leave or reload this page.
+          </p>
+        )}
+        {messages.length === 0 && !streaming && <p className="empty">{privateChat ? `Just between us, ${name}.` : `What's on your mind, ${name}?`}</p>}
         {messages.map((m, i) => {
           // A break in the chat ("3 days later"): the model is told the same about the newest message.
           const gap = i > 0 ? timeGap(messages[i - 1]!.created_at, m.created_at) : '';
@@ -641,7 +719,7 @@ export function ConversationView({ id, name, focusMessageId, onCreated, onChange
         <textarea
           id="composer-input"
           rows={1}
-          placeholder="Message hearth"
+          placeholder={privateChat ? 'Message hearth privately' : 'Message hearth'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}

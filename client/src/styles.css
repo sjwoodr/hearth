@@ -10,6 +10,9 @@
   --border: #e3d9ef;
   --error: #b3261e;
   --warning: #a14a00;
+  /* A private chat's background and its note: greyer, so it never passes for an ordinary chat. */
+  --private-bg: #ecebef;
+  --private-note: #e0dee6;
   /* Code highlighting, each at least 4.8:1 on --surface and --user-bubble. */
   --code-keyword: #7a3fc0;
   --code-string: #1d6b38;
@@ -34,6 +37,8 @@
     --border: #362c44;
     --error: #f2b8b5;
     --warning: #f0b07a;
+    --private-bg: #0d0c10;
+    --private-note: #1d1b22;
     --code-keyword: #c9a4ff;
     --code-string: #8fd6a0;
     --code-comment: #a797b8;
@@ -131,6 +136,28 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .fold-note { align-self: center; max-width: 34rem; margin: 0.25rem 0; padding: 0.4rem 0.8rem; border: 1px dashed var(--border); border-radius: 999px; color: var(--muted); font-size: 0.85rem; font-style: italic; text-align: center; cursor: help; }
 .fold-note::before { content: '✦ '; font-style: normal; color: var(--accent); }
 .banner { padding: 0.5rem 16px; }
+/* New chat, and its ▾ menu with a private chat. */
+.new-chat { position: relative; display: flex; }
+.new-chat > button:first-child { white-space: nowrap; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.new-chat-more { padding: 0.55rem 0.55rem; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-color: color-mix(in srgb, var(--accent-text) 35%, var(--accent)); }
+.new-chat-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: flex; flex-direction: column;
+  min-width: 13rem; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+}
+.new-chat-menu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; padding: 0.5rem 0.6rem;
+  border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left;
+}
+.new-chat-menu button:hover, .new-chat-menu button:focus-visible { background: var(--user-bubble); }
+.new-chat-menu .small { font-size: 0.8rem; }
+/* A private chat looks different everywhere it shows, so it's never mistaken for one that's kept. */
+.chat-main.private { background: var(--private-bg); }
+.chat-main.private .chat-title::before { content: '🔒 '; }
+.private-note {
+  margin: 0; padding: 0.6rem 0.8rem; border: 1px dashed var(--muted); border-radius: 8px;
+  background: var(--private-note); color: var(--text); font-size: 0.9rem;
+}
 
 .conversation { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .messages { flex: 1; overflow-y: auto; padding: 1.25rem 16px; }
