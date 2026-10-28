@@ -18,6 +18,7 @@ import { startModelReverter } from './active-model.ts';
 import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { makeTitler } from './titles.ts';
+import { startRetitleSweeper } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
 import { searxngSearch } from './web-search.ts';
 
@@ -80,6 +81,10 @@ const app = createApp({
 const stopMemories = jobs.memories
   ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: () => models.replyActive() || !models.choice.isDefault() })
   : undefined;
+// Chats that moved on from their first title get a new one, on the same terms as extraction.
+const stopRetitles = jobs.memories
+  ? startRetitleSweeper(db, json, config.memoryIdleMinutes, { paused: () => models.replyActive() || !models.choice.isDefault() })
+  : undefined;
 // Whoever extracts memories also reverts an idle switch (with HEARTH_ROLE=api that's the worker).
 const stopReverter = jobs.memories ? startModelReverter(models.choice, models.loaded) : undefined;
 
@@ -102,6 +107,7 @@ closeGracefully(server, {
   graceMs: config.shutdownGraceMs,
   beforeClose: () => {
     stopMemories?.();
+    stopRetitles?.();
     stopReverter?.();
   },
   cleanup: () => void db.close(),

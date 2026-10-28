@@ -19,7 +19,7 @@ describe('zeroCounters', () => {
     for (const outcome of ['done', 'search', 'error', 'stopped'])
       for (const think of ['true', 'false']) expect(replies).toContainEqual(expect.objectContaining({ outcome, think }));
     for (const outcome of ['asked', 'approved', 'declined', 'failed']) expect(searches).toContainEqual(expect.objectContaining({ outcome }));
-    for (const job of ['memory', 'summary', 'title', 'image'])
+    for (const job of ['memory', 'summary', 'title', 'retitle', 'image'])
       for (const outcome of ['ok', 'preempted', 'failed']) expect(jobs).toContainEqual(expect.objectContaining({ job, outcome }));
     for (const name of ['hearth_replies_total', 'hearth_searches_total', 'hearth_background_jobs_total']) expect(await value(name)).toBe(0);
   });

@@ -340,6 +340,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   kept explanations, how-tos and comparisons at the old length and took casual turns to ~560-870
   (1-2 paragraphs), question endings 2 of 15. Known quirk: "what can i do" reads as asking for steps
   and came out longer (~2,200). If explanations start coming back short, the exemption list is the knob.
+- **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
+  owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
+  (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that
+  became a job vent, "hi" that became a garden bed), and the 9 dev-copy chats with 4+ messages, x3-5.
+  Three single-call wordings failed: the last 12 messages plus the summary renamed a 192-message
+  French-music chat after its last dozen messages about cars ("weigh the summary as much" didn't help);
+  the user's side of the whole chat with "KEEP or a new title" reworded a fitting title ("Chicago Bears
+  Schedule" → "...Performance") 3/3; adding "never reword a title that fits" kept 3 of 5 drifted chats.
+  The yes/no check then a title: 25/25 kept, 25/25 retitled (5 runs), and 4 of the 9 dev chats renamed,
+  each of which really had wandered ("Memory Test Regarding Chris" → "AI Capabilities and Memories").
+  Only the user's messages go in: replies are long and repeat the topic. Existing chats start at
+  `title_checked_through_message_id = 0` (migration 011), so each is checked once after the deploy.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -358,6 +370,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks) |
+| `server/retitle.ts` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then a title); runs beside extraction |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json` |

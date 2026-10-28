@@ -58,11 +58,11 @@ export const searches = new Counter({
 
 export const backgroundJobs = new Counter({
   name: 'hearth_background_jobs_total',
-  help: 'Background jobs by outcome (ok, preempted, failed): memory, summary, title, image.',
+  help: 'Background jobs by outcome (ok, preempted, failed): memory, summary, title, retitle, image.',
   labelNames: ['job', 'outcome'],
   registers,
 });
-export const job = (name: 'memory' | 'summary' | 'title' | 'image', outcome: 'ok' | 'preempted' | 'failed') =>
+export const job = (name: 'memory' | 'summary' | 'title' | 'retitle' | 'image', outcome: 'ok' | 'preempted' | 'failed') =>
   backgroundJobs.inc({ job: name, outcome });
 
 export const modelTokensPerSecond = new Histogram({
@@ -156,7 +156,7 @@ export function zeroCounters() {
   for (const outcome of ['done', 'search', 'error', 'stopped'])
     for (const effort of ['none', ...EFFORTS]) replies.inc({ outcome, think: String(effort !== 'none'), effort }, 0);
   for (const outcome of ['asked', 'approved', 'declined', 'failed']) searches.inc({ outcome }, 0);
-  for (const name of ['memory', 'summary', 'title', 'image'] as const)
+  for (const name of ['memory', 'summary', 'title', 'retitle', 'image'] as const)
     for (const outcome of ['ok', 'preempted', 'failed'] as const) backgroundJobs.inc({ job: name, outcome }, 0);
 }
 

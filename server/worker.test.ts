@@ -189,7 +189,7 @@ describe('starting the api and the worker as separate processes', { timeout: 30_
 
   it('starts both with the gateway: the api says the worker has the background jobs', async () => {
     const gateway = { HEARTH_GATEWAY_URL: 'http://127.0.0.1:1', HEARTH_GATEWAY_TOKEN: 't', HEARTH_WORKER_PORT: '0' };
-    expect(await lineMatching('server/worker.ts', gateway, /hearth worker running/)).toMatch(/^hearth worker running: memories after .* via the gateway/);
+    expect(await lineMatching('server/worker.ts', gateway, /hearth worker running/)).toMatch(/^hearth worker running: memories and title checks after .* via the gateway/);
     expect(await lineMatching('server/index.ts', { ...gateway, HEARTH_ROLE: 'api', HEARTH_PORT: '0' }, /hearth listening/)).toMatch(
       /api only: the worker extracts memories and summarizes/,
     );

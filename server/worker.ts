@@ -15,6 +15,7 @@ import { startModelReverter } from './active-model.ts';
 import { connectModels, modelSetupProblem } from './models.ts';
 import { closeGracefully } from './shutdown.ts';
 import { startSummarySweeper } from './summarize.ts';
+import { startRetitleSweeper } from './retitle.ts';
 
 setLogFormat(config.logFormat, 'worker');
 startMetrics('worker');
@@ -32,6 +33,9 @@ const models = connectModels(config, db);
 const stopMemories = startMemorySweeper(db, models.json, models.embed, config.memoryIdleMinutes, {
   paused: () => models.replyActive() || !models.choice.isDefault(),
 });
+const stopRetitles = startRetitleSweeper(db, models.json, config.memoryIdleMinutes, {
+  paused: () => models.replyActive() || !models.choice.isDefault(),
+});
 const stopReverter = startModelReverter(models.choice, models.loaded);
 const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget);
 // Only health endpoints, for probes. Its server also keeps the process alive.
@@ -39,7 +43,7 @@ const health = new Hono();
 registerHealthRoutes(health, { db, models: probeModels(config.gatewayUrl, true) });
 const server = serve({ fetch: health.fetch, hostname: config.host, port: config.workerPort }, (info) => {
   console.log(
-    `hearth worker running: memories after ${config.memoryIdleMinutes} idle minutes, summaries for long chats ` +
+    `hearth worker running: memories and title checks after ${config.memoryIdleMinutes} idle minutes, summaries for long chats ` +
       `(checked every minute, ${models.describe()}); health on http://${info.address}:${info.port}`,
   );
 });
@@ -50,6 +54,7 @@ closeGracefully(server, {
   graceMs: config.shutdownGraceMs,
   beforeClose: () => {
     stopMemories();
+    stopRetitles();
     stopReverter();
     stopSummaries();
   },

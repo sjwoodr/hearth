@@ -1317,7 +1317,7 @@
     {
       "type": "timeseries",
       "title": "Background jobs",
-      "description": "Per window, by job (memory, summary, title, image) and outcome (ok, preempted, failed).",
+      "description": "Per window, by job (memory, summary, title, retitle, image) and outcome (ok, preempted, failed).",
       "id": 24,
       "datasource": {
         "type": "prometheus",
