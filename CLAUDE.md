@@ -353,8 +353,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   Only the user's messages go in: replies are long and repeat the topic. Existing chats start at
   `title_checked_through_message_id = 0` (migration 011), so each is checked once after the deploy.
   **That first live pass renamed 16 of ~40 chats, and 9 got worse**: chats with two real subjects
-  became "A and B" grab-bags ("Guide to Belgian Ales" → "Beer, Cocktails, and AI Development"); the
-  owner restored them from the morning backup. Fix (same day): the check asks whether the title names
+  became "A and B" grab-bags ("Guide to Belgian Ales" → "Beer, Cocktails, and AI Development"; the
+  old titles are in the 2026-10-28 03:15 backup). Fix (same day): the check asks whether the title names
   *one of the chat's main subjects* and says no only for a passing start (a greeting, a one-off
   question); the title names one subject, no "and"; and `sameSubject` keeps the old title when the new
   one shares a real word with it (the check still said no for "Belgian Ales" and the model still wrote
