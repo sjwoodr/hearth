@@ -463,8 +463,8 @@ recorded in `summary_folds` (since migration 010), so folds from before it have 
 2-6 word title, which reaches the sidebar through the reply stream. A chat that moves on gets a new
 one: once it has been quiet for `HEARTH_MEMORY_IDLE_MINUTES` with 4 or more messages since its last
 check, the model reads the user's side of the whole chat (up to 100 messages, sampled evenly, each
-cut to 200 characters), says whether most of it is about what the title names, and only if not,
-writes a new title (`server/retitle.ts`; it runs wherever memory extraction runs, and pauses with
+cut to 200 characters), says whether the title names one of its main subjects, and only if it names
+nothing but a passing start (a greeting, a one-off question) writes a new one, naming one subject (`server/retitle.ts`; it runs wherever memory extraction runs, and pauses with
 it). The sidebar shows it the next time it loads. A chat the user has renamed is never retitled. The title bar follows the title with when the chat ran, from its first message
 to its last, in the browser's time zone: "(Oct 24 – Oct 27)", or "(Oct 27, 6:14 PM – 9:02 PM)" within a
 day; the year shows only when it isn't this one (`shared/chat-span.ts`).

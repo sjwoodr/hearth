@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PreemptedError } from './busy.ts';
 import type { DB } from './db.ts';
 import type { ChatMessage, JsonFn } from './ollama.ts';
-import { chatsToRetitle, createRetitleSweep, RETITLE_AFTER, sampleLines } from './retitle.ts';
+import { chatsToRetitle, createRetitleSweep, RETITLE_AFTER, sameSubject, sampleLines } from './retitle.ts';
 import { setupApp } from './testing.ts';
 import { createUser } from './users.ts';
 
@@ -111,5 +111,24 @@ describe('retitling chats that moved on', () => {
     expect(lines.at(-1)).toBe('message 297');
     expect(sampleLines(['x'.repeat(500)])[0]).toBe(`${'x'.repeat(200)}…`);
     expect(sampleLines(['one\n\ntwo'])).toEqual(['one two']);
+  });
+
+  it('keeps the old title when the new one shares a real word with it', () => {
+    expect(sameSubject('Guide to Belgian Ales', 'Belgian Beer Styles')).toBe(true);
+    expect(sameSubject('French Indie Music Recommendations', 'French Music and Cars')).toBe(true);
+    // A false match, the price of a simple rule: the old title stays, the safe way to be wrong.
+    expect(sameSubject('Chicago Bears Schedule', 'Bear Market Basics')).toBe(true);
+    expect(sameSubject('Greeting Steve in Naples', 'Python File Reading')).toBe(false);
+    expect(sameSubject('Cron Job Setup', 'Career Transition Plans')).toBe(false);
+    // Short and filler words don't count.
+    expect(sameSubject('Chat about the Dog', 'Chat about Taxes')).toBe(false);
+  });
+
+  it('keeps the title when the new one is the same subject reworded', async () => {
+    const { db, alice } = await seed();
+    const id = chatWith(db, alice.id, 'Guide to Belgian Ales', ['dubbel vs tripel', 'is chimay a quad']);
+    await createRetitleSweep(db, fakeModel(false, 'Belgian Beer Styles').json, 5)();
+    expect(titleOf(db, id)).toBe('Guide to Belgian Ales');
+    expect(chatsToRetitle(db, 5)).toEqual([]);
   });
 });

@@ -352,6 +352,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   each of which really had wandered ("Memory Test Regarding Chris" → "AI Capabilities and Memories").
   Only the user's messages go in: replies are long and repeat the topic. Existing chats start at
   `title_checked_through_message_id = 0` (migration 011), so each is checked once after the deploy.
+  **That first live pass renamed 16 of ~40 chats, and 9 got worse**: chats with two real subjects
+  became "A and B" grab-bags ("Guide to Belgian Ales" → "Beer, Cocktails, and AI Development"); the
+  owner restored them from the morning backup. Fix (same day): the check asks whether the title names
+  *one of the chat's main subjects* and says no only for a passing start (a greeting, a one-off
+  question); the title names one subject, no "and"; and `sameSubject` keeps the old title when the new
+  one shares a real word with it (the check still said no for "Belgian Ales" and the model still wrote
+  "French Music and Cars"). Re-probed x5 with 4 two-subject chats modelled on the bad renames and 4
+  opener-only ones modelled on the good ones: on-topic 25/25 kept, two-subject 20/20 kept, opener-only
+  20/20 renamed, full drifts 22/25 (a cron question that became a job vent stayed "Cron Job Setup"
+  3/5: the safe way to be wrong). Next real signal: the renames after the next live pass.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short

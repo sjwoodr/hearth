@@ -29,13 +29,32 @@ export function sampleLines(messages: string[]): string[] {
   });
 }
 
+const MINOR = new Set(['about', 'chat', 'discussion', 'guide', 'help', 'questions', 'talk', 'with']);
+const words = (title: string) =>
+  new Set(
+    (title.toLowerCase().match(/\p{L}+/gu) ?? [])
+      .filter((w) => w.length >= 4 && !MINOR.has(w))
+      .map((w) => w.replace(/s$/, '')),
+  );
+
+/**
+ * True if a new title shares a real word with the old one ("Guide to Belgian Ales" → "Belgian Beer
+ * Styles"): the subject is the same, so the old title stays. The fit check sometimes says no for those,
+ * and the result was a reworded title or a grab-bag ("French Music and Cars").
+ */
+export function sameSubject(old: string, better: string): boolean {
+  const before = words(old);
+  return [...words(better)].some((w) => before.has(w)) || old.toLowerCase() === better.toLowerCase();
+}
+
 const FITS_SCHEMA = { type: 'object', properties: { fits: { type: 'boolean' } }, required: ['fits'] };
 
 /**
  * The model's answer: a new title, or undefined to keep the current one. Two calls: a yes/no on
  * whether the title still fits, then a title only if it doesn't. One call answering "KEEP or a new
  * title" either reworded titles that fitted ("Chicago Bears Schedule" → "...Performance") or, told not
- * to, kept titles a chat had long left.
+ * to, kept titles a chat had long left. "One of its main subjects" (not "most of it") is what keeps a
+ * chat with two real subjects on its first title; asking for "most" made "A and B" grab-bags.
  */
 export function makeRetitler(json: JsonFn) {
   return async (title: string, userMessages: string[]): Promise<string | undefined> => {
@@ -45,9 +64,10 @@ export function makeRetitler(json: JsonFn) {
         {
           role: 'system',
           content:
-            "You check whether a chat's title still fits. Answer fits=true if most of the chat is about the " +
-            'subject the title names, even loosely. Answer fits=false if most of the chat is about a different ' +
-            'subject and the title only fits how it began.',
+            "You check whether a chat's title still fits. A chat can cover several subjects. Answer fits=true if " +
+            "the title names one of the chat's main subjects, even loosely. Answer fits=false only if the title " +
+            'names nothing but a passing start (a greeting, a one-off question) and the chat is really about ' +
+            'something else.',
         },
         { role: 'user', content: `TITLE: ${title}\n\n${said}` },
       ],
@@ -59,8 +79,9 @@ export function makeRetitler(json: JsonFn) {
         {
           role: 'system',
           content:
-            'Write a short title, 2 to 6 words, for the chat below. Name the subject most of it is about, like a ' +
-            'heading. No quotes, no trailing period, no emoji. Reply with the title only.',
+            'Write a short title, 2 to 6 words, for the chat below. Name its main subject, the one most messages ' +
+            "are about, like a heading: one subject, don't join two with \"and\". No quotes, no trailing period, " +
+            'no emoji. Reply with the title only.',
         },
         { role: 'user', content: said },
       ],
@@ -68,7 +89,7 @@ export function makeRetitler(json: JsonFn) {
       null,
     );
     const better = cleanTitle(raw);
-    return better && better.toLowerCase() !== title.toLowerCase() ? better : undefined;
+    return better && !sameSubject(title, better) ? better : undefined;
   };
 }
 
