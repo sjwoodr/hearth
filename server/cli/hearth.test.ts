@@ -56,3 +56,30 @@ describe('hearth CLI (piped input)', () => {
     expect(r.err).toContain('Unknown command');
   });
 });
+
+describe('hearth chats stats', () => {
+  it('counts replies per week that end with a question, with lengths', async () => {
+    expect(hearth(['users', 'add', 'statsy'], 'goodpassword\ngoodpassword\n').code).toBe(0);
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(env.HEARTH_DB_PATH);
+    const userId = (db.prepare("SELECT id FROM users WHERE username = 'statsy'").get() as { id: number }).id;
+    const chat = Number(db.prepare('INSERT INTO conversations (user_id) VALUES (?)').run(userId).lastInsertRowid);
+    const say = (role: string, content: string, at: string) =>
+      db.prepare('INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)').run(chat, role, content, at);
+    // Monday 2026-10-26 and the Sunday that ends the same week; then the next week.
+    say('user', 'Hi there!', '2026-10-26 09:00:00');
+    say('assistant', 'Hello. How was your day?', '2026-10-26 09:00:05');
+    say('user', 'Fine.', '2026-11-01 20:00:00');
+    say('assistant', 'Good to hear. **Anything planned?**\n', '2026-11-01 20:00:05');
+    say('user', 'Tell me a fact.', '2026-11-02 08:00:00');
+    say('assistant', 'Octopuses have three hearts.', '2026-11-02 08:00:05');
+    db.close();
+
+    const out = hearth(['chats', 'stats', 'statsy']).out.split('\n');
+    expect(out[0]).toMatch(/^WEEK OF\s+REPLIES\s+END IN \?/);
+    // Week one: both replies end with a question (the second behind Markdown); week two: none.
+    expect(out[1]).toMatch(/^2026-10-26\s+2\s+100%\s+30\s+7\s+4\.3x$/);
+    expect(out[2]).toMatch(/^2026-11-02\s+1\s+0%\s+28\s+15\s+1\.9x$/);
+    expect(hearth(['chats', 'stats', 'alex']).out).not.toContain('2026-10-26');
+  });
+});

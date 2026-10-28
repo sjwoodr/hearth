@@ -317,6 +317,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
   `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
   this path, and never add a log line with message text.
+- **Questions and length are capped in the system prompt** (2026-10-28). Replies ending with a question
+  climbed from 27% (before 2026-10-10) to 44-48% after the warmer personality ("enjoys talking with
+  this person", "be interested in them") and **80%** in the first full week on the UD build, with
+  replies ~9x the length of the message they answered (live weekly numbers: `bin/hearth chats stats`,
+  run in the cluster). Probe on the live UD model, 9 short chat openers and follow-ups x5 plus 3
+  French-practice cases x5, fast mode with the search tool offered: the old prompt ended 69% of chat
+  replies with a question, the new lines ("Don't end replies with a question by habit…", "Match their
+  length…") 11%, median 71 → 64 words; one case where a question is natural (getting back into ham
+  radio) still asked 4/5, and every French quiz still posed its question (often as "Translate…"). The
+  long replies deep in real discussions weren't reproduced, so the length line is unmeasured there:
+  watch `chats stats`. If chats start to feel like dead ends, soften "often the best ending is simply
+  your last thought" before removing the line. Probe script was ad hoc (scratchpad), not committed.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -354,7 +366,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `deploy/charts/hearth/` | the Helm chart: gateway (hostNetwork), api, worker, web, migrate hook, backup CronJob, optional Prometheus Operator monitors (`metrics.enabled`) and Grafana dashboard (`metrics.dashboard.enabled`, `files/hearth-dashboard.json`), alert rules (`metrics.rules.enabled`); `tests/` (helm-unittest), `ci/test-values.yaml`; never creates the data volume |
 | `deploy/k8s/` | the chart's deployment as plain manifests for single-node k3s (numbered files, migrate Job run by hand first, Secret by `kubectl`); for learning and the article series. Image tags are pinned per file: bump them with the chart's when they matter |
 | `bruno/` | Bruno API test collection (Bruno 4, OpenCollection YAML): health, auth + CSRF, conversations, memories, one real reply, cleanup; environments `local` and `cluster` (password is a Bruno secret); see `bruno/README.md` |
-| `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live |
+| `server/cli/` | `bin/hearth` admin console; the **only** place cross-user queries live (including `chats stats`, weekly reply metrics) |
 | `server/testing.ts` | `setupApp()`: in-memory DB + scripted fake model for route tests |
 | `client/public/` | app icons: `icon.svg` (source: fireplace arch + flame) → `apple-touch-icon.png` (iOS, opaque 180), `icon-192/512.png`, `icon-maskable-512.png`; `favicon.svg` (simplified for 16-32 px) → `favicon.ico`; `manifest.webmanifest` (standalone app). PNGs are rendered from the SVGs with headless Chrome |
 | `client/src/ConversationView.tsx` | chat UI, Think toggle and effort (per-browser `localStorage` `hearth.think`, `hearth.effort`), "Show raw" toggle on replies with a code block, "Re-answer with thinking" (fast replies), "Think harder" (thinking ones) |

@@ -162,7 +162,7 @@ Every action is also a subcommand:
 hearth users    list | add <user> | passwd <user> | name <user> [display name]
                 | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
 hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
-                | delete <id>
+                | delete <id> | stats [user]   (replies per week: ending in a question, length)
 hearth messages edit <id> [text] | delete <id>
 hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
                 | kind <id> <profile|fact> | delete <id>

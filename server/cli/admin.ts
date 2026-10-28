@@ -43,6 +43,34 @@ function conversationsWhere(db: DB, where: string, args: unknown[]): Conversatio
     .all(...args) as ConversationRow[];
 }
 
+/** One week of replies (weeks start on Monday); lengths are averages in characters. */
+export type ReplyWeek = { week: string; replies: number; endInQuestionPct: number; replyChars: number; messageChars: number };
+
+/**
+ * How replies run, week by week: how many end with a question, and how long they are next to the
+ * message they answer. For tuning the personality (prompts/system.md); see CLAUDE.md for the numbers
+ * behind the 2026-10-28 change. Private chats are never stored, so they're never counted.
+ */
+export function replyStats(db: DB, username?: string): ReplyWeek[] {
+  return db
+    .prepare(
+      `WITH r AS (
+         SELECT m.created_at, length(m.content) AS reply_chars,
+                -- Ends with "?", allowing for trailing Markdown, quotes and brackets.
+                rtrim(m.content, char(32, 10, 42, 95, 41, 34)) LIKE '%?' AS asks,
+                (SELECT length(q.content) FROM messages q
+                  WHERE q.conversation_id = m.conversation_id AND q.role = 'user' AND q.id < m.id
+                  ORDER BY q.id DESC LIMIT 1) AS message_chars
+         FROM messages m JOIN conversations c ON c.id = m.conversation_id JOIN users u ON u.id = c.user_id
+         WHERE m.role = 'assistant'${username ? ' AND u.username = ?' : ''})
+       SELECT date(created_at, 'weekday 0', '-6 days') AS week, count(*) AS replies,
+              round(100.0 * sum(asks) / count(*)) AS endInQuestionPct,
+              round(avg(reply_chars)) AS replyChars, round(coalesce(avg(message_chars), 0)) AS messageChars
+       FROM r GROUP BY week ORDER BY week`,
+    )
+    .all(...userArg(username)) as ReplyWeek[];
+}
+
 export function listConversations(db: DB, username?: string): ConversationRow[] {
   return conversationsWhere(db, byUser(username), userArg(username));
 }

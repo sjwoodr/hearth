@@ -45,6 +45,7 @@ Run with no arguments for the interactive menu (fzf; numbered prompts when piped
                   | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
   hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                   | delete <id>
+                  | stats [user]       replies per week: how many end with a question, and length
   hearth messages edit <id> [text] | delete <id>
   hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
                   | kind <id> <profile|fact> | delete <id>
@@ -255,6 +256,23 @@ function chatsTable(username?: string): string {
   if (username) requireUser(username);
   const chats = admin.listConversations(db, username);
   return chats.length ? chats.map(chatLabel).join('\n') : 'No chats.';
+}
+
+function chatsStats(username?: string): string {
+  if (username) requireUser(username);
+  const weeks = admin.replyStats(db, username);
+  if (weeks.length === 0) return 'No replies yet.';
+  const header = ['WEEK OF', 'REPLIES', 'END IN ?', 'REPLY CHARS', 'MESSAGE CHARS', 'RATIO'];
+  const rows = weeks.map((w) => [
+    w.week,
+    String(w.replies),
+    `${w.endInQuestionPct}%`,
+    String(w.replyChars),
+    String(w.messageChars),
+    w.messageChars ? `${(w.replyChars / w.messageChars).toFixed(1)}x` : '-',
+  ]);
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i]!.length)));
+  return [header, ...rows].map((r) => r.map((cell, i) => cell.padEnd(widths[i]!)).join('  ').trimEnd()).join('\n');
 }
 
 function chatsSearch(text: string | undefined): string {
@@ -708,6 +726,7 @@ async function run(argv: string[]): Promise<void> {
       if (!action || action === 'list') return console.log(chatsTable(a));
       if (action === 'show') return page(chatText(requireId(a, 'Chat')));
       if (action === 'search') return console.log(chatsSearch(text(a, b, ...rest)));
+      if (action === 'stats') return console.log(chatsStats(a));
       if (action === 'export') return chatExport(requireId(a, 'Chat'), b);
       if (action === 'rename') return chatRename(requireId(a, 'Chat'), text(b, ...rest));
       if (action === 'delete') return void (await chatDelete(requireId(a, 'Chat'), yes));
