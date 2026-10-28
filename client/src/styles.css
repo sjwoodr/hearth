@@ -118,6 +118,8 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-top { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 16px; border-bottom: 1px solid var(--border); }
 .chat-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* When the chat ran, after its title: plain weight, so the title still leads. */
+.chat-span { font-weight: 400; color: var(--muted); }
 .menu-toggle { display: none; }
 /* Reload: only as a Home Screen app, where there's no browser toolbar (CSS display-mode). */
 .reload { display: none; margin-left: auto; padding: 0.2rem 0.5rem; font-size: 1.3rem; line-height: 1; color: var(--muted); }

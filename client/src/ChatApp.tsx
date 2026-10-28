@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, onModelHeader, type ContextUse, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
+import { chatSpan } from '../../shared/chat-span.ts';
 import { ContextMeter } from './ContextMeter.tsx';
 import { ConversationView } from './ConversationView.tsx';
 import { MemoriesView } from './MemoriesView.tsx';
@@ -52,6 +53,8 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [revealChange, setRevealChange] = useState(false);
   // The open chat's context use, reported by ConversationView.
   const [context, setContext] = useState<ContextUse | null>(null);
+  // When the open chat ran, from its first and last message (reported by ConversationView).
+  const [span, setSpan] = useState<{ first: string; last: string } | null>(null);
   const seenModel = useRef<string | undefined>(undefined);
 
   useEffect(
@@ -175,6 +178,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   }, []);
 
   const active = conversations.find((c) => c.id === activeId);
+  const spanText = span ? chatSpan(span.first, span.last) : '';
 
   return (
     <div className={`chat-app${sidebarOpen ? ' sidebar-open' : ''}`}>
@@ -335,6 +339,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           </button>
           <span className="chat-title">
             {showMemories ? 'Memories' : privateChat !== null ? 'Private chat' : (active?.title ?? 'New chat')}
+            {!showMemories && spanText && <span className="chat-span"> ({spanText})</span>}
           </span>
           {!showMemories && privateChat === null && context && <ContextMeter context={context} />}
           {/* Shown only when hearth runs as a Home Screen app (no browser toolbar, so no reload); the
@@ -384,6 +389,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             onChanged={refresh}
             onError={handleError}
             onContext={setContext}
+            onSpan={setSpan}
           />
         )}
       </main>

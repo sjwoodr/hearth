@@ -458,7 +458,9 @@ recorded in `summary_folds` (since migration 010), so folds from before it have 
 
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a
 2-6 word title, which reaches the sidebar through the reply stream. A chat the user has renamed is
-never retitled.
+never retitled. The title bar follows the title with when the chat ran, from its first message
+to its last, in the browser's time zone: "(Oct 24 – Oct 27)", or "(Oct 27, 6:14 PM – 9:02 PM)" within a
+day; the year shows only when it isn't this one (`shared/chat-span.ts`).
 
 **Retry.** Regenerate (or Retry, when a reply failed) re-answers the last question, replacing the
 last reply rather than adding another.

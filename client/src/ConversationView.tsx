@@ -24,6 +24,8 @@ type Props = {
   privateChat?: boolean;
   /** A private chat reports whether it has messages, so leaving it can ask first. */
   onPrivateMessages?: (has: boolean) => void;
+  /** When the chat ran (its first and last message, SQLite UTC), for the title bar; null when empty. */
+  onSpan?: (span: { first: string; last: string } | null) => void;
 };
 
 /**
@@ -128,7 +130,7 @@ const THINK_HELP: Record<ThinkSetting, string> = {
   off: 'Think: Off. Every reply is fast, with no reasoning first.',
 };
 
-export function ConversationView({ id: storedId, name, focusMessageId, onCreated, onChanged, onError, onContext, privateChat = false, onPrivateMessages }: Props) {
+export function ConversationView({ id: storedId, name, focusMessageId, onCreated, onChanged, onError, onContext, privateChat = false, onPrivateMessages, onSpan }: Props) {
   const id = privateChat ? undefined : storedId;
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   // A private chat's id for the server (its reply, stop and search card), for the life of this view.
@@ -207,6 +209,10 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
     if (!privateChat) return;
     return () => void api.endPrivate(privateId).catch(() => undefined);
   }, [privateChat, privateId]);
+
+  const first = messages[0]?.created_at;
+  const last = messages.at(-1)?.created_at;
+  useEffect(() => onSpan?.(first && last ? { first, last } : null), [first, last, onSpan]);
 
   const hasMessages = messages.length > 0;
   useEffect(() => {
