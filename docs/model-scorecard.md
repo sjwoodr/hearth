@@ -12,7 +12,7 @@ current one however well it grades.
 ## The table
 
 | Model | Type | Loaded | Ctx | Speed | Prompt read¹² | Thinking | Vision | Quiz /158 | Grading /300, fast | Grading /300, thinking ≤200 | Medium reply | Extraction | Coding /16 | Verdict | Tested |
-|---||---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `gemma4:26b-a4b-it-qat` | MoE 26B, ~4B active | 15.8 GB | 32k | **25.5** | 355 | on/off, cap | yes | 153 (156 thinking) | 286 (5 / 9), 1.2 s | **300 (0 / 0)**, 12.0 s | **17.3 s** | **12/12**, judge 34/36 | 14 / 16, 11 s | Previous: replaced by the UD build of the same model | 09-29, 10-10 |
 | **`hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL`**³ | MoE 26B, ~4B active (QAT, mixed precision) | 15.6 GB | 32k | 25.6 | **503** | on/off, cap | yes | 154 | 286 (6 / 8), 0.9 s | 299 (1 / 0), 10.1 s | — | 9/9, judge 36/36⁴ | 14 / 16, 11 s | **Current: chat and background**, as the local tag `gemma4-26b-a4b-ud-64k`: ~6% faster than the library build run back to back (25.6 vs 24.1), level on everything else. pi code suite¹¹ 20/24; with pi-tacklebox 20/24 | 10-21 |
 | `gemma4:26b-a4b-it-mtp-q4_K_M` | MoE + MTP draft | ~20 GB⁹ | 32k | 19.0 | 400 | on/off, cap | yes | **155** | **291 (3 / 6)**, 1.2 s | 300 (0 / 0), 9.9 s | 18.6 s | 9/9, judge 36/36, but lost 9/48 facts⁹ | **15** / 16, 10.5 s | No: bigger and slower; MTP doesn't pay on this iGPU, and it drops real facts in extraction. The best Gemma at coding, by one task. pi code suite¹¹ with pi-tacklebox 21/24 (the UD 20/24); faster per run there only from cache luck: writes ~4% faster, reads ~26% slower | 10-10, 10-26 |
