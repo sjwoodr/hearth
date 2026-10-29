@@ -11,35 +11,34 @@ current one however well it grades.
 
 ## The table
 
-| Model | Type | Loaded | Speed | Prompt read¹² | Thinking | Vision | Quiz /158 | Grading /300, fast | Grading /300, thinking ≤200 | Medium reply | Extraction | Coding /16 | Verdict | Tested |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `gemma4:26b-a4b-it-qat` | MoE 26B, ~4B active | 15.8 GB | **25.5** | 355 | on/off, cap | yes | 153 (156 thinking) | 286 (5 / 9), 1.2 s | **300 (0 / 0)**, 12.0 s | **17.3 s** | **12/12**, judge 34/36 | 14 / 16, 11 s | Previous: replaced by the UD build of the same model | 09-29, 10-10 |
-| **`hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL`**³ | MoE 26B, ~4B active (QAT, mixed precision) | 15.6 GB | 25.6 | **503** | on/off, cap | yes | 154 | 286 (6 / 8), 0.9 s | 299 (1 / 0), 10.1 s | — | 9/9, judge 36/36⁴ | 14 / 16, 11 s | **Current: chat and background**, as the local tag `gemma4-26b-a4b-ud-64k`: ~6% faster than the library build run back to back (25.6 vs 24.1), level on everything else. pi code suite¹¹ 20/24; with pi-tacklebox 20/24 | 10-21 |
-| `gemma4:26b-a4b-it-mtp-q4_K_M` | MoE + MTP draft | ~20 GB⁹ | 19.0 | 400 | on/off, cap | yes | **155** | **291 (3 / 6)**, 1.2 s | 300 (0 / 0), 9.9 s | 18.6 s | 9/9, judge 36/36, but lost 9/48 facts⁹ | **15** / 16, 10.5 s | No: bigger and slower; MTP doesn't pay on this iGPU, and it drops real facts in extraction. The best Gemma at coding, by one task. pi code suite¹¹ with pi-tacklebox 21/24 (the UD 20/24); faster per run there only from cache luck: writes ~4% faster, reads ~26% slower | 10-10, 10-26 |
-| `qwen3.6:35b-a3b` | MoE 35B, ~3B active | 22.1 GB¹ | 25.3 | — | on/off, cap | yes | 148 | 283 (4 / 13), 1.2 s | 293 (3 / 4), always hit the cap | — | — | — | No: bigger, not faster, less accurate | 10-10 |
-| `qwen3-coder:30b` | MoE 30B, ~3.3B active | 22.0 GB | **32.7** | ~165 | none | **no** | 134 | 221 (54 / 25), 0.7 s | — | — | — | 14 / 16, **7 s** | No: very fast, but a weak grader, and no thinking or vision. pi code suite¹¹ 13/24: tool calls written as text, turns ended after announcing an edit, the big-file fix missed 3/3 | 10-11, 10-27 |
-| `qwen3:30b-a3b` | MoE 30.5B, ~3.3B active | 22.0 GB | **34.1** | 315 | always (off ignored) | **no** | — | 215 (74 / 11), 0.7 s | — | — | — | 9 / 16 (10 with retry), 113 s | No: fast tokens but reasons at length even with thinking off (into the answer), harshest grader, no vision | 10-11 |
-| `gpt-oss:20b` | MoE 21B, ~3.6B active | **12.9 GB** | 19.2 | 422 | always (low/med/high) | **no** | 151 at low | 294 (3 / 3) at low, 4.1 s | 280 (3 / 3, 14 empty), 14.3 s, worst 57 s | — | — | **16 / 16**, 13 s (low) | No: smaller but slower; best judge, weaker French | 10-10 |
-| `deepseek-r1:14b` | dense 14B | ~9 GB² | 9.0 | — | always | **no** | — | stopped at 20: ~900 reasoning tokens, ~48 s per answer | — | — | — | — | No: far too slow | 10-11 |
-| `aya-expanse:32b` | dense 32B | ~19 GB² | ~3.7 | — | none | **no** | 138 | 250 (23 / 27), 2.8 s | — | — | — | — | No: slowest and worst grader | 10-11 |
-| `gemma4:12b-it-qat` | dense 12B | 7.7 GB | ~10 | 178 | on/off, cap | yes | 150 (157 thinking) | 280 (15 / 5), 1.7 s | 40/40 on a 40-item subset, 27 s | — | — | — | Previous model; replaced by the 26B | 09-29 |
-| `Nemotron 3.5 30B-A3B` (IQ4_NL) | MoE 30B, ~3B active | 20.3 GB | 23.6 | 379 | off | no? | 142 | 268 (12 / 20), 1.4 s | — | — | — | — | No: bigger, slower, and a much weaker grader | 09-29, 10-11 |
-| `hf.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF:UD-Q8_K_XL`⁵ | NVIDIA's tune of Gemma 4 E4B, ~4B effective | 6.1 GB | 14.4 | — | on/off, cap | yes | 146 | 264 (17 / 19), 1.0 s | 295 (5 / 0), 13.5 s | — | — | 10 / 16 (15 with retry), 18 s | No: smaller but much slower, and more false corrections than the 26B in both modes | 10-25 |
-| `gemma4:e4b-it-q8_0` | small, ~4B effective | 5.9 GB | 14.5 | 438 | on/off, cap | yes | 145 | 263 (17 / 20), 1.1 s | 105/109 (2 / 2), 16.9 s⁸ | — | — | — | No: smaller but slower, and a weak grader without thinking. pi edit suite 15/15, 83 s per task (26B UD 15/15, 38 s)⁶ | 10-22, 10-26 |
-| `hf.co/unsloth/LFM2.5-24B-A2B-GGUF:UD-Q6_K_XL`⁷ | MoE 24B, ~2B active | 22.5 GB | 30.2 | — | always (off ignored) | **no** | 154 (thinking) | 287 (7 / 3) thinking, unlimited, ~62 s | stopped: ~25 s per answer⁷ | — | — | 9 / 16 (10 with retry), 119 s | No: fast tokens, but it thinks 1,000-1,800 tokens per answer, so every answer is slow, and with unlimited thinking it grades no better than the 26B in fast mode; no vision | 10-25 |
-| `hf.co/unsloth/Qwen3-Coder-Next-GGUF:UD-IQ3_XXS`¹⁰ | MoE 80B, ~3B active (coding) | 29 GB | 21.8 | 201 | none | **no** | — | — | — | — | — | — | No for hearth: bigger, slower, no thinking or vision. pi: edits 15/15, 43 s; lookups 9/12 (ignored the upgrade policy twice), 69 s, the fastest; code suite¹¹ 21/24, big file twice as fast as the UD | 10-27 |
-| `nemotron-3.5-bolt:74b-a9b-iq2`¹⁰ | MoE 74B, ~9B active (NVIDIA 2-bit) | 24 GB | 11.1 | 129 | off/on/medium | yes | — | — | — | — | — | — | No: bigger and less than half the speed. pi: edits 15/15, 49 s; lookups 12/12, 204 s | 10-27 |
-| `mistral-small3.2:24b` | dense 24B | ~16 GB | — | — | none | yes | 141 | — | — | — | — | — | No: weaker grading | 09-29 |
-| `ministral-3:14b` | dense 14B | 8.9 GB | — | — | none | yes | 140 | — | — | — | — | — | No: weaker grading | 09-29 |
-| `qwen3:14b` | dense 14B | ~10 GB | — | — | on/off | **no** | 138 | — | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
-| `mistral-nemo:12b` | dense 12B | ~8 GB | — | — | none | **no** | 135 | — | — | — | — | — | No: a yes-man (most missed errors) | 09-29 |
-| `aya-expanse:8b` | dense 8B | ~6 GB | — | — | none | **no** | 105 | — | — | — | — | — | No: near coin-flip | 09-29 |
-| `gemma4:e2b-it-qat` | small, for background | ~4.3 GB² | — | — | on/off | yes | — | — | — | — | 3/12, judge **36/36** | — | No for extraction: adds instead of updating, saves one-off requests | 10-10 |
-| `qwen3.5:4b` | small, for background | ~3.4 GB | — | — | on/off | yes | — | — | — | — | 0/12, judge **36/36** | — | No for extraction: never updates a memory | 10-10 |
-| `ministral-3:3b` | small, for background | ~4.2 GB | — | — | none | yes | — | — | — | — | 9/12, judge 18/36, 16 unwanted updates | — | No: merges unrelated memories, invents facts | 10-10 |
+| Model | Type | Loaded | Ctx | Speed | Prompt read¹² | Thinking | Vision | Quiz /158 | Grading /300, fast | Grading /300, thinking ≤200 | Medium reply | Extraction | Coding /16 | Verdict | Tested |
+|---||---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `gemma4:26b-a4b-it-qat` | MoE 26B, ~4B active | 15.8 GB | 32k | **25.5** | 355 | on/off, cap | yes | 153 (156 thinking) | 286 (5 / 9), 1.2 s | **300 (0 / 0)**, 12.0 s | **17.3 s** | **12/12**, judge 34/36 | 14 / 16, 11 s | Previous: replaced by the UD build of the same model | 09-29, 10-10 |
+| **`hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL`**³ | MoE 26B, ~4B active (QAT, mixed precision) | 15.6 GB | 32k | 25.6 | **503** | on/off, cap | yes | 154 | 286 (6 / 8), 0.9 s | 299 (1 / 0), 10.1 s | — | 9/9, judge 36/36⁴ | 14 / 16, 11 s | **Current: chat and background**, as the local tag `gemma4-26b-a4b-ud-64k`: ~6% faster than the library build run back to back (25.6 vs 24.1), level on everything else. pi code suite¹¹ 20/24; with pi-tacklebox 20/24 | 10-21 |
+| `gemma4:26b-a4b-it-mtp-q4_K_M` | MoE + MTP draft | ~20 GB⁹ | 32k | 19.0 | 400 | on/off, cap | yes | **155** | **291 (3 / 6)**, 1.2 s | 300 (0 / 0), 9.9 s | 18.6 s | 9/9, judge 36/36, but lost 9/48 facts⁹ | **15** / 16, 10.5 s | No: bigger and slower; MTP doesn't pay on this iGPU, and it drops real facts in extraction. The best Gemma at coding, by one task. pi code suite¹¹ with pi-tacklebox 21/24 (the UD 20/24); faster per run there only from cache luck: writes ~4% faster, reads ~26% slower | 10-10, 10-26 |
+| `qwen3.6:35b-a3b` | MoE 35B, ~3B active | 22.1 GB¹ | 8k | 25.3 | — | on/off, cap | yes | 148 | 283 (4 / 13), 1.2 s | 293 (3 / 4), always hit the cap | — | — | — | No: bigger, not faster, less accurate | 10-10 |
+| `qwen3-coder:30b` | MoE 30B, ~3.3B active | 22.0 GB | 32k | **32.7** | ~165 | none | **no** | 134 | 221 (54 / 25), 0.7 s | — | — | — | 14 / 16, **7 s** | No: very fast, but a weak grader, and no thinking or vision. pi code suite¹¹ 13/24: tool calls written as text, turns ended after announcing an edit, the big-file fix missed 3/3 | 10-11, 10-27 |
+| `qwen3:30b-a3b` | MoE 30.5B, ~3.3B active | 22.0 GB | 32k | **34.1** | 315 | always (off ignored) | **no** | — | 215 (74 / 11), 0.7 s | — | — | — | 9 / 16 (10 with retry), 113 s | No: fast tokens but reasons at length even with thinking off (into the answer), harshest grader, no vision | 10-11 |
+| `gpt-oss:20b` | MoE 21B, ~3.6B active | **12.9 GB** | 32k | 19.2 | 422 | always (low/med/high) | **no** | 151 at low | 294 (3 / 3) at low, 4.1 s | 280 (3 / 3, 14 empty), 14.3 s, worst 57 s | — | — | **16 / 16**, 13 s (low) | No: smaller but slower; best judge, weaker French | 10-10 |
+| `deepseek-r1:14b` | dense 14B | ~9 GB² | — | 9.0 | — | always | **no** | — | stopped at 20: ~900 reasoning tokens, ~48 s per answer | — | — | — | — | No: far too slow | 10-11 |
+| `aya-expanse:32b` | dense 32B | ~19 GB² | — | ~3.7 | — | none | **no** | 138 | 250 (23 / 27), 2.8 s | — | — | — | — | No: slowest and worst grader | 10-11 |
+| `gemma4:12b-it-qat` | dense 12B | 7.7 GB | 32k | ~10 | 178 | on/off, cap | yes | 150 (157 thinking) | 280 (15 / 5), 1.7 s | 40/40 on a 40-item subset, 27 s | — | — | — | Previous model; replaced by the 26B | 09-29 |
+| `Nemotron 3.5 30B-A3B` (IQ4_NL) | MoE 30B, ~3B active | 20.3 GB | 32k | 23.6 | 379 | off | no? | 142 | 268 (12 / 20), 1.4 s | — | — | — | — | No: bigger, slower, and a much weaker grader | 09-29, 10-11 |
+| `hf.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF:UD-Q8_K_XL`⁵ | NVIDIA's tune of Gemma 4 E4B, ~4B effective | 6.1 GB | 32k | 14.4 | — | on/off, cap | yes | 146 | 264 (17 / 19), 1.0 s | 295 (5 / 0), 13.5 s | — | — | 10 / 16 (15 with retry), 18 s | No: smaller but much slower, and more false corrections than the 26B in both modes | 10-25 |
+| `gemma4:e4b-it-q8_0` | small, ~4B effective | 5.9 GB | 32k | 14.5 | 438 | on/off, cap | yes | 145 | 263 (17 / 20), 1.1 s | 105/109 (2 / 2), 16.9 s⁸ | — | — | — | No: smaller but slower, and a weak grader without thinking. pi edit suite 15/15, 83 s per task (26B UD 15/15, 38 s)⁶ | 10-22, 10-26 |
+| `hf.co/unsloth/LFM2.5-24B-A2B-GGUF:UD-Q6_K_XL`⁷ | MoE 24B, ~2B active | 22.5 GB | 32k | 30.2 | — | always (off ignored) | **no** | 154 (thinking) | 287 (7 / 3) thinking, unlimited, ~62 s | stopped: ~25 s per answer⁷ | — | — | 9 / 16 (10 with retry), 119 s | No: fast tokens, but it thinks 1,000-1,800 tokens per answer, so every answer is slow, and with unlimited thinking it grades no better than the 26B in fast mode; no vision | 10-25 |
+| `hf.co/unsloth/Qwen3-Coder-Next-GGUF:UD-IQ3_XXS`¹⁰ | MoE 80B, ~3B active (coding) | 29 GB | 64k | 21.8 | 201 | none | **no** | — | — | — | — | — | — | No for hearth: bigger, slower, no thinking or vision. pi: edits 15/15, 43 s; lookups 9/12 (ignored the upgrade policy twice), 69 s, the fastest; code suite¹¹ 21/24, big file twice as fast as the UD | 10-27 |
+| `nemotron-3.5-bolt:74b-a9b-iq2`¹⁰ | MoE 74B, ~9B active (NVIDIA 2-bit) | 24 GB | 64k | 11.1 | 129 | off/on/medium | yes | — | — | — | — | — | — | No: bigger and less than half the speed. pi: edits 15/15, 49 s; lookups 12/12, 204 s | 10-27 |
+| `mistral-small3.2:24b` | dense 24B | ~16 GB | — | — | — | none | yes | 141 | — | — | — | — | — | No: weaker grading | 09-29 |
+| `ministral-3:14b` | dense 14B | 8.9 GB | 32k | — | — | none | yes | 140 | — | — | — | — | — | No: weaker grading | 09-29 |
+| `qwen3:14b` | dense 14B | ~10 GB | — | — | — | on/off | **no** | 138 | — | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
+| `mistral-nemo:12b` | dense 12B | ~8 GB | — | — | — | none | **no** | 135 | — | — | — | — | — | No: a yes-man (most missed errors) | 09-29 |
+| `aya-expanse:8b` | dense 8B | ~6 GB | — | — | — | none | **no** | 105 | — | — | — | — | — | No: near coin-flip | 09-29 |
+| `gemma4:e2b-it-qat` | small, for background | ~4.3 GB² | — | — | — | on/off | yes | — | — | — | — | 3/12, judge **36/36** | — | No for extraction: adds instead of updating, saves one-off requests | 10-10 |
+| `qwen3.5:4b` | small, for background | ~3.4 GB | — | — | — | on/off | yes | — | — | — | — | 0/12, judge **36/36** | — | No for extraction: never updates a memory | 10-10 |
+| `ministral-3:3b` | small, for background | ~4.2 GB | — | — | — | none | yes | — | — | — | — | 9/12, judge 18/36, 16 unwanted updates | — | No: merges unrelated memories, invents facts | 10-10 |
 
-¹ at 8k context; everything else is at hearth's 32k where measured. ² size on disk (not measured
-loaded). ³ Unsloth's quantization of Google's QAT checkpoint, with its more sensitive layers kept at
+¹ Loaded at 8k; the Ctx column gives each row's context. ² size on disk (not measured loaded). ³ Unsloth's quantization of Google's QAT checkpoint, with its more sensitive layers kept at
 higher precision. Pulled from Hugging Face, Ollama runs it with a generic template, so thinking and
 tool calls aren't separated; it needs its own tag with `RENDERER gemma4` and `PARSER gemma4` (and
 Gemma's sampling settings) to match the library model: [deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](../deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile). ⁴ The generic cases only, run side by side
@@ -82,8 +81,12 @@ free credits.
 
 ## The columns
 
-- **Loaded**: what `ollama ps` reports with the model in memory (`size_vram`). The machine's budget is
-  6-20 GB for the model ([CLAUDE.md](../CLAUDE.md)).
+- **Loaded**: what `ollama ps` reports with the model in memory (`size_vram`). The machine's budget: a
+  soft cap of 30 GB for the model, and up to 50 GB for a test only ([CLAUDE.md](../CLAUDE.md)).
+- **Ctx**: the context the model was loaded at for **Loaded**, **Speed** and the pi suites (8k, 16k,
+  32k or 64k; "—" where the size wasn't measured loaded). The KV cache grows with it, so a size only
+  compares at the same context. New rows use **64k** (from 2026-10-29), the agent harnesses' context;
+  older rows are mostly 32k. The French bench itself always runs at 8k (`num_ctx` in `run.ts`).
 - **Prompt read**: tokens per second reading a prompt (footnote ¹²). Agent harnesses send long prompts
   (system prompt, project notes, every tool result), so this sets their speed more than **Speed** does.
 - **Speed**: generation tokens per second on one ~300-token French paragraph, model already loaded,
@@ -116,12 +119,13 @@ What has a real chance on this machine, so new releases are worth a test only wh
 
 - **Mixture of experts with ~4B or fewer active parameters.** Memory bandwidth (~90 GB/s shared DDR5)
   sets speed here, so dense models of 12B and up run at ~7-10 tok/s whatever their quality.
-- **A soft cap of ~25 GB loaded at 32k** (owner, 2026-10-11): 21-25 GB is still worth a test, since it
-  fits fully on the GPU; above that it needs a strong reason. Plus **vision and thinking** (hearth needs both).
+- **A soft cap of ~30 GB loaded at 64k** (owner, 2026-10-29; 20 GB at first, 25 from 2026-10-11): up
+  to 30 GB is worth a test. The GPU may use up to **50 GB** (kernel setting, 2026-10-29), so bigger
+  models can be tested, but 30-50 GB is far more than this machine should give a model day to day. Plus **vision and thinking** (hearth needs both).
   The size rule below still applies: a bigger model than Gemma has to be faster and more accurate.
 - **Strong multilingual training**, French above all.
 - **Cheap context is a bonus**: sliding-window or hybrid attention keeps the KV cache small. Gemma 4
-  grows ~0.5 GB from 16k to 32k; Qwen3-30B-A3B (full attention) ~2 GB (20 → 22 GB). Measure at 32k.
+  grows ~0.5 GB from 16k to 32k; Qwen3-30B-A3B (full attention) ~2 GB (20 → 22 GB). Measure at 64k.
 
 Families to watch: **Gemma** (Gemma 4 came out 2026-04-02, roughly a yearly cadence, so a Gemma 5 MoE
 around spring 2027 would fit the pattern) and **Qwen** (Qwen 3.6 35B-A3B was the closest challenger:
@@ -132,7 +136,8 @@ the rules above before testing anything.
 
 ## Adding a model
 
-1. `ollama pull` it, then measure **Loaded** and **Speed** at 32k context with the GPU otherwise idle.
+1. `ollama pull` it, then measure **Loaded** and **Speed** at 64k context with the GPU otherwise idle, and record it in **Ctx**.
+   `~/src/other/model-bench/bin/model-speed <tag>` gives writing and reading speed in a couple of minutes.
 2. French bench (`~/src/other/model-bench/french`, private: its answer key never enters this repo):
    `./bench.sh quiz <model>` for the quiz, `./bench.sh grading <model>` for grading, and
    `QUIZ=grading.json RESULTS=results-grading ./bench.sh budget <model> 200` for thinking.

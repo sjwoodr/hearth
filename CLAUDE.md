@@ -35,8 +35,11 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 - **Memory bandwidth decides speed.** A model reads its *active* weights per token, so: dense 27B
   ~7.6 tok/s, dense 12B ~10, mixture-of-experts with 3-4B active (Gemma 4 26B-A4B, Nemotron 30B-A3B)
   23-26. Prefer MoE models here.
-- **Memory budget: 6-20 GB for the model.** The rest stays free for browser, IDEs, containers, VMs.
-  Anything that makes the machine swap is out.
+- **Memory budget: a soft cap of 30 GB for the model** (owner, 2026-10-29; it was 20, then 25). The rest
+  stays free for browser, IDEs, containers, VMs. Anything that makes the machine swap is out. The GPU
+  may use up to **50 GiB** (`ttm.pages_limit=13107200 ttm.page_pool_size=13107200` on the kernel
+  command line, 2026-10-29; the default is half the RAM, ~30 GiB): that's for testing bigger models,
+  well above what one should take day to day.
 - **Ollama is a systemd service** with drop-ins in `/etc/systemd/system/ollama.service.d/`:
   `OLLAMA_IGPU_ENABLE=1` (without it Ollama ignores the iGPU), `OLLAMA_FLASH_ATTENTION=1`,
   `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_NUM_PARALLEL=2` (in `tuning.conf`).
