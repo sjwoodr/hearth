@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Memory, type MemoryKind } from './api.ts';
+import { memoryDate } from '../../shared/chat-span.ts';
 
 const MAX_CHARS = 400;
 
@@ -175,6 +176,9 @@ function MemoryItem({ memory, onOpenChat, onSave, onMove, onDelete }: ItemProps)
       <div className="memory-actions">
         <span className="memory-id" title="Memory ID, the same one bin/hearth uses">
           #{memory.id}
+        </span>
+        <span className="memory-id" title="Newest change first: the page is sorted by this">
+          {memoryDate(memory.created_at, memory.updated_at)}
         </span>
         {memory.source_conversation_id !== null ? (
           <a

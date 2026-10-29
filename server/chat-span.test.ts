@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatSpan } from '../shared/chat-span.ts';
+import { chatSpan, memoryDate } from '../shared/chat-span.ts';
 
 const now = new Date('2026-10-28T12:00:00Z');
 const span = (first: string, last: string, timeZone = 'America/New_York') => chatSpan(first, last, { now, locale: 'en-US', timeZone });
@@ -26,5 +26,22 @@ describe('chatSpan', () => {
 
   it('gives nothing for a time it cannot read', () => {
     expect(span('yesterday', '2026-10-27 22:14:00')).toBe('');
+  });
+});
+
+describe('memoryDate', () => {
+  const date = (created: string, updated: string) => memoryDate(created, updated, { now, locale: 'en-US', timeZone: 'America/New_York' });
+
+  it('says when a memory was added if it never changed', () => {
+    expect(date('2026-10-24 14:00:00', '2026-10-24 14:00:00')).toBe('added Oct 24');
+  });
+
+  it('says when it last changed, in local time, with the year only when it is not this year', () => {
+    expect(date('2026-10-24 14:00:00', '2026-10-28 01:02:00')).toBe('changed Oct 27');
+    expect(date('2025-03-01 15:00:00', '2025-03-01 15:00:00')).toBe('added Mar 1, 2025');
+  });
+
+  it('gives nothing for a time it cannot read', () => {
+    expect(date('', '2026-10-24 14:00:00')).toBe('');
   });
 });
