@@ -320,7 +320,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
   `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
   this path, and never add a log line with message text.
-- **Questions and length are capped in the system prompt, and length again per message** (2026-10-28). Replies ending with a question
+- **Questions and length are capped in the system prompt, and length again per message** (2026-10-28; eased 2026-10-29). Replies ending with a question
   climbed from 27% (before 2026-10-10) to 44-48% after the warmer personality ("enjoys talking with
   this person", "be interested in them") and **80%** in the first full week on the UD build, with
   replies ~9x the length of the message they answered (live weekly numbers: `bin/hearth chats stats`,
@@ -343,6 +343,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   kept explanations, how-tos and comparisons at the old length and took casual turns to ~560-870
   (1-2 paragraphs), question endings 2 of 15. Known quirk: "what can i do" reads as asking for steps
   and came out longer (~2,200). If explanations start coming back short, the exemption list is the knob.
+  **That went too far: the owner found hearth curt, "like I'm interrupting their work"** (2026-10-29).
+  Probe on the live UD model (ad hoc, scratchpad): 8 casual openers and follow-ups, a synthetic job
+  vent at 3 depths, 3 explain/how-to/compare requests and a quiz, x4. A warm rewrite ("be good
+  company… a thought or an opinion of your own… sound glad they're here", reminder "the way a friend
+  who's glad to hear from them would answer: a paragraph or two") overshot: casual questions 81% (the
+  old prompt 66%, current 19%), longer than the old prompt (88 vs 66 words), every explanation ended
+  in a question, and it invented experience ("I've learned the hard way"). Shipped instead: a "warm,
+  not brisk… never claim experiences or habits you don't have" line, the "best ending is simply your
+  last thought" clause removed, and a reminder of "a warm, conversational reply of a few sentences".
+  Casual questions 16% → 25% (deep in the vent 25% → 42%), median 42 → 48 words, explanations and
+  quizzes unchanged. The same system prompt with the old reminder scored the same, so the system lines
+  do the work. If it is still curt, raise warmth in small steps and re-probe: the first step overshot.
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that

@@ -92,7 +92,7 @@ function noticeLoading(loaded: Promise<boolean | undefined> | undefined, quiet: 
 // system prompt's length line alone left replies ~1,250 characters whatever the message; this halves
 // casual ones and leaves explanations full length (CLAUDE.md, "Questions and length").
 export const REPLY_LENGTH =
-  '[A short message gets a short reply, a few sentences. If it asks you to explain, teach, compare or give steps, answer fully.]';
+  '[A short message gets a warm, conversational reply of a few sentences. If it asks you to explain, teach, compare or give steps, answer fully.]';
 
 // Context tokens held back for the reply itself.
 const REPLY_RESERVE = 1024;
