@@ -19,6 +19,15 @@ export function onModelHeader(listener: (m: ModelHeader) => void): () => void {
   return () => modelListeners.delete(listener);
 }
 
+/** The build this page is, and the server's from X-Hearth-Version on every answer: `sha-<short>`, or `dev`. */
+export const PAGE_VERSION = __HEARTH_VERSION__;
+const versionListeners = new Set<(version: string) => void>();
+/** Calls `listener` with the server build each response reports; returns the unsubscribe. */
+export function onServerVersion(listener: (version: string) => void): () => void {
+  versionListeners.add(listener);
+  return () => versionListeners.delete(listener);
+}
+
 async function send(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
   // Non-GET requests are always JSON. With no Content-Type, Hono's csrf() treats the request
   // as a form post and checks Origin, which fails for any LAN name other than HEARTH_ORIGIN.
@@ -31,6 +40,8 @@ async function send(method: string, path: string, body?: unknown, signal?: Abort
   });
   const model = res.headers.get('X-Hearth-Model');
   if (model) for (const listener of modelListeners) listener({ model, isDefault: res.headers.get('X-Hearth-Model-Default') === '1' });
+  const version = res.headers.get('X-Hearth-Version');
+  if (version) for (const listener of versionListeners) listener(version);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`, data.retryAfterSeconds);

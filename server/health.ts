@@ -1,6 +1,6 @@
 // Health endpoints for a process supervisor (Kubernetes probes, docker compose), outside /api:
 // no login, no CSRF. Used by the api (index.ts) and the worker (worker.ts).
-//   /healthz  the process is up. Liveness: touches nothing that could hang.
+//   /healthz  the process is up, and which build it is. Liveness: touches nothing that could hang.
 //   /readyz   the database answers and its schema matches this code: 503 otherwise, so traffic
 //             goes elsewhere. Whether the models are reachable is reported, but doesn't fail it:
 //             with Ollama down hearth can still show chats and memories, and failing readiness
@@ -10,12 +10,13 @@
 import type { Env, Hono } from 'hono';
 import { checkSchema, type DB } from './db.ts';
 import { metricsResponse } from './metrics.ts';
+import { VERSION } from './version.ts';
 
 /** Resolves undefined when the models are reachable, or a short reason when not. */
 export type ModelsProbe = () => Promise<string | undefined>;
 
 export function registerHealthRoutes<E extends Env>(app: Hono<E>, opts: { db: DB; models?: ModelsProbe }) {
-  app.get('/healthz', (c) => c.json({ ok: true }));
+  app.get('/healthz', (c) => c.json({ ok: true, version: VERSION }));
   app.get('/metrics', metricsResponse);
   app.get('/readyz', async (c) => {
     let database = 'ok';

@@ -16,10 +16,17 @@ describe('health endpoints', () => {
     const { app } = setupApp();
     const live = await app.request('/healthz');
     expect(live.status).toBe(200);
-    expect(await live.json()).toEqual({ ok: true });
+    expect(await live.json()).toEqual({ ok: true, version: 'dev' });
     const ready = await app.request('/readyz');
     expect(ready.status).toBe(200);
     expect(await ready.json()).toEqual({ ready: true, checks: { database: 'ok' } });
+  });
+
+  it('every /api answer says which build is running, signed in or not', async () => {
+    const { app } = setupApp();
+    const res = await app.request('/api/me');
+    expect(res.status).toBe(401);
+    expect(res.headers.get('X-Hearth-Version')).toBe('dev');
   });
 
   it('are not ready when the schema doesn\'t match the code', async () => {

@@ -229,6 +229,11 @@ certificates, but any reverse proxy fits.
   matches; 503 otherwise), with no login, on the backend and on the worker
   (`HEARTH_WORKER_PORT`, 8788). `/readyz` reports whether the models are reachable but doesn't
   fail over it, so an Ollama outage doesn't take the whole UI down.
+- **Version:** each image knows the git sha it was built from (`HEARTH_VERSION`, `sha-<short>`,
+  passed by CI as a build argument; `dev` from a checkout). `/healthz` and every `/api` answer
+  (`X-Hearth-Version`) report the server's, and the chat list's footer shows it (hover for the
+  page's own). If it changes while a page is open, a deploy rolled out under it, and the page
+  offers a reload; it asks once whenever the tab or Home Screen app comes back into view.
 - **Shutdown:** on SIGTERM each process stops accepting connections, lets open requests finish
   (a reply mid-stream ends normally), closes the database and exits; anything still open after
   `HEARTH_SHUTDOWN_GRACE_MS` (25 s, under Kubernetes' 30) is cut off.

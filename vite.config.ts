@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   root: 'client',
   plugins: [react()],
+  // The build this page is (sha-<short> from CI, `dev` locally), compared with the server's X-Hearth-Version.
+  define: { __HEARTH_VERSION__: JSON.stringify(process.env.HEARTH_VERSION || 'dev') },
   build: { outDir: '../dist/client', emptyOutDir: true },
   // host: true listens on the LAN too, so other devices can reach the dev server;
   // the backend stays on 127.0.0.1 behind this proxy. '.local' admits any mDNS

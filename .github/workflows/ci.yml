@@ -54,6 +54,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: version
+        env:
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: echo "version=sha-${SHA::7}" >> "$GITHUB_OUTPUT"
       # Tags: sha-<short> is what the cluster pins; main is for humans, never deployed. The
       # labels (org.opencontainers.image.source) link the package to this repository on GHCR.
       - id: meta
@@ -71,6 +75,8 @@ jobs:
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Shown in the app and sent as X-Hearth-Version: the same sha-<short> the cluster pins.
+          build-args: HEARTH_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 

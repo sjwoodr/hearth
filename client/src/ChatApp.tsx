@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, onModelHeader, type ContextUse, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
+import { api, ApiError, onModelHeader, onServerVersion, PAGE_VERSION, type ContextUse, type Conversation, type Me, type ModelHeader, type SearchHit } from './api.ts';
 import { chatSpan } from '../../shared/chat-span.ts';
 import { ContextMeter } from './ContextMeter.tsx';
 import { ConversationView } from './ConversationView.tsx';
@@ -56,6 +56,12 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   // When the open chat ran, from its first and last message (reported by ConversationView).
   const [span, setSpan] = useState<{ first: string; last: string } | null>(null);
   const seenModel = useRef<string | undefined>(undefined);
+  // The server's build, from X-Hearth-Version on every answer. A change after this page loaded means a
+  // deploy rolled out under it, so offer a reload. A mismatch from the start only shows on hover: the
+  // api and web roll out minutes apart, and a reload then could land the old page again.
+  const [serverVersion, setServerVersion] = useState<string | undefined>(undefined);
+  const [updated, setUpdated] = useState(false);
+  const firstServerVersion = useRef<string | undefined>(undefined);
 
   useEffect(
     () =>
@@ -72,6 +78,26 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
       }),
     [],
   );
+
+  useEffect(
+    () =>
+      onServerVersion((version) => {
+        setServerVersion(version);
+        firstServerVersion.current ??= version;
+        if (version !== firstServerVersion.current) setUpdated(true);
+      }),
+    [],
+  );
+
+  // A tab or Home Screen app in the background makes no requests: ask once when it's back in view, so a
+  // deploy shows up before the next message rather than after it.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'visible') api.me().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
+  }, []);
 
   const handleError = useCallback(
     (err: unknown) => {
@@ -323,6 +349,9 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             Sign out
           </button>
         </div>
+        <div className="sidebar-version" title={`Server ${serverVersion ?? 'unknown'}, this page ${PAGE_VERSION}`}>
+          hearth {(serverVersion ?? PAGE_VERSION).replace(/^sha-/, '')}
+        </div>
       </aside>
       <button type="button" className="scrim" aria-label="Close chat list" tabIndex={-1} onClick={() => setSidebarOpen(false)} />
 
@@ -351,6 +380,14 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
         {error && (
           <p className="error banner" role="alert">
             {error}
+          </p>
+        )}
+        {updated && (
+          <p className="notice banner" role="status">
+            A new version of hearth is out.
+            <button type="button" className="link" onClick={() => mayLeave() && location.reload()}>
+              Reload
+            </button>
           </p>
         )}
         {modelNotice && (

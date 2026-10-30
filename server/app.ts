@@ -17,6 +17,7 @@ import {
 } from './sessions.ts';
 import { LoginThrottle } from './throttle.ts';
 import { findUser, nameOf } from './users.ts';
+import { VERSION } from './version.ts';
 
 const MINUTE = 60_000;
 
@@ -42,6 +43,11 @@ export function createApp(opts: AppOptions) {
   const app = new Hono<Env>();
   registerHealthRoutes(app, { db, models: opts.checkModels });
   app.use('/api/*', csrf({ origin }));
+  // Every answer says which build the server is, so an open page notices a deploy (client/src/api.ts).
+  app.use('/api/*', async (c, next) => {
+    c.header('X-Hearth-Version', VERSION);
+    await next();
+  });
 
   app.post('/api/login', async (c) => {
     const body = await c.req.json().catch(() => null);

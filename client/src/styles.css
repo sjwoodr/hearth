@@ -317,6 +317,8 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .memory-actions button.link { padding: 0.2rem 0.4rem; }
 .memory-id { color: var(--muted); opacity: 0.7; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .sidebar-foot .current { color: var(--accent); }
+/* The running build, under the footer: small, so it's there when you look for it and not otherwise. */
+.sidebar-version { padding: 0 16px 0.6rem; margin-top: -0.4rem; font-size: 0.75rem; color: var(--muted); }
 
 /* ── phones: the chat list slides over the conversation ── */
 @media (max-width: 720px) {
