@@ -320,41 +320,34 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
   `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
   this path, and never add a log line with message text.
-- **Questions and length are capped in the system prompt, and length again per message** (2026-10-28; eased 2026-10-29). Replies ending with a question
-  climbed from 27% (before 2026-10-10) to 44-48% after the warmer personality ("enjoys talking with
-  this person", "be interested in them") and **80%** in the first full week on the UD build, with
-  replies ~9x the length of the message they answered (live weekly numbers: `bin/hearth chats stats`,
-  run in the cluster). Probe on the live UD model, 9 short chat openers and follow-ups x5 plus 3
-  French-practice cases x5, fast mode with the search tool offered: the old prompt ended 69% of chat
-  replies with a question, the new lines ("Don't end replies with a question by habit…", "Match their
-  length…") 11%, median 71 → 64 words; one case where a question is natural (getting back into ham
-  radio) still asked 4/5, and every French quiz still posed its question (often as "Translate…"). The
-  long replies deep in real discussions weren't reproduced, so the length line is unmeasured there:
-  watch `chats stats`. If chats start to feel like dead ends, soften "often the best ending is simply
-  your last thought" before removing the line. Probe script was ad hoc (scratchpad), not committed.
-  **The length line alone didn't shorten real chats, so a reminder rides on the newest message**
-  (`REPLY_LENGTH` in `chat.ts`, with recall: prompt only, never stored). The owner's real 34-turn chat
-  (a job vent, replayed locally at 9 turns x3, plus 6 explain/how-to/quiz requests x3) still got
-  ~1,250-character, 3-4 paragraph replies to one-line messages under the new system prompt; a firmer
-  system-prompt line ("one paragraph, under about 80 words") barely moved it (~1,000). A blunt
-  reminder ("reply at about the length of this message") cut casual turns to ~300 but also cut
-  explanations 60-75% (a passé composé vs imparfait explanation ~1,800 → ~500), so it was rejected.
-  The shipped wording, with "if it asks you to explain, teach, compare or give steps, answer fully",
-  kept explanations, how-tos and comparisons at the old length and took casual turns to ~560-870
-  (1-2 paragraphs), question endings 2 of 15. Known quirk: "what can i do" reads as asking for steps
-  and came out longer (~2,200). If explanations start coming back short, the exemption list is the knob.
-  **That went too far: the owner found hearth curt, "like I'm interrupting their work"** (2026-10-29).
-  Probe on the live UD model (ad hoc, scratchpad): 8 casual openers and follow-ups, a synthetic job
-  vent at 3 depths, 3 explain/how-to/compare requests and a quiz, x4. A warm rewrite ("be good
-  company… a thought or an opinion of your own… sound glad they're here", reminder "the way a friend
-  who's glad to hear from them would answer: a paragraph or two") overshot: casual questions 81% (the
-  old prompt 66%, current 19%), longer than the old prompt (88 vs 66 words), every explanation ended
-  in a question, and it invented experience ("I've learned the hard way"). Shipped instead: a "warm,
-  not brisk… never claim experiences or habits you don't have" line, the "best ending is simply your
-  last thought" clause removed, and a reminder of "a warm, conversational reply of a few sentences".
-  Casual questions 16% → 25% (deep in the vent 25% → 42%), median 42 → 48 words, explanations and
-  quizzes unchanged. The same system prompt with the old reminder scored the same, so the system lines
-  do the work. If it is still curt, raise warmth in small steps and re-probe: the first step overshot.
+- **Personality: the pre-10-28 prompt, minus feeling-narration** (2026-10-30, after two days of caps
+  that went wrong; don't repeat them). Replies ending with a question climbed from 27% (before
+  2026-10-10) to 44-48% after the warmer personality and **80%** in the first full week on the UD build,
+  with long replies deep in a real job vent (~1,250 characters to one-line messages; live weekly numbers:
+  `bin/hearth chats stats`, run in the cluster). Fixed 2026-10-28 with blunt global rules: "don't end
+  replies with a question by habit… often the best ending is simply your last thought", "match their
+  length", and a reminder on every newest message ("A short message gets a short reply, a few
+  sentences"). Probes hit every target (question endings 69% → 11%, casual replies halved, explanations
+  kept) and **the owner found hearth cold, "like I'm interrupting their work"**: in the owner's real chat every
+  reply was ~3 sentences whatever they wrote (the reminder became a template), asked nothing (0 of 13),
+  and narrated their feelings ("uniquely aggravating", "it must be a massive relief") instead of joining
+  in. A softened version the next night ("warm, not brisk") didn't change that.
+  **Measure tone on a replay of a real chat, and let the owner judge blind samples** (2026-10-30, the owner's
+  chat 53, a home-network fix, 13 replies regenerated x2-3 per prompt; private, ad hoc in scratchpad).
+  Blind, the owner picked the old prompt's reply both times. The "massive win / a specific kind of
+  frustration" voice is Gemma's own and appears under every prompt; the old prompt felt better because
+  it buried it in engagement (guessing causes, playing along with a joke, a question about 1 in 4 in a
+  running chat), which the caps stripped out. A varied-length reminder (v4: "a line or two for a quick
+  remark… more for real news or a topic") was too brisk on casual turns and cut explanations ~25%.
+  Shipped (v5): the old prompt plus "Don't narrate their feelings back to them… join in with what you
+  know or think instead. Never claim experiences or habits you don't have." and "Don't end every reply
+  with a question, and never ask more than one."; no per-message reminder. On chat 53: median 363
+  characters (old 402, the caps 319), question endings 31% (old 23%, the caps 0%), feeling-narration
+  31% of replies (old 51%, the caps 54%). On one-message openers questions are still ~69% (old 66%): the
+  question line has little effect there, so the live 80% was probably openers and short chats. If that
+  needs fixing, target openers with a narrow change and replay a real chat before shipping. A rewrite
+  that asked for warmth outright ("be good company… sound glad they're here") overshot to 81%
+  questions, longer than the old prompt, and invented experience ("I've learned the hard way").
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that

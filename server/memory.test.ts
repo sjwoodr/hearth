@@ -4,7 +4,7 @@ import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
-import { login, newest, ORIGIN, sessionCookie, setupApp } from './testing.ts';
+import { login, ORIGIN, sessionCookie, setupApp } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
 
 // A toy embedding: counts of a few topic words, so similarity is predictable in tests.
@@ -300,10 +300,10 @@ describe('memories in chat and over the API', () => {
     await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'et alors ?' })).text();
 
     const [first, second, third] = ctx.model.calls;
-    expect(first!.at(-1)!.content).toBe(newest('alice', 'à demain !'));
-    expect(second!.at(-1)!.content).toBe(newest('alice', 'me revoilà', '[Sent about 4 days after the previous message in this chat.]'));
+    expect(first!.at(-1)!.content).toBe('à demain !');
+    expect(second!.at(-1)!.content).toMatch(/^\[Sent about 4 days after the previous message in this chat\.\]\n\n\[alice's message\]\nme revoilà$/);
     // A minute later: no note, and the earlier message reads as stored.
-    expect(third!.at(-1)!.content).toBe(newest('alice', 'et alors ?'));
+    expect(third!.at(-1)!.content).toBe('et alors ?');
     expect(third!.find((m) => m.content.includes('me revoilà'))!.content).toBe('me revoilà');
   });
 

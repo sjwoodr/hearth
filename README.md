@@ -388,10 +388,7 @@ recalled for each message change every time, so they're attached to that message
 the stored message is untouched). So is a note on how long the user was away, when the newest message
 comes 3 hours or more after the one before it ("Sent about 4 days after the previous message"): the
 history carries no times, so a chat picked up days later otherwise reads as one sitting. The chat
-shows the same break as a divider ("4 days later"; `shared/time-gap.ts`). And so is a one-line
-reminder on reply length ("A short message gets a short reply... If it asks you to explain, teach,
-compare or give steps, answer fully."), because the system prompt's length rule alone didn't
-shorten replies in real chats. Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
+shows the same break as a divider ("4 days later"; `shared/time-gap.ts`). Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
 recall in the system prompt every reply reread the whole chat (~22 s), and at 8k the chat no longer
 fits, so trimming changed the start every turn (~7 s). Prompts are kept to `HEARTH_CONTEXT_BUDGET`
 (16k), and the summarizer scales with it: it summarizes past half the budget and keeps a quarter

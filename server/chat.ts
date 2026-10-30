@@ -88,12 +88,6 @@ function noticeLoading(loaded: Promise<boolean | undefined> | undefined, quiet: 
   });
 }
 
-// On the newest user message only, never stored (like recall), so the prompt start stays cached. The
-// system prompt's length line alone left replies ~1,250 characters whatever the message; this halves
-// casual ones and leaves explanations full length (CLAUDE.md, "Questions and length").
-export const REPLY_LENGTH =
-  '[A short message gets a warm, conversational reply of a few sentences. If it asks you to explain, teach, compare or give steps, answer fully.]';
-
 // Context tokens held back for the reply itself.
 const REPLY_RESERVE = 1024;
 /** Context held back when thinking: the reasoning budget, plus roughly as much again when it's handed back as notes. */
@@ -292,8 +286,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   ): Promise<ChatMessage[]> {
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
-    const notes = [recalled, extra.pause, REPLY_LENGTH].filter(Boolean).join('\n\n');
-    if (last?.role === 'user') {
+    const notes = [recalled, extra.pause].filter(Boolean).join('\n\n');
+    if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);
       if (source !== undefined) imageSource.set(withRecall, source);
