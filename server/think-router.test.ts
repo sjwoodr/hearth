@@ -18,6 +18,11 @@ const NEEDS_THINKING: [string, string?][] = [
   ['When do I use the subjunctive after « il faut que » ?'],
   ['Grade my answers: 1) qui 2) que'],
   ['Did I get this right? « Elle est partie sans dire au revoir. »'],
+  // Short French with no quotes, typed on a phone (curly apostrophe), 2026-10-30.
+  ['Is it correct to say:  je m’en voir'],
+  ["something like i'm going to see... because don't they use \" je m'en vais\"  in that way"],
+  ['Can I say tu es fatigué to my boss?'],
+  ['Can I say j’ai faim when I mean I could eat?'],
 ];
 
 const STAYS_FAST: [string, string?][] = [
@@ -36,6 +41,12 @@ const STAYS_FAST: [string, string?][] = [
   ["Is it correct that Willie Mays played for the Giants?"],
   ['Give me one French idiom about rain, with its meaning. Two sentences.'],
   ['ok thanks', 'Here is how a Yagi works: ...'],
+  ["Is it correct to say I'm sorry when it isn't my fault?"],
+  ['Can I use your last answer in an email?'],
+  ['Is it right that the Bears play at noon on Sunday?'],
+  ['What does that error mean?'],
+  ["You're right, je suis fatigué. Long day."],
+  ["Pérolin isn't found on amazon music. are you sure that's the right name?"],
 ];
 
 describe('deciding when to think', () => {

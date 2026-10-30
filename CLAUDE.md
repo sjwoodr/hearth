@@ -178,7 +178,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   slot, a classifier request would evict the cached conversation and the next reply would reread the
   whole chat. Auto thinks when asked to check/correct/grade French, when answering or disputing a quiz
   hearth just gave, when asked for a French quiz, or for why/exceptions/differences in a French grammar
-  question. `aboutFrench` gates each rule so "is it correct that Willie Mays…" stays fast. Checked
+  question. `aboutFrench` gates each rule so "is it correct that Willie Mays…" stays fast. A question
+  about wording ("is it correct to say: je m'en voir", "don't they use « je m'en vais »") thinks on
+  one sign of French (an elision, a lowercase accented word, a French-only word; curly apostrophes
+  straightened): chat 55's unquoted "je m'en voir" went fast because `aboutFrench` wants 4 French
+  words. On all 660 live messages (2026-10-30) it added 3: chat 55's two, and a pasted answer about an
+  album "J'm'en fous". Capitalised accented words don't count (names: Adé, Pérolin fired before that).
+  Out of reach: French with no such sign ("on y va"). Checked
   against labelled messages in `think-router.test.ts` and real history. Keyword rules miss rephrasings;
   the On/Off setting is the override, and every fast reply gets a "Re-answer with thinking"
   button (its tooltip calls out a reply that corrected itself, `SELF_CORRECTION`). It was only on

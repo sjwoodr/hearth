@@ -24,11 +24,27 @@ const QUIZ_REQUEST = /\b(quiz|test|drill)\s+me\b|\bgive me (an? |some |\d+ )?(ex
 const WHY_OR_RULE =
   /\b(exceptions?|why (do|does|is|are|would|did|can't|isn't)|pourquoi|difference between|différence entre|when (do|should|would|can) (i|you|we|one) use|when to use|which (one )?is (right|correct)|the rule for)\b/i;
 
+// Curly apostrophes (phone keyboards) straightened, or "m’en" and "j’ai" don't count as French.
+const straight = (text: string) => text.replace(/[\u2018\u2019\u02bc]/g, "'");
+
 // Enough French to treat the question as about French: quoted French, or French function words.
 const FRENCH_WORDS = /\b(le|la|les|un|une|des|du|de|je|tu|il|elle|nous|vous|ils|elles|que|qui|dont|où|est|sont|pas|ne|ce|se|au|aux|avec|pour|dans|sur|mais|et|ou|très|j'|l'|d'|qu'|c'est)\b/gi;
 const aboutFrench = (text: string) =>
   /french|français|francais|grammar|grammaire|subjunctive|subjonctif|conjugat|pronoun|pronom|passé|imparfait|«|\b(qui|que|dont|qu'|ce qui|ce que)\b/i.test(text) ||
-  (text.match(FRENCH_WORDS)?.length ?? 0) >= 4;
+  (straight(text).match(FRENCH_WORDS)?.length ?? 0) >= 4;
+
+// A question about wording ("is it correct to say", "don't they use", "what does ... mean"): a
+// verb about words, asked. Paired with any French below, so "is it correct that Willie Mays..."
+// and "can I use your charger?" stay fast.
+const WORDING = /\b(say|said|saying|use|used|mean|means|meant|sound|sounds|write|written|spell|spelled|correct|right|wrong|natural|proper|grammatical)\b/i;
+const ASKED = /\?|^\W*(is|are|was|can|could|do|does|did|would|should|how|what|which|why)\b|\b(do|don't|does|doesn't|can|could|would|should|did) (they|you|i|we|people|french people|the french) (say|use|write|mean)\b/i;
+// One sign of French is enough here: an elision (j'ai, m'en, qu'il), a lowercase accented word
+// (capitalised ones are mostly names: Adé, Pérolin), or a word English doesn't use.
+const FRENCH_SIGN = /(^|[^\p{L}'])(j|m|t|s|n|l|d|qu|c)'\p{L}|\b(je|tu|nous|vous|est|sont|pas|une|avec|dans|mais|moi|toi|oui|suis|vais|fait)\b/iu;
+// Case-sensitive on purpose: with the i flag, \p{Ll} matches capitals too.
+const LOWERCASE_ACCENTED = /(?<!\p{L})\p{Ll}*[éèêëàâçùûîïôœ]\p{Ll}*(?!\p{L})/u;
+const asksAboutFrenchWording = (text: string) =>
+  WORDING.test(text) && ASKED.test(text) && (FRENCH_SIGN.test(straight(text)) || LOWERCASE_ACCENTED.test(text));
 
 // A quiz from hearth: numbered items with gaps, or an invitation to answer.
 const QUIZ_GIVEN = /_{2,}|\bpick (qui|que|one)\b|\bfill (in )?the (gap|blank)|give me your answers|\bchoose (the|between)\b/i;
@@ -42,6 +58,7 @@ export function shouldThink(message: string, previousReply?: string, hasImages =
   if (CHECKING.test(message) && aboutFrench(message)) return { think: true, reason: 'checking your French' };
   // "Can you check my homework?" with a photo: the French is in the image. Fast mode misread a
   // photographed "tu écoute" as correct, the same tu -s blind spot the text bench found.
+  if (asksAboutFrenchWording(message)) return { think: true, reason: 'a question about French wording' };
   if (hasImages && CHECKING.test(message)) return { think: true, reason: 'checking the French in an image' };
   if (previousReply && QUIZ_GIVEN.test(previousReply)) {
     if (looksLikeAnswers(message)) return { think: true, reason: 'grading quiz answers' };
