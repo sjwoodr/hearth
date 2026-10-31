@@ -23,6 +23,15 @@ const NEEDS_THINKING: [string, string?][] = [
   ["something like i'm going to see... because don't they use \" je m'en vais\"  in that way"],
   ['Can I say tu es fatigué to my boss?'],
   ['Can I say j’ai faim when I mean I could eat?'],
+  // Written in French, after asking to be corrected as it goes (chat 55, 2026-10-31). Fast mode
+  // "corrected" the right ones too.
+  ['Alors, on peut parler de quoi ce soir?'],
+  ['D’accord.  J’ai hâte de améliorer ma vocabulaire'],
+  ['Les expressions idiomatiques sont très bizarre quand nous sommes débutants'],
+  ['Alors, maintenant je suis dans mon lit. Il est presque minuit'],
+  ['Ma femme et moi , on est regardé un série ce soir'],
+  ['Oui, une série. C’était “The Amazing Race “'],
+  ['Je dois partir. Au revoir!'],
 ];
 
 const STAYS_FAST: [string, string?][] = [
@@ -47,6 +56,11 @@ const STAYS_FAST: [string, string?][] = [
   ['What does that error mean?'],
   ["You're right, je suis fatigué. Long day."],
   ["Pérolin isn't found on amazon music. are you sure that's the right name?"],
+  // English with French words in it, and English words French uses too (son, on, ce, sa).
+  ['My son is on the team this year, and he plays a lot.'],
+  ['Played La vie en rose and Je dois m’en aller on the drive home.'],
+  ['Ok so the ce and sa columns in the export are empty. Any idea why?'],
+  ['ok, bonne nuit'],
 ];
 
 describe('deciding when to think', () => {

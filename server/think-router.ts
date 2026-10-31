@@ -46,6 +46,24 @@ const LOWERCASE_ACCENTED = /(?<!\p{L})\p{Ll}*[éèêëàâçùûîïôœ]\p{Ll}*
 const asksAboutFrenchWording = (text: string) =>
   WORDING.test(text) && ASKED.test(text) && (FRENCH_SIGN.test(straight(text)) || LOWERCASE_ACCENTED.test(text));
 
+// A message written in French: French function words outnumber English ones two to one (elisions
+// split first, so "j'ai" counts). Asked to correct as it goes, the fast model invented a mistake in
+// every reply to a correct sentence (chat 55, 6 of 6 replayed: "corrected" "je suis dans mon lit" to
+// itself, put a circumflex on "c'était"); thinking, 0 of 6, real errors still caught. English that
+// quotes a little French stays English (the wording rule above covers questions about it).
+const FR_COMMON = new Set(
+  'je tu il elle on nous vous ils elles le la les un une des du de et est sont suis es pas ne que qui quoi dans pour avec sur ce cette mais ou très aussi mon ma mes ton ta tes son sa ses leur au aux oui non bien merci alors parce comme moi toi fait vais va peux veux être avoir ai été était'.split(' '),
+);
+const EN_COMMON = new Set(
+  'the a an and is are was were i you he she it we they to of in on that this what with for not but do does did have has my your so just can about be if or at from how why which there'.split(' '),
+);
+const writtenInFrench = (text: string) => {
+  const words = straight(text).toLowerCase().replace(/\b(c|j|l|d|qu|n|m|t|s)'/g, '$1 ').match(/\p{L}+/gu) ?? [];
+  const fr = words.filter((w) => FR_COMMON.has(w)).length;
+  const en = words.filter((w) => EN_COMMON.has(w)).length;
+  return fr >= 2 && fr > en * 2;
+};
+
 // A quiz from hearth: numbered items with gaps, or an invitation to answer.
 const QUIZ_GIVEN = /_{2,}|\bpick (qui|que|one)\b|\bfill (in )?the (gap|blank)|give me your answers|\bchoose (the|between)\b/i;
 // A short message that reads as answers: "1) qui 2) que", "qui, que, dont", a single word.
@@ -67,6 +85,7 @@ export function shouldThink(message: string, previousReply?: string, hasImages =
   }
   if (QUIZ_REQUEST.test(message) && aboutFrench(message)) return { think: true, reason: 'writing quiz questions' };
   if (WHY_OR_RULE.test(message) && aboutFrench(message)) return { think: true, reason: 'explaining a grammar rule' };
+  if (writtenInFrench(message)) return { think: true, reason: 'a message in French' };
   return { think: false };
 }
 

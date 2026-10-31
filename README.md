@@ -364,9 +364,11 @@ summaries) never think, and use `HEARTH_MODEL` unless an admin has switched the 
   `server/think-router.ts`: asking to check, correct or grade French; answering (or disputing) a quiz
   hearth just gave; asking for a French quiz; asking why, or for the exceptions or differences, in a
   French grammar question; asking about wording ("is it correct to say", "don't they use") with any
-  French in the message, even a short unquoted phrase like "je m'en voir". The reply says so ("thought first (auto: checking your French)"). No model
+  French in the message, even a short unquoted phrase like "je m'en voir"; and any message written
+  in French, since practising in French with hearth correcting as it goes is the main use. A French
+  reply takes ~15-20 s instead of a few seconds. The reply says so ("thought first (auto: checking your French)"). No model
   call decides: a separate classifier request would evict Ollama's cached conversation and cost the
-  next reply a full reread. Checked against 29 labelled messages and the owner's real chat history, where it
+  next reply a full reread. Checked against 50 labelled messages and the owner's real chat history, where it
   picked exactly their 3 French grammar questions out of 23 messages.
 - **On** and **Off** override the rules either way.
 - A fast reply gets a **↻ Re-answer with thinking** button next to Regenerate, at the current

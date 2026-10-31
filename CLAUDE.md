@@ -184,7 +184,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   straightened): chat 55's unquoted "je m'en voir" went fast because `aboutFrench` wants 4 French
   words. On all 660 live messages (2026-10-30) it added 3: chat 55's two, and a pasted answer about an
   album "J'm'en fous". Capitalised accented words don't count (names: Adé, Pérolin fired before that).
-  Out of reach: French with no such sign ("on y va"). Checked
+  Out of reach: French with no such sign ("on y va"). **A message written in French thinks**
+  (`writtenInFrench`: French function words outnumber English ones 2:1, at least 2; 2026-10-31). Chat
+  55, practising in French after asking hearth to correct as it goes: fast replies "corrected" correct
+  sentences ("je suis dans mon lit" to itself, a circumflex on "c'était"); replayed from the real
+  history, fast invented a mistake 6/6 on the correct ones, the real thinking path (200 cap) 0/6, and
+  caught all 9 real errors (fast missed "de améliorer"), at 14-22 s a reply. On 660 live messages it
+  adds 32 (16 → 48): 26 in the French practice chat, 2 more French, 4 pasted French song lists. Checked
   against labelled messages in `think-router.test.ts` and real history. Keyword rules miss rephrasings;
   the On/Off setting is the override, and every fast reply gets a "Re-answer with thinking"
   button (its tooltip calls out a reply that corrected itself, `SELF_CORRECTION`). It was only on
