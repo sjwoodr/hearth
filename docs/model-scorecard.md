@@ -38,7 +38,7 @@ current one however well it grades.
 | `qwen3:14b` | dense 14B | ~10 GB | — | — | — | on/off | **no** | 138 | — | — | — | — | — | No: too harsh (most false corrections) | 09-29 |
 | `mistral-nemo:12b` | dense 12B | ~8 GB | — | — | — | none | **no** | 135 | — | — | — | — | — | No: a yes-man (most missed errors) | 09-29 |
 | `aya-expanse:8b` | dense 8B | ~6 GB | — | — | — | none | **no** | 105 | — | — | — | — | — | No: near coin-flip | 09-29 |
-| `gemma4:e2b-it-qat` | small, for background | ~4.3 GB² | — | — | — | on/off | yes | — | — | — | — | 3/12, judge **36/36** | — | No for extraction: adds instead of updating, saves one-off requests | 10-10 |
+| `gemma4:e2b-it-qat` | small, for background | ~4.3 GB² | 64k | **43.2** | **1230** | on/off | yes | — | — | — | — | 3/12, judge **36/36** | — | No for extraction: adds instead of updating, saves one-off requests. No for coding either: the fastest model run here, but pi code suite quick screen **1/9**, mean 138 s (only `recover`; changed a protected Terraform file and edited without asking on the vague task) | 10-10, 11-01 |
 | `qwen3.5:4b` | small, for background | ~3.4 GB | — | — | — | on/off | yes | — | — | — | — | 0/12, judge **36/36** | — | No for extraction: never updates a memory | 10-10 |
 | `ministral-3:3b` | small, for background | ~4.2 GB | — | — | — | none | yes | — | — | — | — | 9/12, judge 18/36, 16 unwanted updates | — | No: merges unrelated memories, invents facts | 10-10 |
 
