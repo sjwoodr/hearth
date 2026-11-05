@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PreemptedError } from './busy.ts';
 import type { DB } from './db.ts';
-import { conversationsReadyForExtraction, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
+import { conversationsReadyForExtraction, createSweep, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { login, ORIGIN, sessionCookie, setupApp } from './testing.ts';
@@ -354,6 +354,33 @@ describe('memories in chat and over the API', () => {
 
     expect((await call(ctx.app, ctx.alice, 'DELETE', `/memories/${id}`)).status).toBe(200);
     expect(await (await call(ctx.app, ctx.alice, 'GET', '/memories')).json()).toEqual([]);
+  });
+});
+
+describe('the assistant name in extraction', () => {
+  it('calls the assistant by its configured name in every prompt', async () => {
+    const { db, alice } = await seed();
+    const chat = chatWith(db, alice.id, [
+      ['user', 'I keep bees.'],
+      ['assistant', 'Lovely. How many hives?'],
+    ]);
+    const prompts: ChatMessage[][] = [];
+    const json: JsonFn = async (messages, schema) => {
+      prompts.push(messages);
+      if (schema === EXTRACTION_SCHEMA) return { add: [{ content: 'Alice keeps bees.' }], update: [] };
+      return { stated: true, lasting: true };
+    };
+    // Through the sweep, as the worker runs it.
+    await createSweep(db, json, fakeEmbed(), 0, { assistant: 'Gemma' })();
+    expect(memoriesOf(db, alice.id)).toHaveLength(1);
+    const extraction = prompts.find((m) => m[0]!.content.startsWith('You maintain'))!;
+    expect(extraction[0]!.content).toContain('a chat companion called Gemma');
+    expect(extraction[0]!.content).toContain('Never record what Gemma said');
+    expect(extraction[1]!.content).toContain('Gemma: Lovely. How many hives?');
+    const stated = prompts.find((m) => m[0]!.content.includes('Answer stated=true'))!;
+    expect(stated[0]!.content).toContain('on something Gemma said');
+    // The app keeps its name ("hearth records when each memory was learned"); the assistant doesn't.
+    for (const m of prompts) expect(m.map((x) => x.content).join('\n')).not.toMatch(/hearth (said|offered)|^hearth: /m);
   });
 });
 

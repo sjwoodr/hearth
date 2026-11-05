@@ -78,6 +78,9 @@ export const config = {
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
+  // The name the assistant answers to ({{name}} in the prompt; summaries and memory extraction use
+  // it too). The app is still called hearth.
+  assistantName: env('HEARTH_ASSISTANT_NAME', 'hearth').trim() || 'hearth',
   // SearXNG behind the web_search tool; the model asks, the user approves each search. Set to
   // "off" to never offer the tool.
   searxngUrl: env('HEARTH_SEARXNG_URL', 'http://127.0.0.1:8888'),

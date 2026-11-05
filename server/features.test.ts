@@ -6,7 +6,7 @@ import { conversationsReadyForExtraction, createSweep, extractMemories } from '.
 import { addMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { searchMessages, toFtsQuery } from './search.ts';
-import { KEEP_RECENT_TOKENS, SUMMARIZE_ABOVE_TOKENS, summarizeIfLong } from './summarize.ts';
+import { createSummarySweep, KEEP_RECENT_TOKENS, SUMMARIZE_ABOVE_TOKENS, summarizeIfLong } from './summarize.ts';
 import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { cleanTitle } from './titles.ts';
 import { createUser } from './users.ts';
@@ -536,6 +536,23 @@ describe('summarizing long chats', () => {
       return 'Second summary.';
     });
     expect(prompts[0]![1]!.content).toContain('Previous summary:\nFirst summary.');
+  });
+
+  it('calls the assistant by its configured name', async () => {
+    const ctx = await signedIn();
+    const id = await newChat(ctx.app, ctx.alice);
+    seedMessages(ctx.db, id, 20, 1400);
+    const prompts: ChatMessage[][] = [];
+    await createSummarySweep(ctx.db, async (m) => {
+      prompts.push(m);
+      return 'A summary.';
+    }, 8192, 'Gemma')();
+    const [system, user] = prompts[0]!;
+    expect(system!.content).toContain('between alice and Gemma, a chat');
+    expect(system!.content).toContain('anything Gemma offered to do');
+    expect(system!.content).not.toContain('hearth');
+    expect(user!.content).toMatch(/^Gemma: /m);
+    expect(user!.content).not.toMatch(/^hearth: /m);
   });
 
   it('rejects an empty summary and leaves the chat as it was', async () => {

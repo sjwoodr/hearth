@@ -32,12 +32,13 @@ const models = connectModels(config, db);
 // Paused while an admin's switch is active (see index.ts), and reverts that switch once it's idle.
 const stopMemories = startMemorySweeper(db, models.json, models.embed, config.memoryIdleMinutes, {
   paused: () => models.replyActive() || !models.choice.isDefault(),
+  assistant: config.assistantName,
 });
 const stopRetitles = startRetitleSweeper(db, models.json, config.memoryIdleMinutes, {
   paused: () => models.replyActive() || !models.choice.isDefault(),
 });
 const stopReverter = startModelReverter(models.choice, models.loaded);
-const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget);
+const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget, config.assistantName);
 // Only health endpoints, for probes. Its server also keeps the process alive.
 const health = new Hono();
 registerHealthRoutes(health, { db, models: probeModels(config.gatewayUrl, true) });

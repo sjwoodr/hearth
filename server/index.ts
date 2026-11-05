@@ -17,6 +17,7 @@ import { backgroundJobs, connectModels, modelSetupProblem } from './models.ts';
 import { startModelReverter } from './active-model.ts';
 import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
+import { readSystemPrompt } from './system-prompt.ts';
 import { makeTitler } from './titles.ts';
 import { startRetitleSweeper } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
@@ -59,7 +60,7 @@ const app = createApp({
   chat: models.asReply(ollamaChat(models.endpoint, models.model, config.numCtx)),
   thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, models.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
   // Read per request, so edits to the prompt file apply without a restart.
-  systemPrompt: () => fs.readFileSync(config.systemPromptPath, 'utf8').trim(),
+  systemPrompt: () => readSystemPrompt(config.systemPromptPath, config.assistantName),
   contextBudget: config.contextBudget,
   // Up to ~800 tokens of memories per message, out of the context window.
   memoryContext: (user, message) => memoryContext(db, user, message, embed, 800),
@@ -68,7 +69,7 @@ const app = createApp({
   titleFor: makeTitler(json),
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
-  afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.contextBudget) : undefined,
+  afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.contextBudget, config.assistantName) : undefined,
   webSearch,
   checkModels: probeModels(config.gatewayUrl || config.ollamaUrl, !!config.gatewayUrl),
   // Says "loading the model" when Ollama has unloaded it (asked alongside each reply).
@@ -79,7 +80,10 @@ const app = createApp({
 // Memory extraction waits while an admin's switch is active: a weaker model can merge or invent
 // memories. It catches up once the default is back.
 const stopMemories = jobs.memories
-  ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, { paused: () => models.replyActive() || !models.choice.isDefault() })
+  ? startMemorySweeper(db, json, embed, config.memoryIdleMinutes, {
+      paused: () => models.replyActive() || !models.choice.isDefault(),
+      assistant: config.assistantName,
+    })
   : undefined;
 // Chats that moved on from their first title get a new one, on the same terms as extraction.
 const stopRetitles = jobs.memories

@@ -89,13 +89,13 @@ export function sanitizeExtraction(raw: unknown, existing: Existing[]): Extracti
   return out;
 }
 
-function instructions(username: string): string {
-  return `You maintain the long-term memory of a chat companion called hearth, about its user ${username}.
+function instructions(username: string, assistant: string): string {
+  return `You maintain the long-term memory of a chat companion called ${assistant}, about its user ${username}.
 Read the new conversation and decide what is worth remembering in future chats.
 
 Record only what ${username} said or clearly implied about themselves: preferences, likes and
 dislikes, hobbies, ongoing projects, goals, what they are learning, people and pets they mention.
-Never record what hearth said, general knowledge, guesses, or one-off small talk.
+Never record what ${assistant} said, general knowledge, guesses, or one-off small talk.
 
 - An instruction about a single reply ("keep it short", "answer in French") is not a lasting
   preference. Record it only if ${username} says it applies from now on.
@@ -104,7 +104,7 @@ Never record what hearth said, general knowledge, guesses, or one-off small talk
 - Before adding a memory, check the existing ones for the same subject (the same habit, object,
   person or project). If one exists, do not add: update that memory by its id, rewriting it to
   include the new or corrected detail. Use "add" only for a subject no existing memory covers.
-- If ${username} corrects something hearth said about them, rewrite the memory behind it so the
+- If ${username} corrects something ${assistant} said about them, rewrite the memory behind it so the
   mistake can't happen again.
 - Write each memory as one short, specific sentence in the third person, using the name ${username}.
   Don't include dates; hearth records when each memory was learned.
@@ -177,7 +177,13 @@ const STATED_SCHEMA = { type: 'object', properties: { stated: { type: 'boolean' 
  * the Jaguars" in about 1 of 5 extractions of that real chat; a rule in the main prompt didn't change
  * the rate. A narrow yes/no on each new memory is the check.
  */
-export async function statedByUser(json: JsonFn, username: string, transcript: string, candidate: string): Promise<boolean> {
+export async function statedByUser(
+  json: JsonFn,
+  username: string,
+  transcript: string,
+  candidate: string,
+  assistant = 'hearth',
+): Promise<boolean> {
   const raw = (await json(
     [
       {
@@ -185,7 +191,7 @@ export async function statedByUser(json: JsonFn, username: string, transcript: s
         content:
           `You check one memory about ${username} against the conversation it came from. Answer stated=true only if ` +
           `${username} said it, or clearly implied it, about themselves: a fact, a preference, an interest, a plan. ` +
-          `Answer stated=false if it rests only on a question ${username} asked, on something hearth said, or on a guess. ` +
+          `Answer stated=false if it rests only on a question ${username} asked, on something ${assistant} said, or on a guess. ` +
           'Asking about a team, a product or a person is not an interest in it.',
       },
       { role: 'user', content: `CONVERSATION:\n${transcript}\n\nMEMORY: ${candidate}` },
@@ -283,12 +289,16 @@ export type ExtractResult = {
   named: boolean;
 };
 
-/** `embed` enables the near-duplicate check; without it only exact duplicates are skipped. */
+/**
+ * `embed` enables the near-duplicate check; without it only exact duplicates are skipped.
+ * `assistant` is the name the assistant answers to (HEARTH_ASSISTANT_NAME).
+ */
 export async function extractMemories(
   db: DB,
   conversationId: number,
   json: JsonFn,
   embed?: EmbedFn,
+  assistant = 'hearth',
 ): Promise<ExtractResult> {
   const conversation = db
     .prepare(
@@ -313,7 +323,7 @@ export async function extractMemories(
   const transcript: string[] = [];
   for (let i = unread.length - 1; i >= 0; i--) {
     const m = unread[i]!;
-    const line = `${m.role === 'user' ? conversation.username : 'hearth'}: ${withImageText(m.content, m.image_count, m.image_note)}`;
+    const line = `${m.role === 'user' ? conversation.username : assistant}: ${withImageText(m.content, m.image_count, m.image_note)}`;
     used += estimateTokens(line);
     if (used > TRANSCRIPT_BUDGET_TOKENS && transcript.length > 0) break;
     transcript.unshift(line);
@@ -333,7 +343,7 @@ export async function extractMemories(
 
   const raw = await json(
     [
-      { role: 'system', content: instructions(conversation.username) },
+      { role: 'system', content: instructions(conversation.username, assistant) },
       {
         role: 'user',
         content: `Existing memories:\n${existingText}\n\nNew conversation:\n${transcript.join('\n\n')}`,
@@ -352,7 +362,7 @@ export async function extractMemories(
   let fleeting = 0;
   for (const add of changes.add) {
     if (!(await keptIfFails('lasting', () => isLasting(json, username, add.content)))) fleeting++;
-    else if (await keptIfFails('stated', () => statedByUser(json, username, transcript.join('\n\n'), add.content))) stated.push(add);
+    else if (await keptIfFails('stated', () => statedByUser(json, username, transcript.join('\n\n'), add.content, assistant))) stated.push(add);
     else unstated++;
   }
   const updates: Extraction['update'] = [];
@@ -427,7 +437,7 @@ export function createSweep(
   json: JsonFn,
   embed: EmbedFn,
   idleMinutes: number,
-  opts: { paused?: () => boolean; now?: () => number } = {},
+  opts: { paused?: () => boolean; now?: () => number; assistant?: string } = {},
 ): () => Promise<void> {
   const now = opts.now ?? Date.now;
   const retryAt = new Map<number, number>();
@@ -443,7 +453,7 @@ export function createSweep(
         const secs = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
         console.log(`memory: reading chat ${id} (${unreadCount(db, id)} new message(s))…`);
         try {
-          const r = await extractMemories(db, id, json, embed);
+          const r = await extractMemories(db, id, json, embed, opts.assistant);
           retryAt.delete(id);
           job('memory', 'ok');
           console.log(
@@ -472,7 +482,7 @@ export function startMemorySweeper(
   json: JsonFn,
   embed: EmbedFn,
   idleMinutes: number,
-  opts: { paused?: () => boolean } = {},
+  opts: { paused?: () => boolean; assistant?: string } = {},
 ): () => void {
   return every(60_000, createSweep(db, json, embed, idleMinutes, opts));
 }

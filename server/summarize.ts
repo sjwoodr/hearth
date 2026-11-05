@@ -35,7 +35,14 @@ export function contextUse(db: DB, conversationId: number, budget = 8192): Conte
 }
 
 /** Folds older messages into the summary when the chat is long enough. Returns true if it did. */
-export async function summarizeIfLong(db: DB, conversationId: number, json: JsonFn, budget = 8192): Promise<boolean> {
+/** `assistant` is the name the assistant answers to (HEARTH_ASSISTANT_NAME). */
+export async function summarizeIfLong(
+  db: DB,
+  conversationId: number,
+  json: JsonFn,
+  budget = 8192,
+  assistant = 'hearth',
+): Promise<boolean> {
   const { above, keep } = summaryThresholds(budget);
   const chat = db
     .prepare(
@@ -66,15 +73,15 @@ export async function summarizeIfLong(db: DB, conversationId: number, json: Json
   const fold = messages.slice(0, Math.max(end, 1));
 
   console.log(`summary: folding ${fold.length} older message(s) of chat ${conversationId}…`);
-  const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : 'hearth'}: ${text(m)}`).join('\n\n');
+  const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : assistant}: ${text(m)}`).join('\n\n');
   const raw = await json(
     [
       {
         role: 'system',
-        content: `You keep a running summary of a long conversation between ${chat.name} and hearth, a chat
+        content: `You keep a running summary of a long conversation between ${chat.name} and ${assistant}, a chat
 companion, so the conversation can continue after older messages are no longer shown. Rewrite the
 summary so it covers the previous summary plus the messages below. Keep the topics, what was decided or
-explained, details ${chat.name} shared, open questions, and anything hearth offered to do. Plain prose,
+explained, details ${chat.name} shared, open questions, and anything ${assistant} offered to do. Plain prose,
 third person, under 200 words. Reply with the summary only.`,
       },
       { role: 'user', content: `Previous summary:\n${chat.summary ?? '(none)'}\n\nMessages to fold in:\n${transcript}` },
@@ -113,9 +120,15 @@ export function listFolds(db: DB, conversationId: number): SummaryFold[] {
 }
 
 /** Summarizes one chat if it's long, logging and counting the outcome. */
-async function summarizeAndRecord(db: DB, conversationId: number, json: JsonFn, budget: number): Promise<'done' | 'preempted' | 'failed'> {
+async function summarizeAndRecord(
+  db: DB,
+  conversationId: number,
+  json: JsonFn,
+  budget: number,
+  assistant: string,
+): Promise<'done' | 'preempted' | 'failed'> {
   try {
-    if (await summarizeIfLong(db, conversationId, json, budget)) {
+    if (await summarizeIfLong(db, conversationId, json, budget, assistant)) {
       job('summary', 'ok');
       console.log(`summary: chat ${conversationId} updated`);
     }
@@ -133,14 +146,14 @@ async function summarizeAndRecord(db: DB, conversationId: number, json: JsonFn, 
  * Runs summaries in the background, one at a time, at most one queued per chat. Failures are
  * logged and retried after the chat's next reply.
  */
-export function createSummarizer(db: DB, json: JsonFn, budget = 8192): (conversationId: number) => void {
+export function createSummarizer(db: DB, json: JsonFn, budget = 8192, assistant = 'hearth'): (conversationId: number) => void {
   const pending = new Set<number>();
   let chain = Promise.resolve();
   return (conversationId) => {
     if (pending.has(conversationId)) return;
     pending.add(conversationId);
     chain = chain.then(async () => {
-      await summarizeAndRecord(db, conversationId, json, budget);
+      await summarizeAndRecord(db, conversationId, json, budget, assistant);
       pending.delete(conversationId);
     });
   };
@@ -152,7 +165,7 @@ export function createSummarizer(db: DB, json: JsonFn, budget = 8192): (conversa
  * once (cheap: no model call unless one is over the threshold). A summary preempted for a reply is
  * retried on the next pass; other failures wait for the chat's next reply, as with createSummarizer.
  */
-export function createSummarySweep(db: DB, json: JsonFn, budget = 8192) {
+export function createSummarySweep(db: DB, json: JsonFn, budget = 8192, assistant = 'hearth') {
   let lastSeen = 0;
   const retry = new Set<number>();
   let running = false;
@@ -170,7 +183,7 @@ export function createSummarySweep(db: DB, json: JsonFn, budget = 8192) {
       const chats = new Set([...retry, ...fresh.map((r) => r.id)]);
       retry.clear();
       // Preempted ones go round again next pass; failed ones wait for the chat's next reply.
-      for (const id of chats) if ((await summarizeAndRecord(db, id, json, budget)) === 'preempted') retry.add(id);
+      for (const id of chats) if ((await summarizeAndRecord(db, id, json, budget, assistant)) === 'preempted') retry.add(id);
     } finally {
       running = false;
     }
@@ -179,6 +192,6 @@ export function createSummarySweep(db: DB, json: JsonFn, budget = 8192) {
 
 // No "pause while a reply is active" (unlike the memory sweeper): the worker runs with the gateway,
 // which preempts its calls for replies, and a preempted summary is retried on the next pass.
-export function startSummarySweeper(db: DB, json: JsonFn, budget: number): () => void {
-  return every(60_000, createSummarySweep(db, json, budget), { now: true, keepAlive: true });
+export function startSummarySweeper(db: DB, json: JsonFn, budget: number, assistant = 'hearth'): () => void {
+  return every(60_000, createSummarySweep(db, json, budget, assistant), { now: true, keepAlive: true });
 }

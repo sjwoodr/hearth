@@ -382,6 +382,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   opener-only ones modelled on the good ones: on-topic 25/25 kept, two-subject 20/20 kept, opener-only
   20/20 renamed, full drifts 22/25 (a cron question that became a job vent stayed "Cron Job Setup"
   3/5: the safe way to be wrong). Next real signal: the renames after the next live pass.
+- **The assistant's name is a setting, not a prompt copy** (`HEARTH_ASSISTANT_NAME`, default
+  `hearth`; 2026-11-05, owner's request). It fills `{{name}}` in the prompt (`server/system-prompt.ts`)
+  and is passed to the summarizer and extraction, whose transcripts and instructions name the
+  assistant: a summary saying "hearth explained…" to a model told it is Gemma would mix the two. The
+  app keeps the name hearth (UI, "hearth's display", "hearth records when each memory was learned").
+  Overriding the whole prompt (`systemPrompt` in the chart) just to rename would freeze a copy that
+  stops following the tuned prompt; keep that for a really different persona.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -398,6 +405,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
+| `server/system-prompt.ts` | reads the system prompt, filling `{{name}}` with `HEARTH_ASSISTANT_NAME` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks) |
 | `server/retitle.ts` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then a title); runs beside extraction |

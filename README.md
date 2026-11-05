@@ -450,7 +450,12 @@ defaults and isn't read by anything.
 
 The personality is the system prompt in `prompts/system.md` (or the file
 `HEARTH_SYSTEM_PROMPT` names). It is re-read on every message, so edits apply
-without a restart. Each request sends the system prompt plus as much recent
+without a restart. `HEARTH_ASSISTANT_NAME` (default `hearth`) is the name the
+assistant answers to: it fills `{{name}}` in the prompt (a replacement prompt
+can use it too), and the running summary and memory extraction call the
+assistant by it. The app itself stays hearth, and the prompt says so. To rename
+the assistant, set this rather than copying the whole prompt, which would stop
+following changes to the built-in one. Each request sends the system prompt plus as much recent
 history as fits in the context window, oldest turns dropped first, with 1024
 tokens held back for the reply.
 

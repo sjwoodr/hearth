@@ -388,6 +388,7 @@ async function memoryExtract(chatId: number): Promise<void> {
     chatId,
     ollamaJson(config.ollamaUrl, config.model, config.numCtx),
     ollamaEmbed(config.ollamaUrl, config.embedModel),
+    config.assistantName,
   );
   if (r.read === 0) {
     console.log('Nothing new to read in that chat.');

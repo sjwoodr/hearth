@@ -19,7 +19,8 @@ cluster where one node has Ollama, a GPU and the data (tested on k3s with Traefi
 Everything else has defaults (see `values.yaml`). Set `timezone` (e.g. `America/New_York`): hearth
 gives the model today's date, and in UTC pods the evening is already tomorrow. `ollama.slots` must equal Ollama's
 `OLLAMA_NUM_PARALLEL`; `searxngUrl` enables web search; `env` passes extra `HEARTH_*` settings;
-`systemPrompt` replaces the built-in prompt with a mounted file.
+`systemPrompt` replaces the built-in prompt with a mounted file. To rename the assistant only, set
+`env: {HEARTH_ASSISTANT_NAME: Gemma}` and keep the built-in prompt.
 
 ## Install
 

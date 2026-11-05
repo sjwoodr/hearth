@@ -22,3 +22,14 @@ describe('context window and budget', () => {
     expect(config.contextBudget).toBe(8192);
   });
 });
+
+describe('the assistant name', () => {
+  it('defaults to hearth, also when set blank', async () => {
+    expect((await loadConfig({ HEARTH_ASSISTANT_NAME: '' })).assistantName).toBe('hearth');
+    expect((await loadConfig({ HEARTH_ASSISTANT_NAME: '   ' })).assistantName).toBe('hearth');
+  });
+
+  it('takes HEARTH_ASSISTANT_NAME, trimmed', async () => {
+    expect((await loadConfig({ HEARTH_ASSISTANT_NAME: ' Gemma ' })).assistantName).toBe('Gemma');
+  });
+});
