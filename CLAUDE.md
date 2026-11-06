@@ -310,6 +310,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   a quotation closes the string, so text was silently cut mid-sentence ("…how the band's" before
   `"engine"`); it clipped a chat summary and two memories. Extraction keeps its schema, with a
   `pattern` (no raw `"`, must end in punctuation) that Ollama enforces. Use the same for new schemas.
+- **The summary's topic list is kept by code, not the model** (`server/summarize.ts`, 2026-11-06).
+  Rewriting one under-200-word summary each fold lost the oldest topics, so a long chat forgot how it
+  began. Replayed on two long real chats, three runs each: early topics found rose from 1/8 and 2/6 to
+  7/8 and 5-6/6, at the same ~19 s a fold. Asking the model to copy the list kept it (1,639 of 1,642
+  lines) but took up to 60 s and turned one chat's list into ~100 bare names. Gemma 4 E2B was twice as
+  fast but lost early topics; given small pieces it found them by quoting the chat, at ~29 s a fold.
+  Older chats aren't refolded: their prose becomes the list's "Earlier" line at their next fold.
 - **The model can be switched by an admin, for everyone** (`server/active-model.ts`,
   `model-routes.ts`; owner's call, 2026-10-11, "just for fun"). One model fits in memory, so the switch
   is server-wide, stored in `settings` (api and worker share the DB; 2 s read cache), and every model

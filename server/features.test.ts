@@ -535,7 +535,73 @@ describe('summarizing long chats', () => {
       prompts.push(m);
       return 'Second summary.';
     });
-    expect(prompts[0]![1]!.content).toContain('Previous summary:\nFirst summary.');
+    expect(prompts[0]![1]!.content).toContain('Existing notes:\nFirst summary.');
+  });
+
+  describe('the topic list', () => {
+    const bees = 'Latest: bees.\n\nNew topics:\n- Bees: Alice keeps them.';
+    const summaryOf = (db: DB, id: number) =>
+      (db.prepare('SELECT summary FROM conversations WHERE id = ?').get(id) as { summary: string }).summary;
+    const foldTwice = async (first: string, second: string) => {
+      const ctx = await signedIn();
+      const id = await newChat(ctx.app, ctx.alice);
+      seedMessages(ctx.db, id, 20, 1400);
+      await summarizeIfLong(ctx.db, id, async () => first);
+      seedMessages(ctx.db, id, 20, 1400);
+      await summarizeIfLong(ctx.db, id, async () => second);
+      return summaryOf(ctx.db, id);
+    };
+    const foldOnto = async (stored: string, reply: string) => {
+      const ctx = await signedIn();
+      const id = await newChat(ctx.app, ctx.alice);
+      seedMessages(ctx.db, id, 20, 1400);
+      ctx.db.prepare('UPDATE conversations SET summary = ? WHERE id = ?').run(stored, id);
+      await summarizeIfLong(ctx.db, id, async () => reply);
+      return summaryOf(ctx.db, id);
+    };
+
+    it('adds new topics to the old ones and replaces Latest', async () => {
+      expect(await foldTwice(bees, 'Latest: honey.\n\nNew topics:\n- Honey: she sells it.')).toBe(
+        'Latest: honey.\n\nTopics so far:\n- Bees: Alice keeps them.\n- Honey: she sells it.',
+      );
+    });
+
+    it('keeps the list when a reply has no headings', async () => {
+      expect(await foldTwice(bees, 'Just some prose.')).toBe('Just some prose.\n\nTopics so far:\n- Bees: Alice keeps them.');
+    });
+
+    it('does not repeat a topic the model sends again', async () => {
+      expect((await foldTwice(bees, bees)).match(/- Bees/g)).toHaveLength(1);
+    });
+
+    it('takes at most ten new topics from one fold', async () => {
+      const lines = Array.from({ length: 15 }, (_, i) => `- Topic ${i}`).join('\n');
+      const summary = await foldOnto('Latest: old.\n\nTopics so far:\n- Kept', `Latest: new.\n\nNew topics:\n${lines}`);
+      expect(summary).toContain('- Kept\n- Topic 0');
+      expect(summary).toContain('- Topic 9');
+      expect(summary).not.toContain('- Topic 10');
+    });
+
+    it('turns a prose summary from before topics into the first line', async () => {
+      const summary = await foldOnto('They discussed\nan old question.', bees);
+      expect(summary).toBe('Latest: bees.\n\nTopics so far:\n- Earlier: They discussed an old question.\n- Bees: Alice keeps them.');
+    });
+
+    it('drops the oldest topics past the limit, and keeps Latest and the newest', async () => {
+      const lines = Array.from({ length: 200 }, (_, i) => `- Topic ${i}: ${'x'.repeat(40)}`).join('\n');
+      const summary = await foldOnto(`Latest: old.\n\nTopics so far:\n${lines}`, 'Latest: new.\n\nNew topics:\n- Newest');
+      expect(summary.length).toBeLessThanOrEqual(6000);
+      expect(summary.startsWith('Latest: new.')).toBe(true);
+      expect(summary).not.toContain('- Topic 0:');
+      expect(summary).toContain('- Topic 199:');
+      expect(summary.endsWith('- Newest')).toBe(true);
+    });
+
+    it('does not let a rambling reply push out the topics', async () => {
+      const summary = await foldOnto('Latest: old.\n\nTopics so far:\n- Kept', 'x'.repeat(20000));
+      expect(summary.endsWith('- Kept')).toBe(true);
+      expect(summary.length).toBeLessThan(1300);
+    });
   });
 
   it('calls the assistant by its configured name', async () => {

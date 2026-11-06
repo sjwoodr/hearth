@@ -460,8 +460,10 @@ history as fits in the context window, oldest turns dropped first, with 1024
 tokens held back for the reply.
 
 **Long chats.** After each reply, a background job checks the part of the chat not yet summarized.
-Past half the context window it folds the oldest messages into a running summary stored on the chat
-(built on the previous summary), keeping the newest quarter of the window verbatim. Later messages
+Past half the context window it folds the oldest messages into a running summary stored on the chat,
+keeping the newest quarter of the window verbatim. The summary is a short "Latest" paragraph, rewritten
+each fold, and a topic list that only grows: the model writes the new lines and hearth keeps the rest,
+dropping the oldest once the summary passes 6,000 characters. Later messages
 send the summary, under "Earlier in this conversation", in place of what it covers. `hearth chats
 show` prints it. The percentage at the right of the title bar is that unsummarized part against the fold
 point (100% = fold; hover or tap it for "N% until auto-compact" and the estimated token count behind it); it's counted the way the summarizer

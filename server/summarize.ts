@@ -14,7 +14,13 @@ import type { JsonFn } from './ollama.ts';
 export const summaryThresholds = (budget: number) => ({ above: Math.floor(budget / 2), keep: Math.floor(budget / 4) });
 export const SUMMARIZE_ABOVE_TOKENS = summaryThresholds(8192).above;
 export const KEEP_RECENT_TOKENS = summaryThresholds(8192).keep;
-const MAX_SUMMARY_CHARS = 2400;
+// The notes ride in every prompt of a long chat, so this is about 1,700 tokens of each one.
+const MAX_SUMMARY_CHARS = 6000;
+// Normal is ~400 characters. This stops a rambling reply from pushing the topics out.
+const MAX_LATEST_CHARS = 1200;
+const MAX_NEW_TOPICS = 10;
+const TOPICS_HEADING = 'Topics so far:';
+const NEW_TOPICS_HEADING = 'New topics:';
 
 /** How far a chat is toward its next fold: unsummarized tokens (estimated) against the fold threshold. */
 export type ContextUse = { used: number; foldAt: number };
@@ -32,6 +38,32 @@ export function contextUse(db: DB, conversationId: number, budget = 8192): Conte
     | undefined;
   const messages = row ? unsummarized(db, conversationId, row.through) : [];
   return { used: messages.reduce((n, m) => n + estimateTokens(messageText(m)), 0), foldAt: summaryThresholds(budget).above };
+}
+
+/** The topic lines of a stored summary. A chat folded before topics existed has prose: that's one line. */
+function topicLines(summary: string | null): string[] {
+  if (!summary) return [];
+  const at = summary.indexOf(TOPICS_HEADING);
+  if (at === -1) return [`- Earlier: ${summary.replace(/\s+/g, ' ').trim()}`];
+  return summary.slice(at).split('\n').filter((line) => line.startsWith('- '));
+}
+
+/**
+ * The next summary: the model's Latest, then every topic so far plus its new ones. Code keeps the
+ * list because a model rewriting it each fold lost the oldest topics, and copying it was slow. A
+ * reply without the heading is all Latest, so a malformed one can't cost the list.
+ */
+function nextSummary(previous: string | null, reply: string): string {
+  const at = reply.indexOf(NEW_TOPICS_HEADING);
+  const latest = (at === -1 ? reply : reply.slice(0, at)).trim().slice(0, MAX_LATEST_CHARS);
+  const added = at === -1 ? [] : reply.slice(at).split('\n').map((line) => line.trim());
+  const fresh = added.filter((line) => line.startsWith('- ')).slice(0, MAX_NEW_TOPICS);
+  const topics = [...new Set([...topicLines(previous), ...fresh])];
+  const render = () => (topics.length ? `${latest}\n\n${TOPICS_HEADING}\n${topics.join('\n')}` : latest);
+  // Shortcut: past the limit the oldest topics go, about 12 folds in. A model call that merges old
+  // lines is the upgrade if chats ever get that long.
+  while (render().length > MAX_SUMMARY_CHARS) topics.shift();
+  return render();
 }
 
 /** Folds older messages into the summary when the chat is long enough. Returns true if it did. */
@@ -78,19 +110,31 @@ export async function summarizeIfLong(
     [
       {
         role: 'system',
-        content: `You keep a running summary of a long conversation between ${chat.name} and ${assistant}, a chat
-companion, so the conversation can continue after older messages are no longer shown. Rewrite the
-summary so it covers the previous summary plus the messages below. Keep the topics, what was decided or
-explained, details ${chat.name} shared, open questions, and anything ${assistant} offered to do. Plain prose,
-third person, under 200 words. Reply with the summary only.`,
+        content: `You keep notes on a long conversation between ${chat.name} and ${assistant}, a chat
+companion, so the conversation can continue after older messages are no longer shown. You are given
+the existing notes and the newest messages. Reply with two sections, in this order.
+
+The first section starts with the line "Latest:". Under it write plain prose, third person, under 60
+words: what was decided or explained in the newest messages, details ${chat.name} shared, open questions,
+and anything ${assistant} offered to do.
+
+The second section starts with the line "${NEW_TOPICS_HEADING}". Under it put at most ${MAX_NEW_TOPICS} lines, each starting
+with "- ", one for each subject of the newest messages that the existing topics do not cover yet. Go
+through the newest messages in order, starting from the very first one, and cover all of them.
+Each line is a short phrase saying what was said about the subject, with the people and works
+involved grouped on the same line, not one line per name. Say who made a work only if the messages
+say so. Do not repeat existing topics. If nothing is new, leave the section empty.
+
+Reply with those two sections only.`,
       },
-      { role: 'user', content: `Previous summary:\n${chat.summary ?? '(none)'}\n\nMessages to fold in:\n${transcript}` },
+      { role: 'user', content: `Existing notes:\n${chat.summary ?? '(none)'}\n\nNewest messages:\n${transcript}` },
     ],
     // Plain text, not a JSON schema: under a schema a quoted word ended the summary mid-sentence.
     null,
   );
-  const summary = typeof raw === 'string' ? raw.trim().slice(0, MAX_SUMMARY_CHARS) : '';
-  if (!summary) throw new Error('The model returned an empty summary.');
+  const reply = typeof raw === 'string' ? raw.trim() : '';
+  if (!reply) throw new Error('The model returned an empty summary.');
+  const summary = nextSummary(chat.summary, reply);
 
   // Only advance if nothing else summarized this chat in the meantime.
   const advanced =
