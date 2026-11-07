@@ -367,8 +367,13 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             ☰
           </button>
           <span className="chat-title">
-            {showMemories ? 'Memories' : privateChat !== null ? 'Private chat' : (active?.title ?? 'New chat')}
-            {!showMemories && spanText && <span className="chat-span"> ({spanText})</span>}
+            <span className="chat-name">
+              {showMemories ? 'Memories' : privateChat !== null ? 'Private chat' : (active?.title ?? 'New chat')}
+            </span>
+            {/* The chat's number, the one bin/hearth takes: a Home Screen app has no address bar to show
+                #/c/<id>. "chat 63", not "#63", which is how the Memories page numbers memories. */}
+            {!showMemories && privateChat === null && active && <span className="chat-number">· chat {active.id}</span>}
+            {!showMemories && spanText && <span className="chat-span">({spanText})</span>}
           </span>
           {!showMemories && privateChat === null && context && <ContextMeter context={context} />}
           {/* Shown only when hearth runs as a Home Screen app (no browser toolbar, so no reload); the

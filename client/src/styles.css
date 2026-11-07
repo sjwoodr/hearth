@@ -117,9 +117,14 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 
 .chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-top { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 16px; border-bottom: 1px solid var(--border); }
-.chat-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* When the chat ran, after its title: plain weight, so the title still leads. */
-.chat-span { font-weight: 400; color: var(--muted); }
+/* Title, chat number, when it ran. On a narrow screen the span gives way first, then the title; the
+   number never does, so it's always readable. The span's zero basis is what orders it: it only gets
+   the room left after the title and number (shrink weights alone still nicked a short title). */
+.chat-title { display: flex; align-items: baseline; gap: 0.35em; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
+.chat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-number { flex: none; font-weight: 400; color: var(--muted); }
+/* Plain weight, so the title still leads. */
+.chat-span { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; color: var(--muted); }
 .menu-toggle { display: none; }
 /* Reload: only as a Home Screen app, where there's no browser toolbar (CSS display-mode). */
 .reload { display: none; margin-left: auto; padding: 0.2rem 0.5rem; font-size: 1.3rem; line-height: 1; color: var(--muted); }
@@ -157,7 +162,7 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .new-chat-menu .small { font-size: 0.8rem; }
 /* A private chat looks different everywhere it shows, so it's never mistaken for one that's kept. */
 .chat-main.private { background: var(--private-bg); }
-.chat-main.private .chat-title::before { content: '🔒 '; }
+.chat-main.private .chat-name::before { content: '🔒 '; }
 .private-note {
   margin: 0; padding: 0.6rem 0.8rem; border: 1px dashed var(--muted); border-radius: 8px;
   background: var(--private-note); color: var(--text); font-size: 0.9rem;
