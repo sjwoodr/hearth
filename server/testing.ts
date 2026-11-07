@@ -9,6 +9,7 @@ import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions, ModelInfo } from './ollama.ts';
 import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
+import type { LookupWord } from './word-lookup.ts';
 import type { Effort } from '../shared/think-effort.ts';
 
 export const ORIGIN = 'https://hearth.example.com';
@@ -95,6 +96,7 @@ export function setupApp(
     slots?: number;
     /** What the model-loaded check answers (undefined: can't tell); omitted, the app has no check. */
     modelLoaded?: LoadedCheck;
+    lookupWord?: LookupWord;
     /** A model switch to test (active-model.ts) and the fake Ollama models it can choose from. */
     modelChoice?: ModelChoice;
     models?: ModelInfo[];
@@ -169,6 +171,7 @@ export function setupApp(
       return model.description;
     },
     afterReply: (id) => model.afterReply.push(id),
+    lookupWord: opts.lookupWord,
     modelChoice: opts.modelChoice,
     ...(opts.models
       ? {

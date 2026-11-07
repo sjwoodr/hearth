@@ -19,6 +19,7 @@ import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { readSystemPrompt } from './system-prompt.ts';
 import { makeTitler } from './titles.ts';
+import { makeWordLookup } from './word-lookup.ts';
 import { startRetitleSweeper } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
 import { searxngSearch } from './web-search.ts';
@@ -67,6 +68,7 @@ const app = createApp({
   // Each Think effort's reasoning cap; the reply asks for one per request.
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
+  lookupWord: makeWordLookup(models.wordJson),
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
   afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.contextBudget, config.assistantName) : undefined,

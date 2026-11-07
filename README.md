@@ -268,6 +268,18 @@ certificates, but any reverse proxy fits.
 - **Replies stream as NDJSON**, so the proxy must pass chunks straight through rather than buffer
   responses.
 
+## Word lookup
+
+Tap a word in a reply, or select a phrase, and a popup says what it means in that sentence, with the
+dictionary form or idiom when there is one. It works on any reply text except links and code. The
+sentence goes with the word, so *sent* in "Le fromage sent bon" reads "smells", and a selected idiom
+gets the idiom's meaning. Nothing is stored, and answers are kept in the page until it reloads.
+
+This runs on a small model of its own, `HEARTH_WORD_MODEL` (default `gemma4:e2b-it-qat`), as background
+work, so a reply can interrupt it. On the mini PC a word takes about half a second once the model is
+loaded, and the first lookup after it unloads takes about 4 s. It's a quick gloss and can be wrong: it
+knows common idioms, but in testing it missed *vendre la mèche*.
+
 ## Memory
 
 Two kinds of memory, both per user and both editable on the Memories page or

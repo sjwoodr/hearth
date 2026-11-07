@@ -2,6 +2,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type Clip
 import { api, ApiError, type ContextUse, type Message, type PrivateMessage, type Source, type StreamEvent, type SummaryFold } from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
+import { WordLookup } from './WordLookup.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
 import { pendingText } from '../../shared/pending-text.ts';
 import { EFFORT_LABEL, EFFORTS, higherEffort, isEffort, type Effort } from '../../shared/think-effort.ts';
@@ -679,6 +680,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         {messages.length > 0 && foldsAfter(messages.length - 1).map(foldNote)}
         </div>
       </div>
+      <WordLookup scroller={scrollRef} />
 
       <form className="composer" onSubmit={submit} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
         {attachments.length > 0 && (

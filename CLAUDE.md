@@ -423,6 +423,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
 | `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, embed and read-only lookups (`PASS_THROUGH`), never model management |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
+| `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |

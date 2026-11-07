@@ -59,6 +59,8 @@ export function connectModels(config: Config, db: DB) {
     // processes' replies, but the gateway preempts for them anyway.
     replyActive: () => scheduler?.replyActive() ?? false,
     json: asBackground(ollamaJson(endpoint, model, config.numCtx)),
+    // One word and its sentence, so a small window; the popup uses its own model (config.wordModel).
+    wordJson: asBackground(ollamaJson(endpoint, config.wordModel, 4096)),
     // Embeddings go through the gateway too when there is one, so only the gateway reaches Ollama.
     embed: ollamaEmbed(endpoint, config.embedModel),
     describe: () =>

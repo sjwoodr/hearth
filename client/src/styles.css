@@ -178,6 +178,14 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .message code, .message pre.raw { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.9em; }
 .message table { border-collapse: collapse; }
 .message th, .message td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; }
+.word-popup {
+  position: fixed; z-index: 30; padding: 0.6rem 0.8rem; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+}
+.word-popup p { margin: 0; }
+.word-popup-text { font-size: 0.8rem; color: var(--muted); }
+.word-popup-meaning { font-weight: 600; }
+.word-popup-note { font-size: 0.85rem; color: var(--muted); }
 /* Raw: the stored text as is, wrapped like the rest of the chat. */
 .message pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 

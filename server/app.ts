@@ -18,6 +18,7 @@ import {
 import { LoginThrottle } from './throttle.ts';
 import { findUser, nameOf } from './users.ts';
 import { VERSION } from './version.ts';
+import { registerWordRoutes, type LookupWord } from './word-lookup.ts';
 
 const MINUTE = 60_000;
 
@@ -30,6 +31,8 @@ export type AppOptions = Omit<ChatDeps, 'db'> & {
   ipThrottle?: LoginThrottle;
   /** For /readyz: whether the models are reachable (reported, never failing readiness). */
   checkModels?: ModelsProbe;
+  /** The translation popup's lookup; without one the route doesn't exist. */
+  lookupWord?: LookupWord;
 };
 
 type Env = { Variables: { user: SessionUser } };
@@ -113,6 +116,7 @@ export function createApp(opts: AppOptions) {
   registerChatRoutes(authed, opts);
   registerMemoryRoutes(authed, db);
   registerModelRoutes(authed, opts);
+  registerWordRoutes(authed, opts.lookupWord);
 
   app.route('/api', authed);
   return app;

@@ -53,6 +53,7 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
   (await send(method, path, body)).json() as Promise<T>;
 
 /** `name` is the display name, or the username when none is set. An admin can switch the model. */
+export type WordMeaning = { translation: string; note: string };
 export type Me = { username: string; name: string; role?: 'user' | 'admin'; isAdmin?: boolean };
 /** A chat model Ollama has; `capabilities` from Ollama (vision, thinking, tools). */
 /** `aliases`: other tags of the same weights, shown once. */
@@ -201,4 +202,6 @@ export const api = {
   models: () => request<{ active: ActiveModel; models: ModelInfo[] }>('GET', '/api/models'),
   setModel: (model: string) => request<{ active: ActiveModel }>('PUT', '/api/model', { model }),
   resetModel: () => request<{ active: ActiveModel }>('DELETE', '/api/model'),
+  /** What a tapped word or selected phrase means in its sentence. */
+  lookupWord: (text: string, sentence: string) => request<WordMeaning>('POST', '/api/word', { text, sentence }),
 };

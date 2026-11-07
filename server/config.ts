@@ -76,6 +76,8 @@ export const config = {
   // "text" (default): readable lines for a terminal. "json": one JSON object per line, for Loki.
   logFormat: env('HEARTH_LOG_FORMAT', 'text'),
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
+  // The translation popup. Small and fast on purpose: about 0.5 s a word against 1.4 s on the chat model.
+  wordModel: env('HEARTH_WORD_MODEL', 'gemma4:e2b-it-qat'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
   // The name the assistant answers to ({{name}} in the prompt; summaries and memory extraction use
