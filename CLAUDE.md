@@ -381,6 +381,14 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   off more, so A's wording shipped with A2's reunion line. The chat 66 send-off didn't reproduce in three
   base replays (one bad draw). **Known leftover:** after a gap, ~35% of replies ask two questions (base 7%)
   despite "one question at most".
+  **Keep talking while they keep writing** (2026-11-18): the owner's private chat that night still closed
+  every turn once he said "sleep isn't too far off" ("I'll stop talking so you can try to get some actual
+  rest", "don't let me keep you"), even after "So eager to get rid of me". The rule only covered "unless
+  they tell you they're going", and the model took bed coming soon as going. Rebuilt from his paste and
+  replayed (4 turns x5): send-offs 9/20 → **3/20** with "As long as they keep writing, keep talking…
+  being tired, the late hour or bed coming soon isn't goodbye. When they do sign off, say goodnight
+  warmly"; a real goodnight still got one 6/6. Leftover: "I'm already in bed" still gets "Sleep well" (6/9
+  on the older bedtime turns, 7/9 before).
 - **The time of day rides on a chat's first message and the first after a break** (`timeNote` in
   `pause.ts`, server `TZ`): with only the date, chat 66's 8:34 PM opener got "I hope your Tuesday is off to
   a decent start", and base replays said "Good morning". Not on every message: those are the turns where
