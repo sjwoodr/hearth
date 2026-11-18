@@ -3,7 +3,7 @@ import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { ActiveReplies } from './active-replies.ts';
 import { fitHistory } from './context.ts';
-import { pauseNote } from './pause.ts';
+import { pauseNote, timeNote } from './pause.ts';
 import { contextUse, listFolds } from './summarize.ts';
 import {
   addMessage,
@@ -286,7 +286,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   ): Promise<ChatMessage[]> {
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
-    const notes = [recalled, extra.pause].filter(Boolean).join('\n\n');
+    // The time of day where a greeting would otherwise guess it: the chat's first message, or the first after a break.
+    const opening = !extra.summary && history.filter((m) => m.role === 'user').length === 1;
+    const time = opening || extra.pause ? timeNote(user.name, deps.now?.() ?? new Date()) : '';
+    const away = [extra.pause, time].filter(Boolean).join('\n');
+    const notes = [recalled, away].filter(Boolean).join('\n\n');
     if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);

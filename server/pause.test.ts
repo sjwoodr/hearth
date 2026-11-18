@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pauseNote } from './pause.ts';
+import { pauseNote, timeNote } from './pause.ts';
 import { timeGap } from '../shared/time-gap.ts';
 
 describe('pauseNote', () => {
@@ -18,6 +18,15 @@ describe('pauseNote', () => {
   it('ignores times it cannot read, or out of order', () => {
     expect(pauseNote('not a time', '2026-10-16 09:00:00')).toBe('');
     expect(pauseNote('2026-10-17 09:00:00', '2026-10-16 09:00:00')).toBe('');
+  });
+});
+
+describe('timeNote', () => {
+  it("gives the person's weekday and clock time in the given zone", () => {
+    // 01:34 UTC on a Wednesday is still Tuesday evening in Florida (chat 66's "Tuesday is off to a decent start").
+    const at = new Date('2026-11-18T01:34:00Z');
+    expect(timeNote('Steve', at, 'America/New_York')).toBe("[It's Tuesday 8:34 PM for Steve.]");
+    expect(timeNote('Steve', at, 'UTC')).toBe("[It's Wednesday 1:34 AM for Steve.]");
   });
 });
 

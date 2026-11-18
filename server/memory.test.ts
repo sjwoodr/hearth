@@ -4,7 +4,8 @@ import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, createSweep, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
-import { login, ORIGIN, sessionCookie, setupApp } from './testing.ts';
+import { timeNote } from './pause.ts';
+import { login, NOW, ORIGIN, sessionCookie, setupApp } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
 
 // A toy embedding: counts of a few topic words, so similarity is predictable in tests.
@@ -290,7 +291,7 @@ describe('memories in chat and over the API', () => {
     expect(stored).toEqual([{ content: 'qui ou que?' }, { content: 'and my dog?' }]);
   });
 
-  it('tells the model how long the user was away, on the newest message only', async () => {
+  it('tells the model how long the user was away, and the time, on the newest message only', async () => {
     const ctx = await signedIn();
     const id = ((await (await call(ctx.app, ctx.alice, 'POST', '/conversations')).json()) as { id: number }).id;
     await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'à demain !' })).text();
@@ -300,8 +301,11 @@ describe('memories in chat and over the API', () => {
     await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'et alors ?' })).text();
 
     const [first, second, third] = ctx.model.calls;
-    expect(first!.at(-1)!.content).toBe('à demain !');
-    expect(second!.at(-1)!.content).toMatch(/^\[Sent about 4 days after the previous message in this chat\.\]\n\n\[alice's message\]\nme revoilà$/);
+    // The opener and the return after a break carry the time of day; a message mid-sitting doesn't.
+    expect(first!.at(-1)!.content).toBe(`${timeNote('alice', NOW)}\n\n[alice's message]\nà demain !`);
+    expect(second!.at(-1)!.content).toBe(
+      `[Sent about 4 days after the previous message in this chat.]\n${timeNote('alice', NOW)}\n\n[alice's message]\nme revoilà`,
+    );
     // A minute later: no note, and the earlier message reads as stored.
     expect(third!.at(-1)!.content).toBe('et alors ?');
     expect(third!.find((m) => m.content.includes('me revoilà'))!.content).toBe('me revoilà');

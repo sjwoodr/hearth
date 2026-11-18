@@ -7,7 +7,8 @@ import { addMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { searchMessages, toFtsQuery } from './search.ts';
 import { createSummarySweep, KEEP_RECENT_TOKENS, SUMMARIZE_ABOVE_TOKENS, summarizeIfLong } from './summarize.ts';
-import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
+import { timeNote } from './pause.ts';
+import { login, NOW, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { cleanTitle } from './titles.ts';
 import { createUser } from './users.ts';
 
@@ -99,7 +100,7 @@ describe('retry', () => {
     const evs = await events(await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/retry`));
     expect(evs.map((e) => e.type)).toContain('done');
     expect((await chatOf(ctx.app, ctx.alice, id)).messages.map((m) => m.content)).toEqual(['Question?', 'Answer.']);
-    expect(ctx.model.calls.at(-1)!.at(-1)).toEqual({ role: 'user', content: 'Question?' });
+    expect(ctx.model.calls.at(-1)!.at(-1)).toEqual({ role: 'user', content: `${timeNote('alice', NOW)}\n\n[alice's message]\nQuestion?` });
   });
 
   it('replaces the last reply instead of adding a second one', async () => {

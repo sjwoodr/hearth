@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { estimateTokens, fitHistory } from './context.ts';
 import { titleFrom } from './conversations.ts';
 import type { ChatMessage } from './ollama.ts';
-import { login, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
+import { timeNote } from './pause.ts';
+import { login, NOW, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { createUser } from './users.ts';
 
 async function signIn(ctx: ReturnType<typeof setupApp>, username: string) {
@@ -58,7 +59,8 @@ describe('chatting', () => {
     ]);
     expect(ctx.model.calls[0]).toEqual([
       { role: 'system', content: 'You are hearth.' },
-      { role: 'user', content: 'Tell me about   contesting.' },
+      // A chat's first message carries the time of day; the stored copy doesn't.
+      { role: 'user', content: `${timeNote('alice', NOW)}\n\n[alice's message]\nTell me about   contesting.` },
     ]);
   });
 

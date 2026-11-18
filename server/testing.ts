@@ -189,9 +189,9 @@ export function setupApp(
             if (model.results instanceof Error) throw model.results;
             return model.results;
           },
-          now: opts.now ?? (() => NOW),
         }
       : {}),
+    now: opts.now ?? (() => NOW),
   });
   return { db, app, model, scheduler };
 }
