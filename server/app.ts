@@ -114,7 +114,7 @@ export function createApp(opts: AppOptions) {
     return c.json({ username: user.username, name: user.name, role: user.role, isAdmin: user.role === 'admin' });
   });
   registerChatRoutes(authed, opts);
-  registerMemoryRoutes(authed, db);
+  registerMemoryRoutes(authed, db, opts.assistantName, opts.systemPrompt);
   registerModelRoutes(authed, opts);
   registerWordRoutes(authed, opts.lookupWord);
 

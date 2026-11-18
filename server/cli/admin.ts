@@ -19,6 +19,7 @@ export type MemoryRow = {
   id: number;
   username: string;
   kind: 'profile' | 'fact';
+  subject: 'user' | 'assistant';
   content: string;
   source_conversation_id: number | null;
   created_at: string;
@@ -143,9 +144,9 @@ export function formatConversation(c: ConversationRow, messages: MessageRow[]): 
 export function listMemories(db: DB, username?: string): MemoryRow[] {
   return db
     .prepare(
-      `SELECT m.id, u.username, m.kind, m.content, m.source_conversation_id, m.created_at, m.updated_at
+      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at
        FROM memories m JOIN users u ON u.id = m.user_id ${byUser(username)}
-       ORDER BY u.username, m.kind DESC, m.updated_at DESC`,
+       ORDER BY u.username, m.subject DESC, m.kind DESC, m.updated_at DESC`,
     )
     .all(...userArg(username)) as MemoryRow[];
 }
@@ -153,7 +154,7 @@ export function listMemories(db: DB, username?: string): MemoryRow[] {
 export function getMemory(db: DB, id: number): MemoryRow | undefined {
   return db
     .prepare(
-      `SELECT m.id, u.username, m.kind, m.content, m.source_conversation_id, m.created_at, m.updated_at
+      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at
        FROM memories m JOIN users u ON u.id = m.user_id WHERE m.id = ?`,
     )
     .get(id) as MemoryRow | undefined;

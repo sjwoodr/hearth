@@ -417,6 +417,24 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   and the tool's description and instructions say it isn't for facts about the person: 0/10 described it
   that way, 10/10 named plans, stories, games or checklists; personal news saved nothing either way (0/5),
   and the story brief still saved its plan (5/5).
+- **Each user shapes their own assistant: a persona plus memories about it** (`server/persona.ts`,
+  `memories.subject`, 2026-11-18; owner's request: name the bot, give it a backstory, "extract that info
+  and view/edit like our own memories"). Not a raw system-prompt editor: `prompts/system.md` holds the
+  measured behaviour and stays fixed (shown read-only on the page); the user's name and description join
+  it as a "Who you are" section, with "always" memories about the assistant, and other facts about it are
+  recalled per message beside the user's (`SELF_RECALL_TOP`, 3). The name is per user everywhere the
+  assistant is named (prompt, summaries, extraction), falling back to `HEARTH_ASSISTANT_NAME`.
+  **Persona extraction is its own pass** after the user's (`selfFacts`, then `establishedByUser` per fact;
+  a failed check drops the fact, the reverse of user memories), so the measured user extraction is
+  untouched, and the user's pass never sees or updates memories about the assistant. Probe on the live
+  UD model (ad hoc, scratchpad; 7 synthetic chats + 4 real windows from the live history, x2-6): what the
+  user set was kept every time (a name and a hometown, how they picture it, a title, an explicitly
+  accepted standing role; chat 61's photo-description of "how I imagine you" 3/3), and ordinary real chats
+  added nothing (53, 57) or the role the owner really gave it (66: "writes a French mystery story for
+  Steve"). **Lesson:** "said, asked for or agreed to" let a polite reaction count as agreement: the
+  assistant's invented "fishing village in Brittany" followed by "That sounds lovely" was kept 2/3;
+  requiring an explicit confirmation ("a polite reaction… is not agreeing to it", in both prompts) took it
+  to 0/6 with every kept fact still kept. Duplicates are dropped at cosine ≥ 0.85 without a judge.
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that
@@ -445,7 +463,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   assistant: a summary saying "hearth explained…" to a model told it is Gemma would mix the two. The
   app keeps the name hearth (UI, "hearth's display", "hearth records when each memory was learned").
   Overriding the whole prompt (`systemPrompt` in the chart) just to rename would freeze a copy that
-  stops following the tuned prompt; keep that for a really different persona.
+  stops following the tuned prompt; keep that for a really different persona. **Since 2026-11-18 each
+  user can override the name** (persona.ts, below): the setting is the default for users who haven't.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -464,7 +483,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/system-prompt.ts` | reads the system prompt, filling `{{name}}` with `HEARTH_ASSISTANT_NAME` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
-| `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks) |
+| `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |
 | `server/retitle.ts` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then a title); runs beside extraction |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
@@ -475,6 +494,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
+| `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`), page in `client/src/MemoriesView.tsx` |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |

@@ -5,6 +5,7 @@ import { ActiveReplies } from './active-replies.ts';
 import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNotes, SAVE_NOTES_TOOL, savedInTurn, saveNotes } from './chat-notes.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote, timeNote } from './pause.ts';
+import { assistantNameFor } from './persona.ts';
 import { contextUse, listFolds } from './summarize.ts';
 import {
   addMessage,
@@ -54,7 +55,10 @@ export type ChatDeps = {
   chat: ChatFn;
   /** The same job with thinking on, used when the client asks for it (the Think toggle). */
   thinkingChat?: ChatFn;
-  systemPrompt: () => string;
+  /** The system prompt with `{{name}}` filled: each user's assistant can have its own name (persona.ts). */
+  systemPrompt: (name: string) => string;
+  /** The name an assistant answers to when its user hasn't given it one (HEARTH_ASSISTANT_NAME). */
+  assistantName?: string;
   /** Tokens of the context window a prompt may fill (HEARTH_CONTEXT_BUDGET), the reply's room included. */
   contextBudget: number;
   /** Memory for this user and message: a stable part for the system prompt, and facts recalled for this message. */
@@ -310,7 +314,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const earlier = extra.summary ? `## Earlier in this conversation\n\n${extra.summary}` : '';
     const tool = search ? searchInstructions(deps.now?.() ?? new Date()) : '';
     // The notes' instructions go wherever the tool is offered, so they don't change between turns.
-    const system = [systemPrompt(), tool, extra.notesOn ? NOTES_INSTRUCTIONS : '', stable, earlier].filter(Boolean).join('\n\n');
+    const name = assistantNameFor(db, user.id, deps.assistantName ?? 'hearth');
+    const system = [systemPrompt(name), tool, extra.notesOn ? NOTES_INSTRUCTIONS : '', stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
     const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (search ? SEARCH_RESERVE : 0);
     return fitHistory(system, history, contextBudget - reserve);

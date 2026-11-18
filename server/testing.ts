@@ -91,6 +91,8 @@ export function setupApp(
   opts: {
     contextBudget?: number;
     systemPrompt?: string;
+    /** The server's default assistant name (HEARTH_ASSISTANT_NAME). */
+    assistantName?: string;
     /** Each Think effort's reasoning cap (omitted: no caps, so nothing is held back for thinking). */
     thinkingBudgets?: Record<Effort, number>;
     webSearch?: boolean;
@@ -164,7 +166,8 @@ export function setupApp(
     origin: ORIGIN,
     clientIp: (c) => c.req.header('x-test-ip') ?? '10.0.0.1',
     chat: scheduler.chat(chat),
-    systemPrompt: () => opts.systemPrompt ?? 'You are hearth.',
+    systemPrompt: (name) => (opts.systemPrompt ?? 'You are hearth.').replaceAll('{{name}}', name),
+    assistantName: opts.assistantName,
     contextBudget: opts.contextBudget ?? 8192,
     thinkingBudgets: opts.thinkingBudgets,
     memoryContext: async (user, message) => {

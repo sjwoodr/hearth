@@ -61,7 +61,9 @@ const app = createApp({
   chat: models.asReply(ollamaChat(models.endpoint, models.model, config.numCtx)),
   thinkingChat: models.asReply(ollamaThinkingChat(models.endpoint, models.thinkingModel, config.numCtx, config.thinkingBudgets.medium)),
   // Read per request, so edits to the prompt file apply without a restart.
-  systemPrompt: () => readSystemPrompt(config.systemPromptPath, config.assistantName),
+  // Each user's assistant may have its own name (persona.ts); the setting is the default.
+  systemPrompt: (name) => readSystemPrompt(config.systemPromptPath, name),
+  assistantName: config.assistantName,
   contextBudget: config.contextBudget,
   // Up to ~800 tokens of memories per message, out of the context window.
   memoryContext: (user, message) => memoryContext(db, user, message, embed, 800),

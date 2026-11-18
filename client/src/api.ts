@@ -95,13 +95,27 @@ export type SearchHit = {
 };
 
 export type MemoryKind = 'profile' | 'fact';
+/** Who a memory is about: the user, or their assistant (what they established about it in chats). */
+export type MemorySubject = 'user' | 'assistant';
 export type Memory = {
   id: number;
   kind: MemoryKind;
+  subject: MemorySubject;
   content: string;
   source_conversation_id: number | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Who the user's assistant is: the name it answers to ('' for the server's `defaultName`) and their description of it. */
+export type Persona = {
+  name: string;
+  about: string;
+  updated_at: string | null;
+  defaultName: string;
+  history: { id: number; name: string; about: string; saved_at: string }[];
+  /** hearth's own instructions with this assistant's name filled in: shown, never edited here. */
+  instructions: string;
 };
 
 export type StreamEvent =
@@ -198,9 +212,13 @@ export const api = {
   endPrivate: (chatId: string) => request('DELETE', `/api/private/${chatId}`),
   search: (q: string) => request<SearchHit[]>('GET', `/api/search?q=${encodeURIComponent(q)}`),
   memories: () => request<Memory[]>('GET', '/api/memories'),
-  addMemory: (kind: MemoryKind, content: string) => request<Memory>('POST', '/api/memories', { kind, content }),
-  updateMemory: (id: number, change: { kind?: MemoryKind; content?: string }) =>
+  addMemory: (kind: MemoryKind, content: string, subject: MemorySubject = 'user') =>
+    request<Memory>('POST', '/api/memories', { kind, content, subject }),
+  updateMemory: (id: number, change: { kind?: MemoryKind; content?: string; subject?: MemorySubject }) =>
     request<Memory>('PATCH', `/api/memories/${id}`, change),
+  persona: () => request<Persona>('GET', '/api/persona'),
+  savePersona: (name: string, about: string) => request<Persona>('PUT', '/api/persona', { name, about }),
+  restorePersona: (id: number) => request<Persona>('POST', '/api/persona/restore', { id }),
   deleteMemory: (id: number) => request('DELETE', `/api/memories/${id}`),
   /** Admin only: the chat models Ollama has, and the one in use. */
   models: () => request<{ active: ActiveModel; models: ModelInfo[] }>('GET', '/api/models'),

@@ -1,6 +1,7 @@
 // Keeps long chats coherent: once the unsummarized part of a chat grows past a threshold, the
 // oldest messages are folded into a running summary that is sent in their place.
 import { estimateTokens } from './context.ts';
+import { assistantNameFor } from './persona.ts';
 import { isPreempted } from './busy.ts';
 import { every } from './every.ts';
 import { job } from './metrics.ts';
@@ -78,11 +79,13 @@ export async function summarizeIfLong(
   const { above, keep } = summaryThresholds(budget);
   const chat = db
     .prepare(
-      `SELECT c.summary, c.summary_through_message_id AS through, coalesce(u.display_name, u.username) AS name
+      `SELECT c.summary, c.summary_through_message_id AS through, c.user_id, coalesce(u.display_name, u.username) AS name
        FROM conversations c JOIN users u ON u.id = c.user_id WHERE c.id = ?`,
     )
-    .get(conversationId) as { summary: string | null; through: number; name: string } | undefined;
+    .get(conversationId) as { summary: string | null; through: number; user_id: number; name: string } | undefined;
   if (!chat) return false;
+  // The name this user's assistant answers to (persona.ts), so the summary and the reply agree on it.
+  assistant = assistantNameFor(db, chat.user_id, assistant);
 
   const messages = unsummarized(db, conversationId, chat.through);
   const text = messageText;

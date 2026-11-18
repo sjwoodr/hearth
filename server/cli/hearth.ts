@@ -5,6 +5,7 @@ import { config } from '../config.ts';
 import { openDbOrExit } from '../db.ts';
 import { extractMemories } from '../extract.ts';
 import { DEFAULT_RECALL, memoryContext, rankFacts } from '../memories.ts';
+import { cleanPersonaAbout, cleanPersonaName, getPersona, personaHistory, savePersona } from '../persona.ts';
 import { createModelChoice } from '../active-model.ts';
 import { ollamaEmbed, ollamaJson, ollamaModels, type Endpoint } from '../ollama.ts';
 import { MARK_END, MARK_START, searchAllMessages } from '../search.ts';
@@ -53,6 +54,8 @@ Run with no arguments for the interactive menu (fzf; numbered prompts when piped
                   | extract <chat-id>    run memory extraction on a chat now
                   | recall <user> <text> show what a message would recall, with scores
   hearth sessions list [user] | revoke <id-prefix> | revoke-user <user> | purge
+  hearth persona  show <user> | name <user> [name] | about <user> [text] | reset <user>
+                  who a user's assistant is: the name it answers to and their description of it
   hearth model    show | list | use <model> | reset   the model every user talks to (admins can
                   switch it in the app too; it reverts on its own once idle and unloaded)
   hearth db       info | check | backup [file] | vacuum | shell
@@ -222,6 +225,31 @@ async function userName(username: string | undefined, name: string | undefined):
   console.log(updated.display_name ? `"${u.username}" is now called "${updated.display_name}".` : `"${u.username}" uses their username again.`);
 }
 
+// ── persona ───────────────────────────────────────────────────────────────────
+// Who a user's assistant is (persona.ts). They edit it on the Memories page; this is for admins.
+function personaShow(username: string | undefined): string {
+  const u = requireUser(username);
+  const p = getPersona(db, u.id);
+  const history = personaHistory(db, u.id);
+  return [
+    `Name: ${p.name || `(default: ${config.assistantName})`}`,
+    `Saved: ${p.updated_at ? `${p.updated_at} UTC` : 'never'}${history.length ? `, ${history.length} earlier version(s)` : ''}`,
+    '',
+    p.about || '(no description)',
+  ].join('\n');
+}
+
+function personaSet(username: string | undefined, change: { name?: string; about?: string }): void {
+  const u = requireUser(username);
+  const current = getPersona(db, u.id);
+  const name = cleanPersonaName(change.name ?? current.name);
+  if (typeof name !== 'string') fail(name.error);
+  const about = cleanPersonaAbout(change.about ?? current.about);
+  if (typeof about !== 'string') fail(about.error);
+  savePersona(db, u.id, name as string, about as string);
+  console.log(personaShow(u.username));
+}
+
 function userRole(username: string | undefined, role: string | undefined): void {
   const u = requireUser(username);
   if (!role) fail('Say which role: admin or user.');
@@ -347,7 +375,8 @@ async function messageDelete(id: number, yes: boolean): Promise<boolean> {
 }
 
 // ── memories ───────────────────────────────────────────────────────────────────
-const memoryLabel = (m: admin.MemoryRow) => `#${m.id}  ${m.username}  ·  ${m.kind.padEnd(7)}  ·  ${m.content}`;
+const memoryLabel = (m: admin.MemoryRow) =>
+  `#${m.id}  ${m.username}  ·  ${m.kind.padEnd(7)}  ·  ${m.subject === 'assistant' ? 'about the assistant: ' : ''}${m.content}`;
 
 function memoriesTable(username?: string): string {
   if (username) requireUser(username);
@@ -408,6 +437,7 @@ async function memoryExtract(chatId: number): Promise<void> {
     r.unstated ? `dropped ${r.unstated} the user never said` : '',
     r.fleeting ? `dropped ${r.fleeting} that won't last` : '',
     r.named ? 'learned their name' : '',
+    r.self ? `${r.self} about the assistant` : '',
   ]
     .filter(Boolean)
     .map((x) => `, ${x}`)
@@ -762,6 +792,12 @@ async function run(argv: string[]): Promise<void> {
       if (action === 'revoke') return sessionRevoke(a);
       if (action === 'revoke-user') return sessionsRevokeUser(a);
       if (action === 'purge') return console.log(`Removed ${admin.purgeExpiredSessions(db)} expired session(s).`);
+      break;
+    case 'persona':
+      if (!action || action === 'show') return console.log(personaShow(a));
+      if (action === 'name') return personaSet(a, { name: text(b, ...rest) ?? '' });
+      if (action === 'about') return personaSet(a, { about: text(b, ...rest) ?? (await editText(getPersona(db, requireUser(a).id).about)) });
+      if (action === 'reset') return personaSet(a, { name: '', about: '' });
       break;
     case 'model':
       if (!action || action === 'show') return console.log(modelShow());

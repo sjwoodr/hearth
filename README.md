@@ -164,6 +164,7 @@ hearth users    list | add <user> | passwd <user> | name <user> [display name]
 hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                 | delete <id> | stats [user]   (replies per week: ending in a question, length)
                 | notes <id>   (the model's private notes for the chat: spoilers, never shown in the app)
+hearth persona  show <user> | name <user> [name] | about <user> [text] | reset <user>
 hearth messages edit <id> [text] | delete <id>
 hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
                 | kind <id> <profile|fact> | delete <id>
@@ -336,6 +337,26 @@ and as a new memory, and those pairs scored only 0.77-0.83.
 `hearth memories extract <chat-id>` runs it on demand, and
 `hearth memories recall <user> <text>` shows each fact's score for a message and
 the exact memory section the model would get.
+
+## Who the assistant is
+
+Each user can shape their own assistant on the Memories page, under **About <name>**:
+
+- **A name and a description** ("who they are to you": a voice, a backstory, how you picture them).
+  Both go into that user's system prompt as a "Who you are" section, after hearth's own instructions,
+  so a persona can add to how hearth behaves but can't remove the measured parts (correcting French,
+  symbols, the app). Empty means the defaults: `HEARTH_ASSISTANT_NAME` and no description. Every
+  save keeps the version it replaced (the last 20), and **Earlier versions** brings one back.
+- **Memories about the assistant**, beside the user's own: added by hand, moved from **About you**
+  ("Move to About <name>", for a memory filed under the user), or learned from chats. After a chat
+  goes quiet, extraction also asks what the user established about the assistant (a name they gave
+  it, a backstory, how they picture it, a role) and keeps only what the user said, asked for or
+  agreed to: never what the assistant made up about itself, which would otherwise come back in every
+  chat as lore. "Always" ones join the description; the others are recalled when relevant.
+
+The name is per user: the system prompt, the running summary and memory extraction all call the
+assistant by that user's name for it. `bin/hearth persona show|name|about|reset <user>` does the same
+from the console (`server/persona.ts`, tables `personas` and `persona_history`, `memories.subject`).
 
 ## Chat notes
 

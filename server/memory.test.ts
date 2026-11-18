@@ -150,7 +150,8 @@ describe('extracting from a conversation', () => {
     db.prepare("UPDATE users SET display_name = 'Alice' WHERE id = ?").run(alice.id);
     expect((await extractMemories(db, chatWith(db, alice.id, [['user', 'call me Ali']]), json)).named).toBe(false);
     expect(nameNow()).toBe('Alice');
-    expect(prompts[1]).toContain('about its user Alice.');
+    // The main extraction prompt of the second run (each run also asks about the assistant: persona.ts).
+    expect(prompts.filter((p) => p.startsWith('You maintain'))[1]).toContain('about its user Alice.');
   });
 
   it('ignores a proposed name that is not a plain name', async () => {

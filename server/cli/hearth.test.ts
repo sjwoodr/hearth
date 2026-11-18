@@ -147,3 +147,23 @@ describe('hearth chats notes', () => {
     expect(shown).not.toContain('Culprit');
   });
 });
+
+describe('hearth persona', () => {
+  it("shows, names, describes and resets a user's assistant, and marks memories about it", async () => {
+    expect(hearth(['users', 'add', 'persony'], 'goodpassword\ngoodpassword\n').code).toBe(0);
+    expect(hearth(['persona', 'show', 'persony']).out).toMatch(/^Name: \(default: .+\)\nSaved: never/);
+    expect(hearth(['persona', 'name', 'persony', 'Juliette']).out).toMatch(/^Name: Juliette\n/);
+    const described = hearth(['persona', 'about', 'persony', 'A', 'retired', 'baker.']).out;
+    expect(described).toContain('1 earlier version(s)');
+    expect(described).toMatch(/\n\nA retired baker\.$/m);
+    expect(hearth(['persona', 'reset', 'persony']).out).toMatch(/^Name: \(default: .+\)[\s\S]*\(no description\)/);
+    expect(hearth(['persona', 'name', 'persony', 'x'.repeat(41)]).code).toBe(1);
+
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(env.HEARTH_DB_PATH);
+    const userId = (db.prepare("SELECT id FROM users WHERE username = 'persony'").get() as { id: number }).id;
+    db.prepare("INSERT INTO memories (user_id, kind, content, subject) VALUES (?, 'fact', 'Juliette is from Lyon.', 'assistant')").run(userId);
+    db.close();
+    expect(hearth(['memories', 'list', 'persony']).out).toMatch(/·\s+fact\s+·\s+about the assistant: Juliette is from Lyon\./);
+  });
+});

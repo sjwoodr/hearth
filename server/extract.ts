@@ -1,6 +1,7 @@
 // Memory extraction: reads the unread part of a conversation and records durable facts
 // about the user. Runs in the background once a chat has gone quiet.
 import { every } from './every.ts';
+import { assistantNameFor } from './persona.ts';
 import { job } from './metrics.ts';
 import { estimateTokens } from './context.ts';
 import { isPreempted } from './busy.ts';
@@ -236,7 +237,7 @@ async function dropNearDuplicates(
   let existing: { content: string; vector: ArrayLike<number>; bar: number }[];
   let vectors: number[][];
   try {
-    const stored = await withEmbeddings(db, userId, embed);
+    const stored = await withEmbeddings(db, userId, embed, undefined, 'user');
     vectors = await embed([...adds, ...updates].map((a) => a.content));
     existing = [
       ...stored.map((m) => ({ ...m, bar: NEAR_DUPLICATE_CANDIDATE })),
@@ -275,6 +276,98 @@ async function dropNearDuplicates(
   return { kept, skipped };
 }
 
+// ── what the user established about the assistant ────────────────────────────────────────────────
+// Its own pass after the user's memories, so that measured extraction is untouched. Only what the
+// user set becomes canon: the assistant's improvised claims about itself ("I grew up near Lyon")
+// would otherwise come back in every chat as lore. So every proposed fact is checked against the
+// conversation, and unlike the user's memories, a failed check drops it.
+
+const SELF_SCHEMA = { type: 'object', properties: { facts: { type: 'array', maxItems: 5, items: CONTENT } }, required: ['facts'] };
+const ESTABLISHED_SCHEMA = { type: 'object', properties: { established: { type: 'boolean' } }, required: ['established'] };
+/** As close as a rewording gets (the user's near-duplicate candidates start at 0.85 too); persona facts don't get a judge. */
+const SELF_DUPLICATE_SCORE = 0.85;
+
+/** What the user established about the assistant in a conversation, as short sentences naming it. */
+export async function selfFacts(json: JsonFn, username: string, assistant: string, transcript: string, known: string[]): Promise<string[]> {
+  const raw = (await json(
+    [
+      {
+        role: 'system',
+        content:
+          `You keep the character sheet of ${assistant}, a chat companion, as its user ${username} has shaped it. From the ` +
+          `conversation, list what ${username} established about ${assistant} itself: a name or nickname they gave it, a ` +
+          `backstory, how they picture it, its personality, a role they gave it, a running joke about it. Only what ` +
+          `${username} set themselves, or explicitly confirmed when ${assistant} offered it ("yes, that's you now"). A polite ` +
+          `reaction to something ${assistant} made up ("nice", "that sounds lovely") is not agreeing to it. Never what ` +
+          `${assistant} said about itself on its own, never facts about ` +
+          `${username} (those are kept elsewhere), and never what only matters today. Leave out what the sheet already has. ` +
+          `Write each as a plain fact about ${assistant} that starts with its name ("${assistant} grew up in Lyon."), not as who said it. ` +
+          'Most conversations establish nothing: then return an empty list.',
+      },
+      {
+        role: 'user',
+        content: `Character sheet so far:\n${known.length ? known.map((k) => `- ${k}`).join('\n') : '(empty)'}\n\nConversation:\n${transcript}`,
+      },
+    ],
+    SELF_SCHEMA,
+  )) as { facts?: unknown };
+  const facts = Array.isArray(raw?.facts) ? raw.facts : [];
+  return facts
+    .filter((f): f is string => typeof f === 'string')
+    .map((f) => f.replace(/\s+/g, ' ').trim())
+    .filter((f) => f.length > 0 && f.length <= MAX_MEMORY_CHARS)
+    .slice(0, 5);
+}
+
+/** Whether the user set this about the assistant, rather than the assistant claiming it on its own. */
+export async function establishedByUser(json: JsonFn, username: string, assistant: string, transcript: string, candidate: string): Promise<boolean> {
+  const raw = (await json(
+    [
+      {
+        role: 'system',
+        content:
+          `You check one note about ${assistant}, a chat companion, against the conversation it came from. Answer ` +
+          `established=true only if ${username} said it or asked for it, or explicitly confirmed it when ${assistant} offered ` +
+          `it: a name, a backstory, a look or a trait they gave ${assistant}. Answer established=false if ${assistant} brought ` +
+          `it up and ${username} only reacted ("nice", "that sounds lovely"), if only ${assistant} claimed it, if it is really ` +
+          `about ${username}, or if it only matters today.`,
+      },
+      { role: 'user', content: `CONVERSATION:\n${transcript}\n\nNOTE: ${candidate}` },
+    ],
+    ESTABLISHED_SCHEMA,
+  )) as { established?: unknown };
+  return raw?.established === true;
+}
+
+/** A yes/no check that drops the fact when it fails (other than a preemption, which abandons the run). */
+async function droppedIfFails(what: string, check: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await check();
+  } catch (err) {
+    if (isPreempted(err)) throw err;
+    console.error(`memory: ${what} check failed, dropping it:`, err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+/** New facts about the assistant, minus rewordings of what's known (and of each other), with their vectors. */
+async function newSelfFacts(db: DB, userId: number, facts: string[], embed?: EmbedFn): Promise<NewMemory[]> {
+  if (facts.length === 0) return [];
+  if (!embed) {
+    const known = new Set((db.prepare("SELECT content FROM memories WHERE user_id = ? AND subject = 'assistant'").all(userId) as { content: string }[]).map((r) => r.content));
+    return facts.filter((f, i) => !known.has(f) && facts.indexOf(f) === i).map((content) => ({ content }));
+  }
+  const stored = await withEmbeddings(db, userId, embed, undefined, 'assistant');
+  const vectors = await embed(facts);
+  const kept: NewMemory[] = [];
+  facts.forEach((content, i) => {
+    const vector = vectors[i]!;
+    const seen = [...stored.map((m) => m.vector), ...kept.map((k) => k.vector!)];
+    if (!seen.some((v) => cosine(v, vector) >= SELF_DUPLICATE_SCORE)) kept.push({ content, vector });
+  });
+  return kept;
+}
+
 export type ExtractResult = {
   conversationId: number;
   read: number;
@@ -287,6 +380,8 @@ export type ExtractResult = {
   /** Additions dropped, and updates not made, because they were about one moment (a live score, tonight). */
   fleeting: number;
   named: boolean;
+  /** Facts about the assistant the user established (persona.ts), added as memories about it. */
+  self: number;
 };
 
 /**
@@ -310,11 +405,13 @@ export async function extractMemories(
     | { id: number; user_id: number; memory_through_message_id: number; display_name: string | null; username: string }
     | undefined;
   if (!conversation) throw new Error(`No conversation ${conversationId}.`);
+  // The name this user's assistant answers to (persona.ts), as the replies in the transcript use it.
+  assistant = assistantNameFor(db, conversation.user_id, assistant);
 
   const unread = db
     .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
     .all(conversation.id, conversation.memory_through_message_id) as MessageRow[];
-  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false };
+  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false, self: 0 };
   if (unread.length === 0) return none;
   const lastId = unread.at(-1)!.id;
 
@@ -332,7 +429,7 @@ export async function extractMemories(
   const existing = db
     .prepare(
       `SELECT id, kind, content FROM memories
-       WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`,
+       WHERE user_id = ? AND subject = 'user' ORDER BY updated_at DESC, id DESC LIMIT ?`,
     )
     .all(conversation.user_id, MAX_EXISTING_SHOWN) as Existing[];
   const existingText = existing.length
@@ -374,6 +471,25 @@ export async function extractMemories(
     ? await dropNearDuplicates(db, conversation.user_id, stated, updates, json, embed)
     : { kept: stated as NewMemory[], skipped: 0 };
 
+  // Then what the user established about the assistant, which is written with the rest below (or
+  // not at all, if anything is preempted). Any other failure skips it for this window.
+  let selfKept: NewMemory[] = [];
+  try {
+    const conversationText = transcript.join('\n\n');
+    const known = (
+      db.prepare("SELECT content FROM memories WHERE user_id = ? AND subject = 'assistant' ORDER BY id").all(conversation.user_id) as { content: string }[]
+    ).map((r) => r.content);
+    const proposed = await selfFacts(json, username, assistant, conversationText, known);
+    const established: string[] = [];
+    for (const fact of proposed) {
+      if (await droppedIfFails('established', () => establishedByUser(json, username, assistant, conversationText, fact))) established.push(fact);
+    }
+    selfKept = await newSelfFacts(db, conversation.user_id, established, embed);
+  } catch (err) {
+    if (isPreempted(err)) throw err;
+    console.error(`memory: chat ${conversationId}: facts about the assistant skipped:`, err instanceof Error ? err.message : err);
+  }
+
   db.transaction(() => {
     const insert = db.prepare(
       'INSERT INTO memories (user_id, kind, content, source_conversation_id, embedding) VALUES (?, ?, ?, ?, ?)',
@@ -381,8 +497,12 @@ export async function extractMemories(
     for (const a of kept) {
       insert.run(conversation.user_id, 'fact', a.content, conversation.id, a.vector ? toBlob(a.vector) : null);
     }
+    const insertSelf = db.prepare(
+      "INSERT INTO memories (user_id, kind, content, source_conversation_id, embedding, subject) VALUES (?, 'fact', ?, ?, ?, 'assistant')",
+    );
+    for (const f of selfKept) insertSelf.run(conversation.user_id, f.content, conversation.id, f.vector ? toBlob(f.vector) : null);
     const update = db.prepare(
-      "UPDATE memories SET content = ?, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      "UPDATE memories SET content = ?, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND subject = 'user'",
     );
     for (const u of updates) update.run(u.content, u.id, conversation.user_id);
     db.prepare('UPDATE conversations SET memory_through_message_id = ? WHERE id = ?').run(lastId, conversation.id);
@@ -399,6 +519,7 @@ export async function extractMemories(
     unstated,
     fleeting,
     named,
+    self: selfKept.length,
   };
 }
 
