@@ -351,7 +351,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   reply was ~3 sentences whatever they wrote (the reminder became a template), asked nothing (0 of 13),
   and narrated their feelings ("uniquely aggravating", "it must be a massive relief") instead of joining
   in. A softened version the next night ("warm, not brisk") didn't change that.
-  **Measure tone on a replay of a real chat, and let the owner judge blind samples** (2026-10-30, the owner's
+  **Measure tone on a replayed chat, and let the owner judge blind samples** (2026-10-30, the owner's
   chat 53, a home-network fix, 13 replies regenerated x2-3 per prompt; private, ad hoc in scratchpad).
   Blind, the owner picked the old prompt's reply both times. The "massive win / a specific kind of
   frustration" voice is Gemma's own and appears under every prompt; the old prompt felt better because
@@ -364,7 +364,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   characters (old 402, the caps 319), question endings 31% (old 23%, the caps 0%), feeling-narration
   31% of replies (old 51%, the caps 54%). On one-message openers questions are still ~69% (old 66%): the
   question line has little effect there, so the live 80% was probably openers and short chats. If that
-  needs fixing, target openers with a narrow change and replay a real chat before shipping. A rewrite
+  needs fixing, target openers with a narrow change and replay a chat before shipping (a synthetic one:
+  see Testing practice). A rewrite
   that asked for warmth outright ("be good company… sound glad they're here") overshot to 81%
   questions, longer than the old prompt, and invented experience ("I've learned the hard way").
 - **Personality v6: someone who likes them, and missed them after time apart** (2026-11-17; owner:
@@ -538,6 +539,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 
 ## Testing practice
 
+- **The owner's real chats are off limits for testing** (owner's rule, 2026-11-18: chat history should
+  stay on this machine, and an AI coding assistant reading it sends it to its provider). No chat text,
+  memories, notes or personas from the live database, its backups, `data/dev.db` or old copies for
+  probes, replays, benches or debugging; write synthetic chats for the test instead. A real chat only
+  when the owner names that chat. Many measurements below replayed "the live history" or "chat 53/66":
+  that was before this rule, so keep the results but not the method. Content-free checks (pod images,
+  logs, metrics, migrations) are fine; stats derived from chats (`bin/hearth chats stats`) need asking.
 - Unit/route tests use fakes (`server/testing.ts`, a fake Ollama HTTP server in `thinking.test.ts`),
   so every edge case is scriptable: mid-stream failure, preemption, cross-user reads.
 - **Mutation-check important guarantees**: sabotage the code on purpose and confirm the suite fails.
