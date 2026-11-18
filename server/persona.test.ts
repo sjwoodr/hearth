@@ -68,6 +68,53 @@ describe('the persona and its history', () => {
     expect(personaHistory(ctx.db, alice)[0]!.about).toBe('A retired Lyon baker with a dry humour.');
   });
 
+  it('never lists a copy of the current version, or the same version twice', async () => {
+    const ctx = setupApp();
+    await signIn(ctx, 'alice');
+    const alice = userId(ctx.db, 'alice');
+    const names = () => personaHistory(ctx.db, alice).map((v) => v.name);
+    savePersona(ctx.db, alice, 'Gemma', '');
+    savePersona(ctx.db, alice, 'Gem', '');
+    // Back to a name typed again: it leaves the list, as a restore does.
+    savePersona(ctx.db, alice, 'Gemma', '');
+    expect(names()).toEqual(['Gem']);
+    savePersona(ctx.db, alice, 'Juliette', '');
+    savePersona(ctx.db, alice, 'Gem', '');
+    expect(names()).toEqual(['Juliette', 'Gemma']);
+    // Saved again later, a version moves to the top instead of appearing twice.
+    savePersona(ctx.db, alice, 'Gemma', '');
+    expect(names()).toEqual(['Gem', 'Juliette']);
+    const [gem] = personaHistory(ctx.db, alice);
+    restorePersona(ctx.db, alice, gem!.id);
+    expect(names()).toEqual(['Gemma', 'Juliette']);
+
+    // A history from before that rule can hold a copy of the current version: it isn't listed.
+    ctx.db.prepare("INSERT INTO persona_history (user_id, name, about) VALUES (?, 'Gem', '')").run(alice);
+    expect(names()).toEqual(['Gemma', 'Juliette']);
+  });
+
+  it('forgets an earlier version, only the owner can, and a forgotten one is gone', async () => {
+    const ctx = setupApp();
+    const alice = await signIn(ctx, 'alice');
+    const bob = await signIn(ctx, 'bob');
+    await call(ctx.app, alice, 'PUT', '/persona', { name: 'Gemma', about: '' });
+    await call(ctx.app, alice, 'PUT', '/persona', { name: 'Gem', about: '' });
+    await call(ctx.app, alice, 'PUT', '/persona', { name: 'Juliette', about: '' });
+    type View = { name: string; history: { id: number; name: string }[] };
+    const view = async () => (await (await call(ctx.app, alice, 'GET', '/persona')).json()) as View;
+    const [gem, gemma] = (await view()).history;
+    expect([gem!.name, gemma!.name]).toEqual(['Gem', 'Gemma']);
+
+    expect((await call(ctx.app, bob, 'DELETE', `/persona/history/${gem!.id}`)).status).toBe(404);
+    expect((await view()).history).toHaveLength(2);
+
+    const after = (await (await call(ctx.app, alice, 'DELETE', `/persona/history/${gem!.id}`)).json()) as View;
+    expect(after).toMatchObject({ name: 'Juliette', history: [{ name: 'Gemma' }] });
+    expect((await call(ctx.app, alice, 'DELETE', `/persona/history/${gem!.id}`)).status).toBe(404);
+    expect((await call(ctx.app, alice, 'POST', '/persona/restore', { id: gem!.id })).status).toBe(404);
+    expect((await call(ctx.app, alice, 'DELETE', '/persona/history/nope')).status).toBe(404);
+  });
+
   it(`keeps at most ${MAX_PERSONA_HISTORY} earlier versions`, async () => {
     const ctx = setupApp();
     await signIn(ctx, 'alice');

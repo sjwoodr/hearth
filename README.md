@@ -364,7 +364,9 @@ Each user can shape their own assistant on the Memories page, in its second tab,
   Both go into that user's system prompt as a "Who you are" section, after hearth's own instructions,
   so a persona can add to how hearth behaves but can't remove the measured parts (correcting French,
   symbols, the app). Empty means the defaults: `HEARTH_ASSISTANT_NAME` and no description. Every
-  save keeps the version it replaced (the last 20), and **Earlier versions** brings one back.
+  save keeps the version it replaced (the last 20), and **Earlier versions** brings one back
+  (Restore) or deletes it (Forget). The list never shows the same version twice or a copy of the
+  current one.
 - **Memories about the assistant**, beside the user's own: added by hand, moved from **About you**
   ("Move to About <name>", for a memory filed under the user), or learned from chats. After a chat
   goes quiet, extraction also asks what the user established about the assistant (a name they gave

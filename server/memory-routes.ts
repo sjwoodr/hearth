@@ -10,7 +10,15 @@ import {
   MAX_MEMORY_CHARS,
   updateMemory,
 } from './memories.ts';
-import { cleanPersonaAbout, cleanPersonaName, getPersona, personaHistory, restorePersona, savePersona } from './persona.ts';
+import {
+  cleanPersonaAbout,
+  cleanPersonaName,
+  forgetPersonaVersion,
+  getPersona,
+  personaHistory,
+  restorePersona,
+  savePersona,
+} from './persona.ts';
 import type { SessionUser } from './sessions.ts';
 
 type Env = { Variables: { user: SessionUser } };
@@ -106,6 +114,13 @@ export function registerMemoryRoutes(
     const userId = c.get('user').id;
     const id = typeof body?.id === 'number' ? body.id : undefined;
     if (!id || !restorePersona(db, userId, id)) return c.json({ error: 'That version is gone.' }, 404);
+    return c.json(personaView(userId));
+  });
+
+  api.delete('/persona/history/:id', (c) => {
+    const userId = c.get('user').id;
+    const id = parseId(c.req.param('id'));
+    if (!id || !forgetPersonaVersion(db, userId, id)) return c.json({ error: 'That version is gone.' }, 404);
     return c.json(personaView(userId));
   });
 }

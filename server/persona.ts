@@ -40,12 +40,17 @@ export function cleanPersonaAbout(value: unknown): string | { error: string } {
   return about;
 }
 
-/** Saves a persona, keeping the one it replaces in the history. No change, no new version. */
+/**
+ * Saves a persona, keeping the one it replaces in the history. No change, no new version. The history
+ * never holds the same version twice: one replaced again moves to the top (personaHistory also leaves
+ * out a copy of the current version, as after a restore).
+ */
 export function savePersona(db: DB, userId: number, name: string, about: string): Persona {
   const current = getPersona(db, userId);
   if (current.name === name && current.about === about) return current;
   db.transaction(() => {
     if (current.updated_at !== null) {
+      db.prepare('DELETE FROM persona_history WHERE user_id = ? AND name = ? AND about = ?').run(userId, current.name, current.about);
       db.prepare('INSERT INTO persona_history (user_id, name, about) VALUES (?, ?, ?)').run(userId, current.name, current.about);
       db.prepare(
         `DELETE FROM persona_history WHERE user_id = ? AND id NOT IN
@@ -60,11 +65,20 @@ export function savePersona(db: DB, userId: number, name: string, about: string)
   return getPersona(db, userId);
 }
 
-/** Earlier versions, newest first: only the user's own. */
+/**
+ * Earlier versions, newest first: only the user's own, and never one that matches the current version
+ * (histories from before savePersona dropped those can still hold one).
+ */
 export function personaHistory(db: DB, userId: number): PersonaVersion[] {
-  return db
-    .prepare('SELECT id, name, about, saved_at FROM persona_history WHERE user_id = ? ORDER BY id DESC')
-    .all(userId) as PersonaVersion[];
+  const current = getPersona(db, userId);
+  return (
+    db.prepare('SELECT id, name, about, saved_at FROM persona_history WHERE user_id = ? ORDER BY id DESC').all(userId) as PersonaVersion[]
+  ).filter((v) => current.updated_at === null || v.name !== current.name || v.about !== current.about);
+}
+
+/** Deletes one earlier version; false if it isn't the user's. */
+export function forgetPersonaVersion(db: DB, userId: number, versionId: number): boolean {
+  return db.prepare('DELETE FROM persona_history WHERE id = ? AND user_id = ?').run(versionId, userId).changes > 0;
 }
 
 /** Brings back an earlier version (the current one goes into the history); undefined if it isn't the user's. */

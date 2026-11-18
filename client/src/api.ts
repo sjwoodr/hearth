@@ -238,6 +238,7 @@ export const api = {
   persona: () => request<Persona>('GET', '/api/persona'),
   savePersona: (name: string, about: string) => request<Persona>('PUT', '/api/persona', { name, about }),
   restorePersona: (id: number) => request<Persona>('POST', '/api/persona/restore', { id }),
+  forgetPersonaVersion: (id: number) => request<Persona>('DELETE', `/api/persona/history/${id}`),
   deleteMemory: (id: number) => request('DELETE', `/api/memories/${id}`),
   /** Admin only: the chat models Ollama has, and the one in use. */
   models: () => request<{ active: ActiveModel; models: ModelInfo[] }>('GET', '/api/models'),

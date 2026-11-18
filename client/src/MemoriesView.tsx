@@ -178,6 +178,7 @@ export function MemoriesView({
               persona={persona}
               onSave={(name, about) => run(() => api.savePersona(name, about))}
               onRestore={(id) => run(() => api.restorePersona(id))}
+              onForget={(id) => run(() => api.forgetPersonaVersion(id))}
             />
           )}
           <h3>Memories about {assistant}</h3>
@@ -308,10 +309,12 @@ function PersonaEditor({
   persona,
   onSave,
   onRestore,
+  onForget,
 }: {
   persona: Persona;
   onSave: (name: string, about: string) => Promise<boolean>;
   onRestore: (id: number) => Promise<boolean>;
+  onForget: (id: number) => Promise<boolean>;
 }) {
   const [name, setName] = useState(persona.name);
   const [about, setAbout] = useState(persona.about);
@@ -396,6 +399,15 @@ function PersonaEditor({
                   <span className="memory-id">{memoryDate(v.saved_at, v.saved_at)}</span>
                   <button type="button" className="link" onClick={() => void onRestore(v.id)}>
                     Restore
+                  </button>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      if (window.confirm(`Forget this earlier version (${v.name || persona.defaultName})? It can't be brought back.`)) void onForget(v.id);
+                    }}
+                  >
+                    Forget
                   </button>
                 </div>
               </li>
