@@ -385,6 +385,25 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   `pause.ts`, server `TZ`): with only the date, chat 66's 8:34 PM opener got "I hope your Tuesday is off to
   a decent start", and base replays said "Good morning". Not on every message: those are the turns where
   a greeting guesses the time, and a clock on every turn invites "it's late, get some rest".
+- **The model keeps private notes per chat with a `save_notes` tool** (`server/chat-notes.ts`, table
+  `chat_notes`, 2026-11-17). From chat 63, a serialized mystery that wandered: one new named character per
+  chapter, ~12 threads never closed, the premise swapped twice, and no culprit, because nothing could hold
+  a plan the reader mustn't see (and the summary had folded chapters 1-5 away). Replayed its brief for 8
+  chapters x2 per setup on paris and the Mac (ad hoc, scratchpad): with no tool, or the tool offered but
+  not asked for, stories wandered the same (3-5 characters added as they went, the premise redefined 2-4
+  times, no culprit by chapter 8); offered alone the model saved nothing in 4 runs on paris. With the brief
+  asking it to plan in its notes, it saved a plan before chapter 1 (culprit, five characters, a clue per
+  chapter) and kept to it in all 4 runs: no character outside the plan, the planned clues in their
+  planned chapters. So the tool is offered whenever the model can call tools (no setting: notes never
+  leave the machine, unlike search) and the README tells users to ask for a plan. **Owner's call: never
+  visible in the app** ("don't want the temptation to peek"): no route or header carries them (the leak
+  test checks bodies and headers; a header leak got past its first version), only `bin/hearth chats
+  notes`. Notes ride on the newest message (an update never moves the cached prompt start); the
+  instructions sit in the system prompt whenever the tool is offered. A save doesn't end the reply: the
+  model gets "Saved." and carries on, at most 2 more rounds. Private chats keep notes in memory only.
+  Cap 3,000 characters: a 10-chapter plan hit the probe's 2,000 and was cut. Not yet measured: whether a
+  plan survives a long chat's folding (it should, as it isn't in the history), and unprompted use for
+  quizzes and games.
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that
@@ -443,6 +462,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
+| `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |
 | `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |

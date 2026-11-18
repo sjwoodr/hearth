@@ -45,6 +45,7 @@ Run with no arguments for the interactive menu (fzf; numbered prompts when piped
                   | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
   hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                   | delete <id>
+                  | notes <id>         the model's private notes for a chat (for debugging: never shown in the app)
                   | stats [user]       replies per week: how many end with a question, and length
   hearth messages edit <id> [text] | delete <id>
   hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
@@ -287,6 +288,14 @@ function chatsSearch(text: string | undefined): string {
 }
 
 const chatText = (id: number) => admin.formatConversation(requireChat(id), admin.listMessages(db, id));
+
+// The model's private notes (chat-notes.ts): a story's plan, a quiz's answers. The app never shows them.
+function chatNotes(id: number): string {
+  const c = requireChat(id);
+  const notes = admin.getChatNotes(db, id);
+  if (!notes) return `Chat ${id} has no notes.`;
+  return `Notes for chat ${id} (${admin.conversationTitle(c)}), saved ${notes.updated_at} UTC:\n\n${notes.content}`;
+}
 
 function chatExport(id: number, file: string | undefined): void {
   const text = chatText(id);
@@ -571,12 +580,14 @@ async function chatMenu(id: number): Promise<void> {
       { key: 'messages', label: 'edit or delete a message' },
       { key: 'rename', label: 'rename' },
       { key: 'export', label: 'export to a markdown file' },
+      { key: 'notes', label: "the model's private notes (spoilers)" },
       { key: 'delete', label: 'DELETE chat' },
     ]);
     if (!choice) return;
     if (choice === 'view') await attempt(() => page(chatText(id)));
     else if (choice === 'messages') await messagesMenu(id);
     else if (choice === 'rename') await attempt(() => chatRename(id, undefined));
+    else if (choice === 'notes') await attempt(() => page(chatNotes(id)));
     else if (choice === 'export') {
       await attempt(async () => {
         const file = (await ask(`File [hearth-chat-${id}.md]: `))?.trim() || `hearth-chat-${id}.md`;
@@ -729,6 +740,7 @@ async function run(argv: string[]): Promise<void> {
       if (action === 'search') return console.log(chatsSearch(text(a, b, ...rest)));
       if (action === 'stats') return console.log(chatsStats(a));
       if (action === 'export') return chatExport(requireId(a, 'Chat'), b);
+      if (action === 'notes') return console.log(chatNotes(requireId(a, 'Chat')));
       if (action === 'rename') return chatRename(requireId(a, 'Chat'), text(b, ...rest));
       if (action === 'delete') return void (await chatDelete(requireId(a, 'Chat'), yes));
       break;

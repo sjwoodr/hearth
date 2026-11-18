@@ -79,6 +79,13 @@ export function getConversation(db: DB, id: number): ConversationRow | undefined
   return conversationsWhere(db, 'WHERE c.id = ?', [id])[0];
 }
 
+/** The model's private notes for a chat (chat-notes.ts). Only the CLI reads them: never a web route. */
+export function getChatNotes(db: DB, conversationId: number): { content: string; updated_at: string } | undefined {
+  return db.prepare('SELECT content, updated_at FROM chat_notes WHERE conversation_id = ?').get(conversationId) as
+    | { content: string; updated_at: string }
+    | undefined;
+}
+
 export function listMessages(db: DB, conversationId: number): MessageRow[] {
   return db
     .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY id')

@@ -123,3 +123,20 @@ describe('hearth memories recall', () => {
     expect(seen.every((r) => r.path === '/api/embed' && r.auth === 'Bearer cli-token')).toBe(true);
   });
 });
+
+describe('hearth chats notes', () => {
+  it("prints the model's private notes for a chat, which only the CLI can read", async () => {
+    expect(hearth(['users', 'add', 'notey'], 'goodpassword\ngoodpassword\n').code).toBe(0);
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(env.HEARTH_DB_PATH);
+    const userId = (db.prepare("SELECT id FROM users WHERE username = 'notey'").get() as { id: number }).id;
+    const chat = Number(db.prepare("INSERT INTO conversations (user_id, title) VALUES (?, 'Mystery')").run(userId).lastInsertRowid);
+    expect(hearth(['chats', 'notes', String(chat)]).out).toContain(`Chat ${chat} has no notes.`);
+    db.prepare('INSERT INTO chat_notes (conversation_id, content) VALUES (?, ?)').run(chat, 'Culprit: the baker.');
+    db.close();
+    const r = hearth(['chats', 'notes', String(chat)]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(new RegExp(`^Notes for chat ${chat} \\(Mystery\\), saved .+ UTC:\\n\\nCulprit: the baker\\.`));
+    expect(hearth(['chats', 'notes', '99999']).code).toBe(1);
+  });
+});

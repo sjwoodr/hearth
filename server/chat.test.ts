@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { estimateTokens, fitHistory } from './context.ts';
 import { titleFrom } from './conversations.ts';
 import type { ChatMessage } from './ollama.ts';
+import { NOTES_INSTRUCTIONS } from './chat-notes.ts';
 import { timeNote } from './pause.ts';
 import { login, NOW, ORIGIN, sessionCookie, setupApp, type TestApp } from './testing.ts';
 import { createUser } from './users.ts';
@@ -58,7 +59,8 @@ describe('chatting', () => {
       expect.objectContaining({ role: 'assistant', content: 'Hello there.' }),
     ]);
     expect(ctx.model.calls[0]).toEqual([
-      { role: 'system', content: 'You are hearth.' },
+      // A model that can call tools (unknown here, so allowed) also reads how to use its notes.
+      { role: 'system', content: `You are hearth.\n\n${NOTES_INSTRUCTIONS}` },
       // A chat's first message carries the time of day; the stored copy doesn't.
       { role: 'user', content: `${timeNote('alice', NOW)}\n\n[alice's message]\nTell me about   contesting.` },
     ]);
@@ -72,7 +74,7 @@ describe('chatting', () => {
     ctx.model.reply = ['Second answer'];
     await say(ctx.app, cookie, id, 'Second');
     expect(ctx.model.calls[1]!.map((m) => `${m.role}:${m.content}`)).toEqual([
-      'system:You are hearth.',
+      `system:You are hearth.\n\n${NOTES_INSTRUCTIONS}`,
       'user:First',
       'assistant:Hello there.',
       'user:Second',

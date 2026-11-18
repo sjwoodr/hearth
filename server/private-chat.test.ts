@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
+import { NOTES_INSTRUCTIONS } from './chat-notes.ts';
 import { PRIVATE_SEARCH_TTL_MS } from './private-chat.ts';
 import { call, listen, ORIGIN, NOW, setupApp, signIn, type TestApp } from './testing.ts';
 import type { DB } from './db.ts';
@@ -55,7 +56,7 @@ describe('private chats', () => {
     // The user's memories are still read, for the newest message.
     expect(ctx.model.recallQueries).toEqual([{ userId: expect.any(Number), message: 'He moved every deadline up a week.' }]);
     expect(ctx.model.calls[0]).toEqual([
-      { role: 'system', content: 'You are hearth.' },
+      { role: 'system', content: `You are hearth.\n\n${NOTES_INSTRUCTIONS}` },
       { role: 'user', content: 'My boss is driving me nuts.' },
       { role: 'assistant', content: 'That sounds rough. What happened?' },
       { role: 'user', content: "Alice works at a bakery.\n\n[alice's message]\nHe moved every deadline up a week." },

@@ -163,6 +163,7 @@ hearth users    list | add <user> | passwd <user> | name <user> [display name]
                 | role <user> <admin|user> | disable <user> | enable <user> | delete <user>
 hearth chats    list [user] | show <id> | search <text> | export <id> [file] | rename <id> [title]
                 | delete <id> | stats [user]   (replies per week: ending in a question, length)
+                | notes <id>   (the model's private notes for the chat: spoilers, never shown in the app)
 hearth messages edit <id> [text] | delete <id>
 hearth memories list [user] | add <user> <profile|fact> [text] | edit <id> [text]
                 | kind <id> <profile|fact> | delete <id>
@@ -335,6 +336,26 @@ and as a new memory, and those pairs scored only 0.77-0.83.
 `hearth memories extract <chat-id>` runs it on demand, and
 `hearth memories recall <user> <text>` shows each fact's score for a message and
 the exact memory section the model would get.
+
+## Chat notes
+
+Besides memories, the model keeps private notes for each chat: a story's plan and culprit, a quiz's
+answer key, a game's secret, a checklist. It writes them itself with a `save_notes` tool, in the
+middle of a reply (no card to approve: they never leave the machine), and reads them on every later
+turn, attached to the newest message like recalled memories. Saving replaces the old notes, up to
+3,000 characters (`server/chat-notes.ts`, table `chat_notes`, deleted with the chat).
+
+**Nobody sees them in the app**, by design: no page shows them and no API response contains them, so
+a story's ending can't be spoiled by a stray click. `bin/hearth chats notes <id>` prints them, for
+debugging. A private chat's notes stay in server memory only, until the chat ends, hearth restarts,
+or 12 hours pass unused.
+
+The model rarely writes notes unprompted. Ask for them where they matter: "Before Chapter 1, decide
+the whole mystery and save it in your notes: the culprit and motive, at most five characters, which
+clue appears in which chapter, and how it ends around Chapter 10. Then keep to it." Measured on a
+real story brief, 8 chapters x2 per setup: without a plan the cast kept growing and the premise
+changed 2-4 times; with one, every character came from the plan and the clues landed in their
+planned chapters. Only models that can call tools get the tool.
 
 ## Model
 

@@ -38,8 +38,12 @@ export type FakeModel = {
   description: string | Error;
   /** Queries the model asks to search for, one per reply (taken in order); none means it just answers. */
   asks: string[];
-  /** Whether each reply was offered the web_search tool. */
+  /** Whether each model call was offered the web_search tool. */
   toolsOffered: boolean[];
+  /** Notes the model saves (save_notes), one per reply, taken in order, before it writes anything. */
+  saves: string[];
+  /** Whether each model call was offered save_notes. */
+  notesOffered: boolean[];
   /** The model-loaded checks the app made, by `think`. */
   loadedChecks: boolean[];
   /** A pause between reply chunks, for a reply that streams over time (default none). */
@@ -117,22 +121,36 @@ export function setupApp(
     description: 'A page of French homework.',
     asks: [],
     toolsOffered: [],
+    saves: [],
+    notesOffered: [],
     loadedChecks: [],
     searched: [],
     results: [{ title: 'Fishbach tour', url: 'https://example.com/tour', snippet: 'Le Havre, 16 October.' }],
   };
   // A scripted search request stands in for the reply, as Ollama sends a tool call with no text.
+  const offers = (o: ChatOptions | undefined, name: string) =>
+    !!o?.tools?.some((t) => (t as { function?: { name?: string } }).function?.name === name);
   const askedToSearch = (o?: ChatOptions) => {
-    model.toolsOffered.push(!!o?.tools?.length);
-    const query = o?.tools?.length ? model.asks.shift() : undefined;
+    const offered = offers(o, 'web_search');
+    model.toolsOffered.push(offered);
+    const query = offered ? model.asks.shift() : undefined;
     if (query) o?.onToolCall?.({ function: { name: 'web_search', arguments: { query } } });
     return !!query;
+  };
+  // A call that only saves notes ends there, as the real model's does; the app then calls again.
+  const savedNotes = (o?: ChatOptions) => {
+    const offered = offers(o, 'save_notes');
+    model.notesOffered.push(offered);
+    const notes = offered ? model.saves.shift() : undefined;
+    if (notes !== undefined) o?.onToolCall?.({ function: { name: 'save_notes', arguments: { notes } } });
+    return notes !== undefined;
   };
   // The real scheduler wraps the fake model, so route tests exercise real queueing and preemption.
   const scheduler = createModelScheduler({ slots: opts.slots ?? 1 });
   const chat: ChatFn = async function* (messages, signal, o) {
     model.calls.push(messages);
     await model.gate;
+    if (savedNotes(o)) return;
     if (askedToSearch(o)) return;
     for (const chunk of model.reply) {
       await pauseFor(model.chunkDelayMs);
@@ -158,6 +176,7 @@ export function setupApp(
       model.thinkingBudgets.push(o?.thinkingBudget);
       for (let t = 1; t <= THINKING_TOKENS; t++) o?.onThinking?.(t);
       o?.onThinkingEnd?.(THINKING_TOKENS, false);
+      if (savedNotes(o)) return;
       if (askedToSearch(o)) return;
       yield 'Considered answer.';
     }),

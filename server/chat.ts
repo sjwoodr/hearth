@@ -2,6 +2,7 @@ import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchC
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { ActiveReplies } from './active-replies.ts';
+import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNotes, SAVE_NOTES_TOOL, saveNotes } from './chat-notes.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote, timeNote } from './pause.ts';
 import { contextUse, listFolds } from './summarize.ts';
@@ -90,6 +91,8 @@ function noticeLoading(loaded: Promise<boolean | undefined> | undefined, quiet: 
 
 // Context tokens held back for the reply itself.
 const REPLY_RESERVE = 1024;
+/** Times one reply may save notes and carry on: a plan, then a correction, then it must answer. */
+const MAX_NOTE_ROUNDS = 2;
 /** Context held back when thinking: the reasoning budget, plus roughly as much again when it's handed back as notes. */
 export const thinkingReserve = (budget: number) => 2 * budget + 64;
 const MAX_MESSAGE_CHARS = 16_000;
@@ -112,6 +115,8 @@ type ReplyOpts = {
   searching?: string;
   /** False when the current model can't call tools, so web search isn't offered. */
   search?: boolean;
+  /** True when the model can call tools, so it gets save_notes for its private notes (chat-notes.ts). */
+  notes?: boolean;
   /** The model answering, for the client's notice when it changed. */
   model?: string;
 };
@@ -183,6 +188,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   const pendingImages = new PendingImages();
   const pendingSearches = new PendingSearches(db, deps.now);
   const privateSearches = new PrivateSearches(deps.now);
+  const privateNotes = new PrivateNotes(deps.now);
   // Which message each image-carrying prompt message came from. A waiting search is saved without
   // image bytes (images are never stored), so this is how they're put back when it runs.
   const imageSource = new WeakMap<ChatMessage, number>();
@@ -247,6 +253,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
   }
   const can = (m: ModelNow, capability: string) => !m.caps || m.caps.includes(capability);
   const searchFor = (m: ModelNow) => !!deps.webSearch && can(m, 'tools');
+  // Notes never leave the machine, so unlike search they need no setting, only a model that calls tools.
+  const notesFor = (m: ModelNow) => can(m, 'tools');
   const thinkingFor = (m: ModelNow, decision: ReplyDecision): ReplyDecision => (can(m, 'thinking') ? decision : { think: false, auto: false });
 
   async function buildPrompt(
@@ -255,6 +263,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     latest: string,
     decision?: ReplyDecision,
     search = !!deps.webSearch,
+    notesOn = false,
   ): Promise<ChatMessage[]> {
     const state = getContextState(db, conversationId);
     const all = listMessages(db, user.id, conversationId);
@@ -271,7 +280,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // Measured from the message before it even when that one is folded into the summary.
     const [before, newest] = all.slice(-2);
     const pause = before && newest?.role === 'user' ? pauseNote(before.created_at, newest.created_at) : '';
-    return assemble(user, history, latest, decision, search, { summary: state.summary, pause });
+    const notes = notesOn ? getNotes(db, user.id, conversationId) : '';
+    return assemble(user, history, latest, decision, search, { summary: state.summary, pause, notesOn, notes });
   }
 
   // The rest of a prompt, for stored and private chats alike: memory, recall on the newest message,
@@ -282,7 +292,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     latest: string,
     decision: ReplyDecision | undefined,
     search: boolean,
-    extra: { summary?: string | null; pause?: string } = {},
+    extra: { summary?: string | null; pause?: string; notesOn?: boolean; notes?: string } = {},
   ): Promise<ChatMessage[]> {
     const { stable, recalled } = await memoryContext(user, latest);
     const last = history.at(-1);
@@ -290,7 +300,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const opening = !extra.summary && history.filter((m) => m.role === 'user').length === 1;
     const time = opening || extra.pause ? timeNote(user.name, deps.now?.() ?? new Date()) : '';
     const away = [extra.pause, time].filter(Boolean).join('\n');
-    const notes = [recalled, away].filter(Boolean).join('\n\n');
+    const notes = [recalled, away, notesForPrompt(extra.notes ?? '')].filter(Boolean).join('\n\n');
     if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);
@@ -299,7 +309,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     }
     const earlier = extra.summary ? `## Earlier in this conversation\n\n${extra.summary}` : '';
     const tool = search ? searchInstructions(deps.now?.() ?? new Date()) : '';
-    const system = [systemPrompt(), tool, stable, earlier].filter(Boolean).join('\n\n');
+    // The notes' instructions go wherever the tool is offered, so they don't change between turns.
+    const system = [systemPrompt(), tool, extra.notesOn ? NOTES_INSTRUCTIONS : '', stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
     const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (search ? SEARCH_RESERVE : 0);
     return fitHistory(system, history, contextBudget - reserve);
@@ -316,6 +327,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     save: (reply: string, sources: Source[], partial: boolean) => number | undefined;
     /** Holds the model's search request until the user answers the card. */
     holdSearch: (search: Omit<PendingSearch, 'askedAt'>) => void;
+    /** Keeps the model's notes for this chat: the database for a stored chat, server memory for a private one. */
+    saveNotes: (notes: string) => void;
     /** More for the `done` event. */
     doneExtras?: () => object;
     /** Work after a finished reply. */
@@ -337,6 +350,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         const saved = withoutImages(search.prompt, imageSource);
         pendingSearches.set(conversationId, { ...search, prompt: saved.prompt, images: saved.images });
       },
+      saveNotes: (notes) => void saveNotes(db, user.id, conversationId, notes),
       doneExtras: () => ({
         // Before any fold this reply sets off, so it can read past 100% until the summary is written.
         context: contextUse(db, conversationId, contextBudget),
@@ -371,7 +385,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const user = c.get('user');
     const searches = opts.searches ?? 0;
     // Past the limit the tool is withheld, so the model has to answer with what it found.
-    const tools = deps.webSearch && opts.search !== false && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : undefined;
+    const offered = [
+      ...(deps.webSearch && opts.search !== false && searches < MAX_SEARCHES_PER_TURN ? [WEB_SEARCH_TOOL] : []),
+      ...(opts.notes ? [SAVE_NOTES_TOOL] : []),
+    ];
+    const tools = offered.length ? offered : undefined;
     c.header('Content-Type', 'application/x-ndjson; charset=utf-8');
     c.header('Cache-Control', 'no-cache');
     // Not tied to the connection: a reply runs to the end even if the browser goes away, and only
@@ -427,8 +445,11 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         noticeLoading(deps.modelLoaded?.(think), () => !heard, send);
         let reply = '';
         let call: { raw: ToolCall; query: string } | undefined;
+        let noted: { raw: ToolCall; notes: string }[] = [];
         const unusable: ToolCall[] = [];
         const onToolCall = (raw: ToolCall) => {
+          const notes = notesFromCall(raw);
+          if (notes !== undefined) return void noted.push({ raw, notes });
           const query = searchQuery(raw);
           if (query && !call) call = { raw, query };
           else if (!query) unusable.push(raw);
@@ -440,14 +461,38 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           const callOpts = { onThinking, onThinkingEnd, thinkingBudget, tools, onToolCall, userId: user.id, onQueued };
           const labels = { think: String(think), effort: effort ?? 'none' };
           const sinceStart = () => (performance.now() - startedAt) / 1000;
-          for await (const text of generate(prompt, controller.signal, callOpts)) {
-            heard = true;
-            if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
-            reply += text;
-            // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
-            // mustn't hold a model slot that other replies are waiting for. The text buffers here
-            // instead; awaiting `done` below flushes it.
-            void send({ type: 'delta', text });
+          // Saving notes doesn't end the reply: they're kept at once (no card: they never leave the
+          // machine), the model gets "Saved." as the tool's answer and carries on from there.
+          let turnPrompt = prompt;
+          let heldPrompt: ChatMessage[] = prompt;
+          for (let round = 0; ; round++) {
+            let said = '';
+            for await (const text of generate(turnPrompt, controller.signal, callOpts)) {
+              heard = true;
+              if (!reply) replyFirstTokenSeconds.observe(labels, sinceStart());
+              // What it wrote after saving starts a new paragraph, not the end of the last one's line.
+              const piece = !said && reply && !/\s$/.test(reply) ? `\n\n${text}` : text;
+              said += text;
+              reply += piece;
+              // Queued, not awaited: a client that reads slowly (or stops, with the connection still up)
+              // mustn't hold a model slot that other replies are waiting for. The text buffers here
+              // instead; awaiting `done` below flushes it.
+              void send({ type: 'delta', text: piece });
+            }
+            if (!noted.length) {
+              if (call) heldPrompt = [...turnPrompt, { role: 'assistant', content: said, tool_calls: [call.raw] }];
+              break;
+            }
+            target.saveNotes(noted.at(-1)!.notes);
+            // A search asked for in the same breath rides on the same assistant turn, answered later by the card.
+            turnPrompt = [
+              ...turnPrompt,
+              { role: 'assistant', content: said, tool_calls: [...noted.map((n) => n.raw), ...(call ? [call.raw] : [])] },
+              ...noted.map((): ChatMessage => ({ role: 'tool', tool_name: 'save_notes', content: 'Saved.' })),
+            ];
+            noted = [];
+            if (call) heldPrompt = turnPrompt;
+            if (call || round >= MAX_NOTE_ROUNDS) break;
           }
           heard = true; // over, even with no words (a search request, or nothing)
           if (call) {
@@ -456,7 +501,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
               userId: user.id,
               userMessageId: opts.userMessageId ?? 0,
               query: call.query,
-              prompt: [...prompt, { role: 'assistant', content: reply, tool_calls: [call.raw] }],
+              prompt: heldPrompt,
               images: [],
               decision: opts.decision,
               firstMessage: opts.firstMessage,
@@ -545,13 +590,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // An image alone has no words for a title yet; the model's title after the reply will name it.
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
     if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
-    const prompt = await buildPrompt(user, conversation.id, content, decision, search);
+    const notes = notesFor(model);
+    const prompt = await buildPrompt(user, conversation.id, content, decision, search, notes);
     const target = storedTarget(user, conversation.id, { userMessageId, firstMessage: isFirst ? firstMessage : undefined });
     return streamReply(c, target, { prompt }, {
       userMessageId,
       firstMessage: isFirst ? firstMessage : undefined,
       decision,
       search,
+      notes,
       model: model.name,
     });
   });
@@ -586,13 +633,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       ),
     );
     const search = searchFor(model);
-    const prompt = await buildPrompt(user, conversation.id, question.content, decision, search);
+    const notes = notesFor(model);
+    const prompt = await buildPrompt(user, conversation.id, question.content, decision, search, notes);
     const firstMessage = messages.length <= 2 ? question.content : undefined;
     return streamReply(c, storedTarget(user, conversation.id, { userMessageId: question.id, firstMessage }), { prompt }, {
       userMessageId: question.id,
       firstMessage,
       decision,
       search,
+      notes,
       model: model.name,
     });
   });
@@ -636,6 +685,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       decision: thinkingFor(model, pending.decision),
       searches: pending.searches,
       search: searchFor(model),
+      notes: notesFor(model),
       model: model.name,
       ...(approved ? { searching: pending.query } : {}),
     });
@@ -653,6 +703,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     label: 'a private chat',
     save: () => undefined,
     holdSearch: (search) => privateSearches.set(key, search),
+    saveNotes: (notes) => privateNotes.set(key, notes),
     // Nobody can come back for a private reply (it isn't saved), so a closed tab stops it.
     endsWithConnection: true,
   });
@@ -686,8 +737,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         ? { role: m.role, content: m.content, images }
         : { role: m.role, content: withSources(withImageText(m.content, m.imageCount, null), m.sources) },
     );
-    const prompt = await assemble(user, history, latest.content, decision, search);
-    return streamReply(c, privateTarget(key), { prompt }, { decision, search, model: model.name });
+    const notesOn = notesFor(model);
+    const prompt = await assemble(user, history, latest.content, decision, search, { notesOn, notes: notesOn ? privateNotes.get(key) : '' });
+    return streamReply(c, privateTarget(key), { prompt }, { decision, search, notes: notesOn, model: model.name });
   });
 
   api.post('/private/:chatId/stop', (c) => {
@@ -701,6 +753,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     if (!key) return c.json(notFound, 404);
     replying.stop(key, c.get('user').id);
     privateSearches.forget(key);
+    privateNotes.forget(key);
     return c.json({ ok: true });
   });
 
@@ -724,6 +777,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       decision: thinkingFor(model, pending.decision),
       searches: pending.searches,
       search: searchFor(model),
+      notes: notesFor(model),
       model: model.name,
       ...(approved ? { searching: pending.query } : {}),
     });

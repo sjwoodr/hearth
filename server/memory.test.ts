@@ -4,6 +4,7 @@ import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, createSweep, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
 import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
+import { NOTES_INSTRUCTIONS } from './chat-notes.ts';
 import { timeNote } from './pause.ts';
 import { login, NOW, ORIGIN, sessionCookie, setupApp } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
@@ -265,7 +266,7 @@ describe('memories in chat and over the API', () => {
     expect(ctx.model.recallQueries).toEqual([{ userId: 1, message: 'qui ou que?' }]);
     expect(ctx.model.calls[0]![0]).toEqual({
       role: 'system',
-      content: 'You are hearth.\n\n## What you remember about alice\n- Alice studies French.',
+      content: `You are hearth.\n\n${NOTES_INSTRUCTIONS}\n\n## What you remember about alice\n- Alice studies French.`,
     });
   });
 
