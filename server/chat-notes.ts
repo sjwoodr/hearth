@@ -12,7 +12,7 @@
 //
 // The owner never wants to see them in the app: no web route returns them, only bin/hearth does.
 import type { DB } from './db.ts';
-import type { ToolCall } from './ollama.ts';
+import type { ChatMessage, ToolCall } from './ollama.ts';
 
 /** Room for a ten-chapter plan: one hit the 2,000 the probe allowed and was cut off. */
 export const MAX_NOTES_CHARS = 3000;
@@ -40,6 +40,15 @@ You have private notes for this chat that only you can see; they are shown to yo
 /** The notes as the model reads them on the newest message, or '' for none. */
 export const notesForPrompt = (notes: string): string =>
   notes ? `[Your notes for this chat; only you can see them]\n${notes}` : '';
+
+/**
+ * Whether the reply this prompt is for has already saved notes: a save_notes answer after the last user
+ * message. True when a reply resumes after a search card, so the saved-notes line isn't lost.
+ */
+export function savedInTurn(prompt: ChatMessage[]): boolean {
+  const lastUser = prompt.findLastIndex((m) => m.role === 'user');
+  return prompt.slice(lastUser + 1).some((m) => m.role === 'tool' && m.tool_name === 'save_notes');
+}
 
 /** The notes a save_notes call carries, clipped to the cap; undefined for any other call. */
 export function notesFromCall(call: ToolCall): string | undefined {

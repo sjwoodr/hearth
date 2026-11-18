@@ -13,6 +13,13 @@ describe("the text shown before a reply's first word", () => {
     expect(pendingText({ ...idle, loading: true })).toMatch(/^Loading the model/);
   });
 
+  it('says it is writing notes after the model saved them, until thinking or words show', () => {
+    expect(pendingText({ ...idle, writingNotes: true })).toBe('Writing notes…');
+    expect(pendingText({ ...idle, writingNotes: true, waitedMs: STILL_WORKING_MS })).toBe('Writing notes…');
+    expect(pendingText({ ...idle, writingNotes: true, thinkingTokens: 3 })).toMatch(/^Thinking/);
+    expect(pendingText({ ...idle, writingNotes: true, queued: true })).toMatch(/^Waiting/);
+  });
+
   it('says it is still working after five seconds with nothing else to show', () => {
     expect(pendingText({ ...idle, waitedMs: STILL_WORKING_MS })).toMatch(/^Still working/);
   });

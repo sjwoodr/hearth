@@ -403,7 +403,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   model gets "Saved." and carries on, at most 2 more rounds. Private chats keep notes in memory only.
   Cap 3,000 characters: a 10-chapter plan hit the probe's 2,000 and was cut. Not yet measured: whether a
   plan survives a long chat's folding (it should, as it isn't in the history), and unprompted use for
-  quizzes and games.
+  quizzes and games. **The chat shows that notes were saved, never what** (owner's request, same night):
+  a `notes` stream event with no payload, `messages.notes_saved` (migration 013) for the "Updated its
+  private notes" line after a reload, and "Writing notes…" before the first word. A reply resumed after a
+  search card works the flag out from its prompt (`savedInTurn`). Through the real server the story brief
+  saved 16/17 times (10/10 fast, 6/6 thinking, 0/1 in the browser check); the miss told the user "I've
+  already mapped out the entire mystery in my notes" with nothing saved. The line is the tell; a "never
+  say you saved unless you called save_notes" instruction is untested (needs ~50 runs an arm at 1 in 17).
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that
@@ -445,7 +451,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes (stored and `/private`), `buildPrompt` + `assemble`, `ReplyTarget` (where a reply is saved, or not), NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
+| `server/chat.ts` | chat routes (stored and `/private`), `buildPrompt` + `assemble`, `ReplyTarget` (where a reply is saved, or not), NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`notes`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
 | `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |

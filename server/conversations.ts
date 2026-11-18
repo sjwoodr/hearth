@@ -15,6 +15,8 @@ export type Message = {
   image_count: number;
   image_note: string | null;
   sources: Source[] | null;
+  /** The model saved its private notes while writing this reply (never what they say). */
+  notes_saved: boolean;
   created_at: string;
 };
 
@@ -69,12 +71,12 @@ export function deleteConversation(db: DB, userId: number, id: number): boolean 
 export function listMessages(db: DB, userId: number, conversationId: number): Message[] {
   const rows = db
     .prepare(
-      `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.sources, m.created_at FROM messages m
+      `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.sources, m.notes_saved, m.created_at FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE m.conversation_id = ? AND c.user_id = ? ORDER BY m.id`,
     )
-    .all(conversationId, userId) as (Omit<Message, 'sources'> & { sources: string | null })[];
-  return rows.map((m) => ({ ...m, sources: m.sources ? (JSON.parse(m.sources) as Source[]) : null }));
+    .all(conversationId, userId) as (Omit<Message, 'sources' | 'notes_saved'> & { sources: string | null; notes_saved: number })[];
+  return rows.map((m) => ({ ...m, sources: m.sources ? (JSON.parse(m.sources) as Source[]) : null, notes_saved: m.notes_saved === 1 }));
 }
 
 /** Caller must already have checked the conversation belongs to the user. */
@@ -83,13 +85,13 @@ export function addMessage(
   conversationId: number,
   role: Message['role'],
   content: string,
-  extra: { imageCount?: number; sources?: Source[] } = {},
+  extra: { imageCount?: number; sources?: Source[]; notesSaved?: boolean } = {},
 ): number {
   const sources = extra.sources?.length ? JSON.stringify(extra.sources) : null;
   return db.transaction(() => {
     const id = db
-      .prepare('INSERT INTO messages (conversation_id, role, content, image_count, sources) VALUES (?, ?, ?, ?, ?)')
-      .run(conversationId, role, content, extra.imageCount ?? 0, sources).lastInsertRowid;
+      .prepare('INSERT INTO messages (conversation_id, role, content, image_count, sources, notes_saved) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(conversationId, role, content, extra.imageCount ?? 0, sources, extra.notesSaved ? 1 : 0).lastInsertRowid;
     db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
     return Number(id);
   })();

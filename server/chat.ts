@@ -2,7 +2,7 @@ import { job, replies, replyFirstTokenSeconds, replySeconds, searches as searchC
 import type { Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { ActiveReplies } from './active-replies.ts';
-import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNotes, SAVE_NOTES_TOOL, saveNotes } from './chat-notes.ts';
+import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNotes, SAVE_NOTES_TOOL, savedInTurn, saveNotes } from './chat-notes.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote, timeNote } from './pause.ts';
 import { contextUse, listFolds } from './summarize.ts';
@@ -324,7 +324,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     /** How log lines name the chat: never its content. */
     label: string;
     /** Saves a finished reply, or what was written before a stop or failure; its id, if it was saved. */
-    save: (reply: string, sources: Source[], partial: boolean) => number | undefined;
+    save: (reply: string, sources: Source[], partial: boolean, notesSaved: boolean) => number | undefined;
     /** Holds the model's search request until the user answers the card. */
     holdSearch: (search: Omit<PendingSearch, 'askedAt'>) => void;
     /** Keeps the model's notes for this chat: the database for a stored chat, server memory for a private one. */
@@ -341,10 +341,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return {
       key: conversationId,
       label: `chat ${conversationId}`,
-      save: (reply, sources, partial) => {
+      save: (reply, sources, partial, notesSaved) => {
         // Not into a chat deleted mid-reply, which is what stopped it.
         if (partial && !getConversation(db, user.id, conversationId)) return undefined;
-        return addMessage(db, conversationId, 'assistant', reply, { sources });
+        return addMessage(db, conversationId, 'assistant', reply, { sources, notesSaved });
       },
       holdSearch: (search) => {
         const saved = withoutImages(search.prompt, imageSource);
@@ -442,6 +442,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         });
         if (opts.searching) await send({ type: 'searching', query: opts.searching });
         const { prompt, sources = [] } = await turnReady;
+        // That notes were saved, never what they say: the chat shows "Updated its private notes".
+        let notesSaved = savedInTurn(prompt);
+        if (notesSaved) await send({ type: 'notes' });
         noticeLoading(deps.modelLoaded?.(think), () => !heard, send);
         let reply = '';
         let call: { raw: ToolCall; query: string } | undefined;
@@ -484,6 +487,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
               break;
             }
             target.saveNotes(noted.at(-1)!.notes);
+            if (!notesSaved) void send({ type: 'notes' });
+            notesSaved = true;
             // A search asked for in the same breath rides on the same assistant turn, answered later by the card.
             turnPrompt = [
               ...turnPrompt,
@@ -525,7 +530,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
             throw new Error('The model returned an empty reply. Retry usually works.');
           }
           reply = plainSymbols(reply);
-          const messageId = target.save(reply, sources, false);
+          const messageId = target.save(reply, sources, false, notesSaved);
           release(); // saved: before `done`, whose write can wait on a client that's gone quiet
           replies.inc({ ...labels, outcome: 'done' });
           replySeconds.observe(labels, sinceStart());
@@ -541,7 +546,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
           heard = true;
           replies.inc({ think: String(think), effort: effort ?? 'none', outcome: controller.signal.aborted ? 'stopped' : 'error' });
           // Stopped or failed mid-reply: keep what was generated so the chat reads as it happened.
-          const messageId = reply.trim() ? target.save(plainSymbols(reply), sources, true) : undefined;
+          const messageId = reply.trim() ? target.save(plainSymbols(reply), sources, true, notesSaved) : undefined;
           release();
           if (controller.signal.aborted) await send({ type: 'stopped', ...(messageId ? { messageId } : {}) });
           else await send({ type: 'error', error: err instanceof Error ? err.message : 'Generation failed.' });

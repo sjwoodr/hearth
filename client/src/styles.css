@@ -295,6 +295,8 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
   border: 1px solid var(--border); color: var(--muted); text-decoration: none;
 }
 .sources a:hover { color: var(--accent); border-color: var(--accent); }
+/* The model saved its private notes on this reply: a quiet line, nothing to open. */
+.notes-saved { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
 
 /* ── think toggle ── */
 .think-toggle { background: transparent; color: var(--muted); border-color: var(--border); }

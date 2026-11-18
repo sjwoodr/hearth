@@ -76,6 +76,8 @@ export type Message = {
   image_count: number;
   image_note: string | null;
   sources: Source[] | null;
+  /** The model saved its private notes while writing this reply. What they say never reaches the app. */
+  notes_saved?: boolean;
   created_at: string;
 };
 
@@ -112,6 +114,8 @@ export type StreamEvent =
   | { type: 'title'; title: string }
   | { type: 'delta'; text: string }
   | { type: 'searching'; query: string }
+  /** The model saved its private notes for this chat; carries nothing else, by design. */
+  | { type: 'notes' }
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
   /** No `messageId` in a private chat: nothing was saved. */

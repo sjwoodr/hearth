@@ -14,6 +14,8 @@ export type PendingState = {
   effortLabel?: string | null;
   autoReason: string | null;
   waitedMs: number;
+  /** The model saved its private notes and is writing the reply now (a few seconds' pause). */
+  writingNotes?: boolean;
 };
 
 export function pendingText(p: PendingState): string {
@@ -24,6 +26,7 @@ export function pendingText(p: PendingState): string {
     const effort = p.effortLabel ? ` · ${p.effortLabel}` : '';
     return `Thinking… ${p.thinkingTokens}${of}${effort}${p.autoReason ? ` · auto: ${p.autoReason}` : ''}`;
   }
+  if (p.writingNotes) return 'Writing notes…';
   if (p.loading) return 'Loading the model… the first message after a quiet spell takes about 15 seconds';
   if (p.waitedMs >= STILL_WORKING_MS) return 'Still working… a long chat can take a moment to read';
   return '…';

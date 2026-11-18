@@ -160,6 +160,8 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
   // A web search the model asked for, waiting on the user's answer; and the one running now.
   const [searchRequest, setSearchRequest] = useState<string | null>(null);
   const [searchingFor, setSearchingFor] = useState<string | null>(null);
+  // The reply being written saved the model's private notes (only that it did, never what they say).
+  const [notesSaved, setNotesSaved] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // Set while the page waits for a reply the server kept writing after the stream dropped.
   const [catchingUp, setCatchingUp] = useState(false);
@@ -328,6 +330,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
     let thought = false;
     let reason: string | undefined;
     let thoughtEffort: Effort | undefined;
+    let noted = false;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
       reply = '';
@@ -336,6 +339,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         ...localMessage('assistant', content),
         note,
         fast: !thought,
+        notes_saved: noted,
         selfCorrected,
         effort: thoughtEffort,
         sources: sources ?? null,
@@ -354,6 +358,10 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         } else if (event.type === 'queued') setQueued(true);
         else if (event.type === 'loading') setLoading(true);
         else if (event.type === 'searching') setSearchingFor(event.query);
+        else if (event.type === 'notes') {
+          noted = true;
+          setNotesSaved(true);
+        }
         else if (event.type === 'search') {
           // The model wants to search: the reply waits for the user's answer on the card.
           reply = '';
@@ -410,6 +418,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
       setReplyEffort(null);
       setAutoReason(null);
       setSearchingFor(null);
+      setNotesSaved(false);
       setStreamText(null);
       setStartedAt(null);
       // After a drop the sidebar refresh would fail too; catching up refreshes it once the reply is in.
@@ -593,7 +602,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         {streaming &&
           (streamText ? (
             <>
-              <MessageBubble message={{ role: 'assistant', content: streamText }} streaming />
+              <MessageBubble message={{ role: 'assistant', content: streamText, notes_saved: notesSaved }} streaming />
               <p className="reply-note" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s
               </p>
@@ -609,6 +618,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
                 effortLabel: replyEffort ? EFFORT_LABEL[replyEffort] : null,
                 autoReason,
                 waitedMs: now - (startedAt ?? now),
+                writingNotes: notesSaved,
               })}
               {/* Hidden from screen readers: a number changing ten times a second would drown them out. */}
               <span className="elapsed" aria-hidden="true">
@@ -807,6 +817,8 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
     <div className={`bubble ${role}`}>
       <div id={domId} className={className}>
         {role === 'user' && <MessageImages message={message} />}
+        {/* That the model saved its private notes here; what they say is never sent to the app. */}
+        {role === 'assistant' && message.notes_saved && <p className="notes-saved">Updated its private notes</p>}
         {body}
         {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
       </div>

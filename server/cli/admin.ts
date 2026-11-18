@@ -14,7 +14,7 @@ export type ConversationRow = {
   created_at: string;
   updated_at: string;
 };
-export type MessageRow = { id: number; conversation_id: number; role: string; content: string; created_at: string };
+export type MessageRow = { id: number; conversation_id: number; role: string; content: string; created_at: string; notes_saved?: number };
 export type MemoryRow = {
   id: number;
   username: string;
@@ -131,7 +131,9 @@ export function formatConversation(c: ConversationRow, messages: MessageRow[]): 
     lines.push(`## Running summary (covers messages up to ${c.summary_through_message_id})`, '', c.summary, '');
   }
   for (const m of messages) {
-    lines.push(`## ${m.role === 'user' ? c.username : 'hearth'} · ${localTime(m.created_at)} · message ${m.id}`, '', m.content, '');
+    // Where the model saved its notes (`chats notes` shows them): the markdown export says only that it did.
+    const noted = m.notes_saved ? ' · saved its notes' : '';
+    lines.push(`## ${m.role === 'user' ? c.username : 'hearth'} · ${localTime(m.created_at)} · message ${m.id}${noted}`, '', m.content, '');
   }
   if (messages.length === 0) lines.push('(no messages)');
   return lines.join('\n');

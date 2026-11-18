@@ -31,7 +31,9 @@ describe('chat notes', () => {
     ctx.model.reply = ['Chapitre 1. ', 'Le fromage a disparu.'];
 
     const first = await say(ctx.app, alice, id, 'Plan the mystery in your notes, then write chapter 1.');
-    expect(first.list.map((e) => e.type)).toEqual(['start', 'delta', 'delta', 'done']);
+    expect(first.list.map((e) => e.type)).toEqual(['start', 'notes', 'delta', 'delta', 'done']);
+    // The event says that notes were saved, and nothing else.
+    expect(first.list[1]).toEqual({ type: 'notes' });
     expect(getNotes(ctx.db, userId(ctx.db, 'alice'), id)).toBe(PLAN);
 
     // Two model calls: the one that saved, then the same prompt with the tool turn, answered "Saved.".
@@ -43,12 +45,18 @@ describe('chat notes', () => {
       { role: 'tool', tool_name: 'save_notes', content: 'Saved.' },
     ]);
     // Only the chapter is stored as the reply.
-    const chat = (await (await call(ctx.app, alice, 'GET', `/conversations/${id}`)).json()) as { messages: { content: string }[] };
+    type Stored = { messages: { role: string; content: string; notes_saved: boolean }[] };
+    const chat = (await (await call(ctx.app, alice, 'GET', `/conversations/${id}`)).json()) as Stored;
     expect(chat.messages.map((m) => m.content).at(-1)).toBe('Chapitre 1. Le fromage a disparu.');
+    // Flagged on the reply, so the chat still shows "Updated its private notes" after a reload.
+    expect(chat.messages.map((m) => m.notes_saved)).toEqual([false, true]);
 
     // Next turn: the notes ride on the newest message, and the earlier one reads as stored.
     ctx.model.reply = ['Chapitre 2.'];
-    await say(ctx.app, alice, id, 'Next chapter please.');
+    const second = await say(ctx.app, alice, id, 'Next chapter please.');
+    expect(second.list.map((e) => e.type)).not.toContain('notes');
+    const after = (await (await call(ctx.app, alice, 'GET', `/conversations/${id}`)).json()) as Stored;
+    expect(after.messages.map((m) => m.notes_saved)).toEqual([false, true, false, false]);
     const next = ctx.model.calls.at(-1)!;
     expect(next[0]!.content).toBe(saving![0]!.content); // the system prompt didn't change: the cache holds
     expect(next.at(-1)!.content).toBe(`[Your notes for this chat; only you can see them]\n${PLAN}\n\n[alice's message]\nNext chapter please.`);
@@ -142,6 +150,10 @@ describe('chat notes', () => {
 
     const answered = await events(await call(ctx.app, alice, 'POST', `/conversations/${id}/search`, { approve: true }));
     expect(answered.list.at(-1)!.type).toBe('done');
+    // The reply resumed after the card still says it saved notes, and is stored that way.
+    expect(answered.list.map((e) => e.type)).toContain('notes');
+    const chat = (await (await call(ctx.app, alice, 'GET', `/conversations/${id}`)).json()) as { messages: { notes_saved: boolean }[] };
+    expect(chat.messages.at(-1)!.notes_saved).toBe(true);
     // The prompt after the search: the notes' tool turn, then the search's, in order.
     const tail = ctx.model.calls.at(-1)!.slice(-4);
     expect(tail.map((m) => `${m.role}:${m.tool_calls?.[0]?.function.name ?? m.tool_name ?? ''}`)).toEqual([

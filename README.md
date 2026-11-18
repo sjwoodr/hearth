@@ -346,7 +346,11 @@ turn, attached to the newest message like recalled memories. Saving replaces the
 3,000 characters (`server/chat-notes.ts`, table `chat_notes`, deleted with the chat).
 
 **Nobody sees them in the app**, by design: no page shows them and no API response contains them, so
-a story's ending can't be spoiled by a stray click. `bin/hearth chats notes <id>` prints them, for
+a story's ending can't be spoiled by a stray click. The chat does show *that* they were saved: a quiet
+"Updated its private notes" line on the reply (kept after a reload, `messages.notes_saved`), and
+"Writing notes…" while the model saves and carries on. That line is also how to catch the model
+claiming a plan it never saved ("I've mapped it all out in my notes" with no line: it happened once in
+17 runs of a story brief). `bin/hearth chats notes <id>` prints them, for
 debugging. A private chat's notes stay in server memory only, until the chat ends, hearth restarts,
 or 12 hours pass unused.
 

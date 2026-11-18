@@ -138,5 +138,12 @@ describe('hearth chats notes', () => {
     expect(r.code).toBe(0);
     expect(r.out).toMatch(new RegExp(`^Notes for chat ${chat} \\(Mystery\\), saved .+ UTC:\\n\\nCulprit: the baker\\.`));
     expect(hearth(['chats', 'notes', '99999']).code).toBe(1);
+    // `chats show` marks where they were saved, without what they say.
+    const db2 = new Database(env.HEARTH_DB_PATH);
+    db2.prepare("INSERT INTO messages (conversation_id, role, content, notes_saved) VALUES (?, 'assistant', 'Chapitre 1.', 1)").run(chat);
+    db2.close();
+    const shown = hearth(['chats', 'show', String(chat)]).out;
+    expect(shown).toMatch(/## hearth · .+ · message \d+ · saved its notes/);
+    expect(shown).not.toContain('Culprit');
   });
 });
