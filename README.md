@@ -340,7 +340,8 @@ the exact memory section the model would get.
 
 ## Who the assistant is
 
-Each user can shape their own assistant on the Memories page, under **About <name>**:
+Each user can shape their own assistant on the Memories page, in its second tab, **About <name>**
+(the first is **About you**; the open tab is in the URL, `#/memories/assistant`, so a reload keeps it):
 
 - **A name and a description** ("who they are to you": a voice, a backstory, how you picture them).
   Both go into that user's system prompt as a "Who you are" section, after hearth's own instructions,

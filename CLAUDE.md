@@ -502,7 +502,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
-| `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`), page in `client/src/MemoriesView.tsx` |
+| `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`), page in `client/src/MemoriesView.tsx` (its About <name> tab) |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Memory, type MemoryKind, type MemorySubject, type Persona } from './api.ts';
 import { memoryDate } from '../../shared/chat-span.ts';
 
@@ -33,10 +33,18 @@ const SELF_SECTIONS = (name: string): typeof SECTIONS => [
   },
 ];
 
+type Tab = MemorySubject;
+const TAB_HASH: Record<Tab, string> = { user: '#/memories', assistant: '#/memories/assistant' };
+const tabFromHash = (): Tab => (location.hash === TAB_HASH.assistant ? 'assistant' : 'user');
+
 export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number) => void; onError: (err: unknown) => void }) {
   const [memories, setMemories] = useState<Memory[] | null>(null);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<Tab>(tabFromHash);
+  // After "Move to About …" the memory leaves the tab you're on, so say where it went.
+  const [moved, setMoved] = useState<{ content: string; to: Tab } | null>(null);
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ user: null, assistant: null });
 
   const load = useCallback(() => {
     api.memories().then(setMemories, onError);
@@ -45,9 +53,18 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
   const assistant = persona ? persona.name || persona.defaultName : 'hearth';
   useEffect(load, [load]);
 
+  // The tab is in the URL, so a reload stays on it. Replaced, not pushed: Back leaves the page.
+  const select = (next: Tab, focus = false) => {
+    setTab(next);
+    setMoved(null);
+    if (location.hash !== TAB_HASH[next]) history.replaceState(null, '', TAB_HASH[next]);
+    if (focus) tabRefs.current[next]?.focus();
+  };
+
   // Field errors (too long, empty) show here; anything else goes up to the app.
   const run = async (action: () => Promise<unknown>) => {
     setError('');
+    setMoved(null);
     try {
       await action();
       load();
@@ -59,6 +76,11 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
     }
   };
 
+  const count = (subject: Tab) => (memories ?? []).filter((m) => m.subject === subject).length;
+  const label = (t: Tab) => (t === 'user' ? 'About you' : `About ${assistant}`);
+  const tabs: Tab[] = ['user', 'assistant'];
+  const onMoved = (content: string, to: Tab) => setMoved({ content, to });
+
   return (
     <div className="memories">
       <div className="memories-inner">
@@ -66,22 +88,78 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
           What hearth has learned from your chats, or that you added yourself: about you, and about who {assistant} is to
           you. Edit or delete anything that's wrong: a wrong memory comes back in every future chat.
         </p>
+        <div className="memories-tabs" role="tablist" aria-label="Memories">
+          {tabs.map((t) => (
+            <button
+              key={t}
+              ref={(el) => {
+                tabRefs.current[t] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`memories-tab-${t}`}
+              aria-selected={tab === t}
+              aria-controls={`memories-panel-${t}`}
+              tabIndex={tab === t ? 0 : -1}
+              title={label(t)}
+              onClick={() => select(t)}
+              onKeyDown={(e) => {
+                // Arrow keys move between tabs (the WAI-ARIA tabs pattern); there are two, so either way is the other.
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') select(t === 'user' ? 'assistant' : 'user', true);
+                if (e.key === 'Home') select('user', true);
+                if (e.key === 'End') select('assistant', true);
+              }}
+            >
+              <span className="tab-label">{label(t)}</span>
+              {memories !== null && <span className="count">{count(t)}</span>}
+            </button>
+          ))}
+        </div>
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
-        <section className="memories-group" aria-labelledby="memories-you">
-          <h2 id="memories-you">About you</h2>
+        <p className="muted small moved" role="status">
+          {moved && (
+            <>
+              Moved “{moved.content.length > 80 ? `${moved.content.slice(0, 80)}…` : moved.content}” to{' '}
+              <button type="button" className="link" onClick={() => select(moved.to)}>
+                {label(moved.to)}
+              </button>
+              .
+            </>
+          )}
+        </p>
+        <section
+          className="memories-group"
+          role="tabpanel"
+          id="memories-panel-user"
+          aria-labelledby="memories-tab-user"
+          hidden={tab !== 'user'}
+        >
           <AddMemory id="memory-new" placeholder="Tell hearth something to remember…" onAdd={(kind, content) => run(() => api.addMemory(kind, content))} />
-          {memories === null ? null : memories.every((m) => m.subject !== 'user') ? (
+          {memories === null ? null : count('user') === 0 ? (
             <p className="muted">Nothing yet. hearth reads a chat a few minutes after it goes quiet.</p>
           ) : (
-            <MemorySections memories={memories} subject="user" sections={SECTIONS} assistant={assistant} onOpenChat={onOpenChat} run={run} />
+            <MemorySections
+              memories={memories}
+              subject="user"
+              sections={SECTIONS}
+              assistant={assistant}
+              onOpenChat={onOpenChat}
+              run={run}
+              onMoved={onMoved}
+            />
           )}
         </section>
-        <section className="memories-group" aria-labelledby="memories-assistant">
-          <h2 id="memories-assistant">About {assistant}</h2>
+        <section
+          className="memories-group"
+          role="tabpanel"
+          id="memories-panel-assistant"
+          aria-labelledby="memories-tab-assistant"
+          hidden={tab !== 'assistant'}
+        >
           {persona && (
             <PersonaEditor
               persona={persona}
@@ -89,12 +167,18 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
               onRestore={(id) => run(() => api.restorePersona(id))}
             />
           )}
+          <h3>Memories about {assistant}</h3>
           <AddMemory
             id="memory-new-assistant"
             placeholder={`Something ${assistant} should know about itself…`}
             onAdd={(kind, content) => run(() => api.addMemory(kind, content, 'assistant'))}
           />
-          {memories !== null && memories.some((m) => m.subject === 'assistant') && (
+          {memories === null ? null : count('assistant') === 0 ? (
+            <p className="muted small">
+              None yet. hearth keeps what you set or agree to about {assistant} in a chat, never what {assistant} makes up about
+              itself. A memory under About you that's really about {assistant} can be moved here.
+            </p>
+          ) : (
             <MemorySections
               memories={memories}
               subject="assistant"
@@ -102,11 +186,27 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
               assistant={assistant}
               onOpenChat={onOpenChat}
               run={run}
+              onMoved={onMoved}
             />
           )}
+          {persona?.instructions && <Instructions text={persona.instructions} />}
         </section>
       </div>
     </div>
+  );
+}
+
+/** hearth's fixed prompt, shown but not editable: the measured behaviour every persona builds on. */
+function Instructions({ text }: { text: string }) {
+  return (
+    <details className="persona-history">
+      <summary>hearth's own instructions (read-only)</summary>
+      <p className="muted small">
+        What every chat starts with, before the description above. It holds the measured parts (correcting French, plain symbols,
+        how replies end), so it can only be changed in hearth's code.
+      </p>
+      <pre className="persona-instructions">{text}</pre>
+    </details>
   );
 }
 
@@ -118,6 +218,7 @@ function MemorySections({
   assistant,
   onOpenChat,
   run,
+  onMoved,
 }: {
   memories: Memory[];
   subject: MemorySubject;
@@ -125,7 +226,9 @@ function MemorySections({
   assistant: string;
   onOpenChat: (id: number) => void;
   run: (action: () => Promise<unknown>) => Promise<boolean>;
+  onMoved: (content: string, to: MemorySubject) => void;
 }) {
+  const other: MemorySubject = subject === 'user' ? 'assistant' : 'user';
   return (
     <>
       {sections.map(({ kind, title, blurb }) => {
@@ -149,7 +252,9 @@ function MemorySections({
                     onOpenChat={onOpenChat}
                     onSave={(content) => run(() => api.updateMemory(m.id, { content }))}
                     onMove={() => run(() => api.updateMemory(m.id, { kind: kind === 'fact' ? 'profile' : 'fact' }))}
-                    onMoveSubject={() => run(() => api.updateMemory(m.id, { subject: subject === 'user' ? 'assistant' : 'user' }))}
+                    onMoveSubject={() =>
+                      void run(() => api.updateMemory(m.id, { subject: other })).then((ok) => ok && onMoved(m.content, other))
+                    }
                     onDelete={() => {
                       if (window.confirm(`Forget "${m.content}"?`)) void run(() => api.deleteMemory(m.id));
                     }}
@@ -243,16 +348,6 @@ function PersonaEditor({
           </button>
         )}
       </div>
-      {persona.instructions && (
-        <details className="persona-history">
-          <summary>hearth's own instructions (read-only)</summary>
-          <p className="muted small">
-            What every chat starts with, before the description above. It holds the measured parts (correcting French, plain
-            symbols, how replies end), so it can only be changed in hearth's code.
-          </p>
-          <pre className="persona-instructions">{persona.instructions}</pre>
-        </details>
-      )}
       {persona.history.length > 0 && (
         <details className="persona-history">
           <summary>Earlier versions ({persona.history.length})</summary>

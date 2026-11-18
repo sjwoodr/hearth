@@ -10,7 +10,8 @@ const readHash = (): number | undefined => {
   const match = /^#\/c\/(\d+)$/.exec(location.hash);
   return match ? Number(match[1]) : undefined;
 };
-const onMemoriesPage = () => location.hash === '#/memories';
+// Either tab of the Memories page (MemoriesView keeps its tab in the hash).
+const onMemoriesPage = () => location.hash === '#/memories' || location.hash === '#/memories/assistant';
 const onPrivatePage = () => location.hash === '#/private';
 const LEAVE_PRIVATE = "Leave this private chat? It isn't saved anywhere, so it will be gone.";
 
@@ -178,7 +179,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const openMemories = () => {
     if (!mayLeave()) return;
     leavePrivate();
-    history.pushState(null, '', '#/memories');
+    if (!onMemoriesPage()) history.pushState(null, '', '#/memories');
     setActiveId(undefined);
     setShowMemories(true);
     setSidebarOpen(false);
