@@ -54,7 +54,14 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
 
 /** `name` is the display name, or the username when none is set. An admin can switch the model. */
 export type WordMeaning = { translation: string; note: string };
-export type Me = { username: string; name: string; role?: 'user' | 'admin'; isAdmin?: boolean };
+export type Me = {
+  username: string;
+  name: string;
+  role?: 'user' | 'admin';
+  isAdmin?: boolean;
+  /** What this user calls their assistant (their persona's name, else the server's default). */
+  assistantName?: string;
+};
 /** A chat model Ollama has; `capabilities` from Ollama (vision, thinking, tools). */
 /** `aliases`: other tags of the same weights, shown once. */
 export type ModelInfo = { name: string; size: number; parameterSize?: string; quantization?: string; capabilities: string[]; aliases?: string[] };

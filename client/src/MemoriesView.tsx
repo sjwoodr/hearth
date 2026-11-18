@@ -37,7 +37,16 @@ type Tab = MemorySubject;
 const TAB_HASH: Record<Tab, string> = { user: '#/memories', assistant: '#/memories/assistant' };
 const tabFromHash = (): Tab => (location.hash === TAB_HASH.assistant ? 'assistant' : 'user');
 
-export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number) => void; onError: (err: unknown) => void }) {
+export function MemoriesView({
+  onOpenChat,
+  onError,
+  onAssistantName,
+}: {
+  onOpenChat: (id: number) => void;
+  onError: (err: unknown) => void;
+  /** The assistant's name after every load, save, restore or reset, so the chat box follows a rename. */
+  onAssistantName?: (name: string) => void;
+}) {
   const [memories, setMemories] = useState<Memory[] | null>(null);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [error, setError] = useState('');
@@ -52,6 +61,9 @@ export function MemoriesView({ onOpenChat, onError }: { onOpenChat: (id: number)
   }, [onError]);
   const assistant = persona ? persona.name || persona.defaultName : 'hearth';
   useEffect(load, [load]);
+  useEffect(() => {
+    if (persona) onAssistantName?.(assistant);
+  }, [persona, assistant, onAssistantName]);
 
   // The tab is in the URL, so a reload stays on it. Replaced, not pushed: Back leaves the page.
   const select = (next: Tab, focus = false) => {

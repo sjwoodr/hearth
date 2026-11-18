@@ -356,7 +356,9 @@ Each user can shape their own assistant on the Memories page, in its second tab,
   chat as lore. "Always" ones join the description; the others are recalled when relevant.
 
 The name is per user: the system prompt, the running summary and memory extraction all call the
-assistant by that user's name for it. `bin/hearth persona show|name|about|reset <user>` does the same
+assistant by that user's name for it, and so does the app wherever the assistant itself acts (the chat
+box's "Message Gemma", a web search request, the Think: Auto help, the private-chat note). Where the app
+works in the background (memories, summaries, image descriptions) it stays hearth. `bin/hearth persona show|name|about|reset <user>` does the same
 from the console (`server/persona.ts`, tables `personas` and `persona_history`, `memories.subject`).
 
 ## Chat notes

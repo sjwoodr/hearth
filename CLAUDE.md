@@ -473,6 +473,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   Overriding the whole prompt (`systemPrompt` in the chart) just to rename would freeze a copy that
   stops following the tuned prompt; keep that for a really different persona. **Since 2026-11-18 each
   user can override the name** (persona.ts, below): the setting is the default for users who haven't.
+  The UI uses that name where the assistant itself acts (chat box, search card, Think: Auto help, the
+  private-chat note; `assistantName` on `/me` and `/login`) and keeps "hearth" for background work.
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short

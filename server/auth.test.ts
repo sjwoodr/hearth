@@ -44,7 +44,7 @@ describe('login and sessions', () => {
     expect(header).toMatch(/HttpOnly/);
     expect(header).toMatch(/Secure/);
     expect(header).toMatch(/SameSite=Lax/);
-    expect(await (await me(app, sessionCookie(res))).json()).toEqual({ username: 'alice', name: 'alice', role: 'user', isAdmin: false });
+    expect(await (await me(app, sessionCookie(res))).json()).toEqual({ username: 'alice', name: 'alice', role: 'user', isAdmin: false, assistantName: 'hearth' });
   });
 
   it('gives the same answer for a wrong password and an unknown user', async () => {
@@ -96,11 +96,11 @@ describe('display names', () => {
     const { db, app } = setup();
     const cookie = await signedIn(db, app);
     setDisplayName(db, 'alice', '  Alice   Liddell ');
-    expect(await (await me(app, cookie)).json()).toEqual({ username: 'alice', name: 'Alice Liddell', role: 'user', isAdmin: false });
+    expect(await (await me(app, cookie)).json()).toEqual({ username: 'alice', name: 'Alice Liddell', role: 'user', isAdmin: false, assistantName: 'hearth' });
     const relogin = await login(app, 'alice', 'correct horse');
-    expect(await relogin.json()).toEqual({ username: 'alice', name: 'Alice Liddell', role: 'user', isAdmin: false });
+    expect(await relogin.json()).toEqual({ username: 'alice', name: 'Alice Liddell', role: 'user', isAdmin: false, assistantName: 'hearth' });
     setDisplayName(db, 'alice', '');
-    expect(await (await me(app, cookie)).json()).toEqual({ username: 'alice', name: 'alice', role: 'user', isAdmin: false });
+    expect(await (await me(app, cookie)).json()).toEqual({ username: 'alice', name: 'alice', role: 'user', isAdmin: false, assistantName: 'hearth' });
   });
 
   it('rejects names that are too long or carry markdown', async () => {

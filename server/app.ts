@@ -4,6 +4,7 @@ import { csrf } from 'hono/csrf';
 import { registerChatRoutes, type ChatDeps } from './chat.ts';
 import { registerMemoryRoutes } from './memory-routes.ts';
 import { registerModelRoutes } from './model-routes.ts';
+import { assistantNameFor } from './persona.ts';
 import type { DB } from './db.ts';
 import { registerHealthRoutes, type ModelsProbe } from './health.ts';
 import { getDummyHash, verifyPassword } from './passwords.ts';
@@ -42,6 +43,15 @@ export function createApp(opts: AppOptions) {
   const pairThrottle = opts.pairThrottle ?? new LoginThrottle(5, 15 * MINUTE, 15 * MINUTE);
   const ipThrottle = opts.ipThrottle ?? new LoginThrottle(20, 15 * MINUTE, 15 * MINUTE);
   const secure = origin.startsWith('https://');
+  // Who's signed in, and the name their assistant goes by (persona.ts): the chat box and the other places
+  // where the assistant itself acts use it ("Message Gemma"), while the app stays hearth.
+  const meOf = (id: number, username: string, name: string, role: string) => ({
+    username,
+    name,
+    role,
+    isAdmin: role === 'admin',
+    assistantName: assistantNameFor(db, id, opts.assistantName ?? 'hearth'),
+  });
 
   const app = new Hono<Env>();
   registerHealthRoutes(app, { db, models: opts.checkModels });
@@ -84,7 +94,7 @@ export function createApp(opts: AppOptions) {
       path: '/',
       maxAge: SESSION_TTL_MS / 1000,
     });
-    return c.json({ username: user.username, name: nameOf(user), role: user.role, isAdmin: user.role === 'admin' });
+    return c.json(meOf(user.id, user.username, nameOf(user), user.role));
   });
 
   app.post('/api/logout', (c) => {
@@ -111,7 +121,7 @@ export function createApp(opts: AppOptions) {
   });
   authed.get('/me', (c) => {
     const user = c.get('user');
-    return c.json({ username: user.username, name: user.name, role: user.role, isAdmin: user.role === 'admin' });
+    return c.json(meOf(user.id, user.username, user.name, user.role));
   });
   registerChatRoutes(authed, opts);
   registerMemoryRoutes(authed, db, opts.assistantName, opts.systemPrompt);

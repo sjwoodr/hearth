@@ -6,7 +6,7 @@ import { addMemory, memoryContext } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { assistantNameFor, getPersona, MAX_PERSONA_HISTORY, personaHistory, restorePersona, savePersona } from './persona.ts';
 import { summarizeIfLong } from './summarize.ts';
-import { call, setupApp, signIn } from './testing.ts';
+import { call, ORIGIN, setupApp, signIn } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
 
 // The same toy embedding as the memory tests: counts of a few topic words, so similarity is predictable.
@@ -128,6 +128,22 @@ describe('persona routes', () => {
     const [aliceCall, bobCall] = ctx.model.calls;
     expect(aliceCall![0]!.content).toMatch(/^You are Juliette\./);
     expect(bobCall![0]!.content).toMatch(/^You are Gemma\./);
+  });
+
+  it("tells the app each user's assistant name at sign-in and on /me", async () => {
+    const ctx = setupApp({ assistantName: 'hearth' });
+    const alice = await signIn(ctx, 'alice');
+    const bob = await signIn(ctx, 'bob');
+    expect(await (await call(ctx.app, alice, 'GET', '/me')).json()).toMatchObject({ username: 'alice', assistantName: 'hearth' });
+    await call(ctx.app, alice, 'PUT', '/persona', { name: 'Gemma', about: '' });
+    expect(await (await call(ctx.app, alice, 'GET', '/me')).json()).toMatchObject({ assistantName: 'Gemma' });
+    expect(await (await call(ctx.app, bob, 'GET', '/me')).json()).toMatchObject({ username: 'bob', assistantName: 'hearth' });
+    const login = await ctx.app.request('/api/login', {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'alice', password: 'a good password' }),
+    });
+    expect(await login.json()).toMatchObject({ username: 'alice', assistantName: 'Gemma' });
   });
 
   it('files memories under the assistant, moves them, and refuses unknown subjects', async () => {

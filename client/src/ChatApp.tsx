@@ -34,6 +34,8 @@ function Snippet({ text }: { text: string }) {
 }
 
 export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
+  // The assistant's name where it acts in a chat ("Message Gemma"); the Memories page updates it on a rename.
+  const [assistantName, setAssistantName] = useState(me.assistantName || 'hearth');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState(readHash);
   const [showMemories, setShowMemories] = useState(onMemoriesPage);
@@ -416,7 +418,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
           />
         )}
         {showMemories ? (
-          <MemoriesView onOpenChat={open} onError={handleError} />
+          <MemoriesView onOpenChat={open} onError={handleError} onAssistantName={setAssistantName} />
         ) : (
           <ConversationView
             key={privateChat !== null ? `private-${privateChat}` : 'stored'}
@@ -425,6 +427,7 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             id={activeId}
             focusMessageId={focusMessageId}
             name={me.name}
+            assistant={assistantName}
             onCreated={(id) => {
               history.pushState(null, '', `#/c/${id}`);
               setActiveId(id);

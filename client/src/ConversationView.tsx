@@ -11,6 +11,8 @@ import { timeGap } from '../../shared/time-gap.ts';
 type Props = {
   id: number | undefined;
   name: string;
+  /** What the user calls their assistant: used where the assistant itself acts (the chat box, a search request). */
+  assistant: string;
   /** A message to scroll to and highlight once the chat loads (from search). */
   focusMessageId?: number;
   onCreated: (id: number) => void;
@@ -125,13 +127,14 @@ const EFFORT_HELP: Record<Effort, string> = {
   high: 'Thinking effort: High. Twice the thinking room, for harder questions; up to about 20 seconds more.',
   max: 'Thinking effort: Max. Four times the room, for the hardest questions; up to about 40 seconds more.',
 };
-const THINK_HELP: Record<ThinkSetting, string> = {
-  auto: 'Think: Auto. hearth thinks first when you ask it to check or grade French, answer a quiz, or explain a grammar rule; otherwise it answers fast.',
-  on: 'Think: On. Every reply reasons first: slower (up to about half a minute), more careful.',
-  off: 'Think: Off. Every reply is fast, with no reasoning first.',
-};
+const thinkHelp = (setting: ThinkSetting, assistant: string): string =>
+  ({
+    auto: `Think: Auto. ${assistant} thinks first when you ask it to check or grade French, answer a quiz, or explain a grammar rule; otherwise it answers fast.`,
+    on: 'Think: On. Every reply reasons first: slower (up to about half a minute), more careful.',
+    off: 'Think: Off. Every reply is fast, with no reasoning first.',
+  })[setting];
 
-export function ConversationView({ id: storedId, name, focusMessageId, onCreated, onChanged, onError, onContext, privateChat = false, onPrivateMessages, onSpan }: Props) {
+export function ConversationView({ id: storedId, name, assistant, focusMessageId, onCreated, onChanged, onError, onContext, privateChat = false, onPrivateMessages, onSpan }: Props) {
   const id = privateChat ? undefined : storedId;
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   // A private chat's id for the server (its reply, stop and search card), for the life of this view.
@@ -577,7 +580,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         <div className="thread">
         {privateChat && (
           <p className="private-note" role="note">
-            Private chat: not saved and not remembered. hearth still knows what it remembers about you, but
+            Private chat: not saved and not remembered. {assistant} still knows what it remembers about you, but
             nothing from here is kept. It ends when you leave or reload this page.
           </p>
         )}
@@ -636,7 +639,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         )}
         {!busy && searchRequest && (
           <div className="search-card" role="group" aria-label="Web search request">
-            <p>hearth wants to search the web for:</p>
+            <p>{assistant} wants to search the web for:</p>
             <p className="search-query">{searchRequest}</p>
             <p className="small muted">
               Nothing is searched unless you say so. The query goes to your SearXNG, which asks Google, Bing and other engines.
@@ -737,7 +740,7 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         <textarea
           id="composer-input"
           rows={1}
-          placeholder={privateChat ? 'Message hearth privately' : 'Message hearth'}
+          placeholder={privateChat ? `Message ${assistant} privately` : `Message ${assistant}`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
@@ -747,8 +750,8 @@ export function ConversationView({ id: storedId, name, focusMessageId, onCreated
         <button
           type="button"
           className={`think-toggle ${think}`}
-          title={`${THINK_HELP[think]} Click to change.`}
-          aria-label={THINK_HELP[think]}
+          title={`${thinkHelp(think, assistant)} Click to change.`}
+          aria-label={thinkHelp(think, assistant)}
           onClick={() => {
             const next = NEXT_SETTING[think];
             setThink(next);
