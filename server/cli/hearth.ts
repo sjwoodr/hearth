@@ -386,8 +386,8 @@ async function memoryExtract(chatId: number): Promise<void> {
   const r = await extractMemories(
     db,
     chatId,
-    ollamaJson(config.ollamaUrl, config.model, config.numCtx),
-    ollamaEmbed(config.ollamaUrl, config.embedModel),
+    ollamaJson(modelEndpoint, config.model, config.numCtx),
+    ollamaEmbed(modelEndpoint, config.embedModel),
     config.assistantName,
   );
   if (r.read === 0) {
@@ -411,7 +411,7 @@ async function memoryExtract(chatId: number): Promise<void> {
 async function memoryRecall(username: string | undefined, text: string | undefined): Promise<void> {
   const u = requireUser(username);
   if (!text) fail('Give the message text to recall against.');
-  const embed = ollamaEmbed(config.ollamaUrl, config.embedModel);
+  const embed = ollamaEmbed(modelEndpoint, config.embedModel);
   const ranked = await rankFacts(db, u.id, text!, embed);
   console.log(`Facts by similarity (recalled at >= ${DEFAULT_RECALL.minScore}, top ${DEFAULT_RECALL.topK}):`);
   for (const f of ranked) console.log(`  ${f.score.toFixed(3)} ${f.score >= DEFAULT_RECALL.minScore ? '✓' : ' '} #${f.id} ${f.content}`);

@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -81,5 +82,44 @@ describe('hearth chats stats', () => {
     expect(out[1]).toMatch(/^2026-10-26\s+2\s+100%\s+30\s+7\s+4\.3x$/);
     expect(out[2]).toMatch(/^2026-11-02\s+1\s+0%\s+28\s+15\s+1\.9x$/);
     expect(hearth(['chats', 'stats', 'alex']).out).not.toContain('2026-10-26');
+  });
+});
+
+describe('hearth memories recall', () => {
+  it('goes through the gateway when one is set, as it must inside the cluster', async () => {
+    expect(hearth(['users', 'add', 'recaller'], 'goodpassword\ngoodpassword\n').code).toBe(0);
+    expect(hearth(['memories', 'add', 'recaller', 'fact', 'Plays', 'the', 'banjo']).code).toBe(0);
+    const seen: { path?: string; auth?: string }[] = [];
+    const gateway = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        seen.push({ path: req.url, auth: req.headers.authorization });
+        const { input } = JSON.parse(body) as { input: string[] };
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ embeddings: input.map(() => [1, 0, 0]) }));
+      });
+    });
+    await new Promise<void>((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+    const { port } = gateway.address() as { port: number };
+    // Async spawn: the fake gateway answers from this process's event loop.
+    const out = await new Promise<{ code: number | null; out: string }>((resolve) => {
+      const child = spawn(BIN, ['memories', 'recall', 'recaller', 'any', 'hobbies?'], {
+        env: {
+          ...env,
+          HEARTH_GATEWAY_URL: `http://127.0.0.1:${port}`,
+          HEARTH_GATEWAY_TOKEN: 'cli-token',
+          HEARTH_OLLAMA_URL: 'http://127.0.0.1:9',
+        },
+      });
+      let text = '';
+      child.stdout.on('data', (d) => (text += d));
+      child.on('close', (code) => resolve({ code, out: text }));
+    });
+    gateway.close();
+    expect(out.code).toBe(0);
+    expect(out.out).toMatch(/1\.000 ✓ #\d+ Plays the banjo/);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((r) => r.path === '/api/embed' && r.auth === 'Bearer cli-token')).toBe(true);
   });
 });
