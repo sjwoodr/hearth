@@ -172,7 +172,9 @@ export async function memoryContext(
   if (keptProfile.length) stable.push('', ...keptProfile.map((m) => `- ${m.content}`));
   stable.push(
     '',
-    `Today is ${new Date().toLocaleDateString('en-CA')}. A message may start with notes from your memory of earlier ` +
+    // "Notes" is the save_notes tool's word (chat-notes.ts): calling memories notes too made the model
+    // describe the tool as a place for the user's preferences.
+    `Today is ${new Date().toLocaleDateString('en-CA')}. A message may start with things you remember from earlier ` +
       `chats. Use memories the way a friend would: let them shape your reply when they fit, and bring one up only ` +
       "when it helps. Don't list them back or announce that you remember something.",
   );
@@ -180,7 +182,7 @@ export async function memoryContext(
   // The date comes from the database, so the model can say "last week" without guessing.
   const recalled = keptFacts.length
     ? [
-        `[Notes from your memory, possibly relevant here. ${user.name} didn't write these.]`,
+        `[From your memory of ${user.name}, possibly relevant here. ${user.name} didn't write these.]`,
         ...keptFacts.map((m) => `- ${m.content} (${localDate(m.created_at)})`),
       ].join('\n')
     : '';

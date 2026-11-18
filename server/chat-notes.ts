@@ -22,8 +22,8 @@ export const SAVE_NOTES_TOOL = {
   function: {
     name: 'save_notes',
     description:
-      'Save your private notes for this chat, replacing the old ones. Only you can see them; the user never does. ' +
-      `Up to about ${MAX_NOTES_CHARS} characters.`,
+      'Save your private working notes for this chat (a plan, a secret, an answer key, a checklist), replacing the old ones. ' +
+      `Not for facts about the user. Only you can see them; the user never does. Up to about ${MAX_NOTES_CHARS} characters.`,
     parameters: {
       type: 'object',
       properties: { notes: { type: 'string', description: 'The full notes, replacing the previous ones.' } },
@@ -35,7 +35,7 @@ export const SAVE_NOTES_TOOL = {
 /** Appended to the system prompt whenever the tool is offered, so it stays the same between turns. */
 export const NOTES_INSTRUCTIONS = `## Your notes for this chat
 
-You have private notes for this chat that only you can see; they are shown to you with the newest message. Call save_notes to write them (it replaces the old notes). Use them for what you must remember here but not say: a plan, a secret, an answer key, a checklist. Write them before you rely on them: for a story or a game, decide the plan or the secret first and save it, then keep to it, and update the notes when something changes. Don't quote them or give away what's in them unless you're asked.`;
+You have private notes for this chat that only you can see; they are shown to you with the newest message. Call save_notes to write them (it replaces the old notes). Use them for this chat's own work, what you must remember here but not say: a plan, a secret, an answer key, a checklist. They are not your memory of the person: what you know about them is remembered separately and automatically, across chats, so don't save their preferences or facts about their life here. Write them before you rely on them: for a story or a game, decide the plan or the secret first and save it, then keep to it, and update the notes when something changes. Don't quote them or give away what's in them unless you're asked.`;
 
 /** The notes as the model reads them on the newest message, or '' for none. */
 export const notesForPrompt = (notes: string): string =>

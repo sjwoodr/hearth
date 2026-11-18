@@ -274,9 +274,9 @@ describe('memories in chat and over the API', () => {
     const ctx = await signedIn();
     ctx.model.memory = '## What you remember about alice\n- Alice likes dry humor.';
     const id = ((await (await call(ctx.app, ctx.alice, 'POST', '/conversations')).json()) as { id: number }).id;
-    ctx.model.recalled = '[Notes from your memory]\n- Alice studies French.';
+    ctx.model.recalled = '[From your memory]\n- Alice studies French.';
     await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'qui ou que?' })).text();
-    ctx.model.recalled = '[Notes from your memory]\n- Alice has a dog named Rex.';
+    ctx.model.recalled = '[From your memory]\n- Alice has a dog named Rex.';
     await (await call(ctx.app, ctx.alice, 'POST', `/conversations/${id}/messages`, { content: 'and my dog?' })).text();
 
     const [first, second] = ctx.model.calls;

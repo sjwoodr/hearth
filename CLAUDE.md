@@ -410,6 +410,13 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   saved 16/17 times (10/10 fast, 6/6 thinking, 0/1 in the browser check); the miss told the user "I've
   already mapped out the entire mystery in my notes" with nothing saved. The line is the tell; a "never
   say you saved unless you called save_notes" instruction is untested (needs ~50 runs an arm at 1 in 17).
+  **"Notes" means only the tool** (same night): recalled memories were headed "[Notes from your memory…]"
+  and the memory section said "notes from your memory", so asked when it would use save_notes the model
+  described memory extraction ("a specific way you like your coffee… I'll stash that away"), 10/10 on a
+  copy of the owner's memories. Memories now read "[From your memory of Steve…]" / "things you remember",
+  and the tool's description and instructions say it isn't for facts about the person: 0/10 described it
+  that way, 10/10 named plans, stories, games or checklists; personal news saved nothing either way (0/5),
+  and the story brief still saved its plan (5/5).
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that
