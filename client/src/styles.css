@@ -296,6 +296,9 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 }
 .sources a:hover { color: var(--accent); border-color: var(--accent); }
 /* The model saved its private notes on this reply: a quiet line, nothing to open. */
+/* Memories page: what the always-remembered memories use of a reply's allowance. */
+.always-budget.crowding, .always-budget.over { color: var(--warning); }
+
 .notes-saved { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
 /* "[no extraction]": the message and its reply, and the chat box while one is being typed. */
 .not-remembered { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }

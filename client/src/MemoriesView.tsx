@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Memory, type MemoryKind, type MemorySubject, type Persona } from './api.ts';
 import { memoryDate } from '../../shared/chat-span.ts';
+import { alwaysUse, MEMORY_BUDGET_CHARS } from '../../shared/memory-budget.ts';
 
 const MAX_CHARS = 400;
 const MAX_NAME_CHARS = 40;
@@ -252,6 +253,7 @@ function MemorySections({
               {title} <span className="count">{items.length}</span>
             </h3>
             <p className="muted small">{blurb}</p>
+            {kind === 'profile' && <AlwaysBudget memories={memories} other={other === 'user' ? 'About you' : `About ${assistant}`} />}
             {items.length === 0 ? (
               <p className="muted small">None.</p>
             ) : (
@@ -278,6 +280,26 @@ function MemorySections({
         );
       })}
     </>
+  );
+}
+
+const BUDGET_NOTE = {
+  ok: '',
+  crowding: ' That leaves less room for recalled memories, so fewer reach each chat.',
+  over: ' Over the limit: some of these are left out of chats.',
+};
+
+/**
+ * How much of a reply's memory allowance the always-remembered memories use. Both tabs' count against
+ * the same allowance (shared/memory-budget.ts), so each shows the total.
+ */
+function AlwaysBudget({ memories, other }: { memories: Memory[]; other: string }) {
+  const { chars, state } = alwaysUse(memories.filter((m) => m.kind === 'profile').map((m) => m.content));
+  return (
+    <p className={`muted small always-budget ${state}`}>
+      Uses {chars.toLocaleString('en-US')} of about {MEMORY_BUDGET_CHARS.toLocaleString('en-US')} characters, shared with {other}.
+      {BUDGET_NOTE[state]}
+    </p>
   );
 }
 

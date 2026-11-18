@@ -12,7 +12,8 @@ import type { EmbedFn, JsonFn } from './ollama.ts';
 import { cleanDisplayName, MAX_DISPLAY_NAME_CHARS } from './users.ts';
 
 const MAX_CHANGES = 8;
-const MAX_EXISTING_SHOWN = 80;
+/** How many of the user's memories the extractor is shown: past this, the ones closest to the chat. */
+export const MAX_EXISTING_SHOWN = 80;
 const TRANSCRIPT_BUDGET_TOKENS = 4500;
 
 // The limits bound the grammar so the model can't loop on items or one endless string. Lengths
@@ -54,6 +55,34 @@ export type Extraction = {
 };
 
 type Existing = { id: number; kind: MemoryKind; content: string };
+
+/**
+ * The user's memories the extractor sees, newest-changed first. Up to MAX_EXISTING_SHOWN that's all of
+ * them. Past it, the always-remembered ones and then the facts closest to the chat (each scored by its
+ * best match against any message read), so a correction finds the memory it corrects however old it
+ * is: shown only the newest 80, a correction to an older one became a second, contradicting memory.
+ * If embedding fails, the newest-changed are shown instead.
+ */
+async function memoriesToShow(db: DB, userId: number, said: string[], embed?: EmbedFn): Promise<Existing[]> {
+  const all = db
+    .prepare(`SELECT id, kind, content FROM memories WHERE user_id = ? AND subject = 'user' ORDER BY updated_at DESC, id DESC`)
+    .all(userId) as Existing[];
+  if (all.length <= MAX_EXISTING_SHOWN) return all;
+  const newest = all.slice(0, MAX_EXISTING_SHOWN);
+  if (!embed || said.length === 0) return newest;
+  try {
+    const stored = await withEmbeddings(db, userId, embed, undefined, 'user');
+    const vectors = await embed(said);
+    const score = new Map(stored.map((m) => [m.id, Math.max(...vectors.map((v) => cosine(v, m.vector)))]));
+    const rank = (m: Existing) => (m.kind === 'profile' ? 2 : (score.get(m.id) ?? -1));
+    const shown = new Set([...all].sort((a, b) => rank(b) - rank(a)).slice(0, MAX_EXISTING_SHOWN).map((m) => m.id));
+    return all.filter((m) => shown.has(m.id));
+  } catch (err) {
+    if (isPreempted(err)) throw err;
+    console.error('memory: matching memories to the chat failed, showing the newest:', err instanceof Error ? err.message : err);
+    return newest;
+  }
+}
 
 /**
  * Keeps only well-formed changes: known kinds, non-empty text within the length limit,
@@ -427,20 +456,19 @@ export async function extractMemories(
   // Newest first until the budget runs out, so a very long chat keeps its latest turns.
   let used = 0;
   const transcript: string[] = [];
+  // The same messages without who said them: what memories are matched against.
+  const said: string[] = [];
   for (let i = unread.length - 1; i >= 0; i--) {
     const m = unread[i]!;
-    const line = `${m.role === 'user' ? conversation.username : assistant}: ${withImageText(m.content, m.image_count, m.image_note)}`;
+    const text = withImageText(m.content, m.image_count, m.image_note);
+    const line = `${m.role === 'user' ? conversation.username : assistant}: ${text}`;
     used += estimateTokens(line);
     if (used > TRANSCRIPT_BUDGET_TOKENS && transcript.length > 0) break;
     transcript.unshift(line);
+    said.unshift(text);
   }
 
-  const existing = db
-    .prepare(
-      `SELECT id, kind, content FROM memories
-       WHERE user_id = ? AND subject = 'user' ORDER BY updated_at DESC, id DESC LIMIT ?`,
-    )
-    .all(conversation.user_id, MAX_EXISTING_SHOWN) as Existing[];
+  const existing = await memoriesToShow(db, conversation.user_id, said, embed);
   const existingText = existing.length
     ? existing
         .map((m) => `[${m.id}] (${m.kind}) ${m.content}`)

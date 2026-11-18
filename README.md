@@ -293,7 +293,12 @@ Oct 27"):
 - **Always remembered** (`profile`): added to every chat's system prompt.
   hearth never creates these itself; a memory becomes one only when its owner
   promotes it. (The model turned "keep this reply short" into a standing
-  preference, so it no longer gets to decide what shapes every chat.)
+  preference, so it no longer gets to decide what shapes every chat.) A reply
+  carries up to 800 tokens of memories (about 2,800 characters), and these take
+  it first, with the always-remembered ones about the assistant; recalled facts
+  get what's left. The Memories page shows how much they use, both tabs counted
+  together, and warns once recalled memories start getting crowded out, or some
+  of these no longer fit.
 - **Recalled when relevant** (`fact`): learned from chats. Each message is
   embedded with `embeddinggemma:300m-qat-q8_0` and compared with the user's
   facts; up to 6 scoring at least 0.38 are added, each with the date it was
@@ -303,7 +308,10 @@ Oct 27"):
 **Extraction** runs in the background: once a minute the server looks for chats
 whose newest message is at least `HEARTH_MEMORY_IDLE_MINUTES` (5) old and have
 messages it hasn't read. It sends the unread part plus the user's existing
-memories to the chat model with a JSON schema, then keeps only valid changes: at
+memories to the chat model with a JSON schema: all of them up to 80, and past
+that the always-remembered ones and the facts closest to what the chat says
+(each scored by its best match against any message read), so a correction finds
+the memory it corrects however old it is. It then keeps only valid changes: at
 most 8 additions and 8 updates, 400 characters each, no duplicates, and updates
 only to that user's own memories. The model is told to update an existing memory
 on the same subject rather than add another, and to rewrite the memory behind

@@ -228,6 +228,11 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   a `num_ctx` mismatch, so the two evicted each other (5-15 s plus a cold reread). Measured 2026-10-07 with 2 slots: 15.79 GB at 32k
   vs 15.26 at 16k, same tokens/s, and 0.0 s load switching between the tags at the same size. If
   the harnesses' context changes, change `HEARTH_NUM_CTX` with it.
+- **A reply carries up to 800 tokens of memories** (`MEMORY_BUDGET_TOKENS`, `shared/memory-budget.ts`):
+  always-remembered ones (the user's, then the assistant's) first, recalled facts in what's left, so
+  always-remembered text past ~2,000 characters crowds recall and past ~2,800 some no longer fit, silently.
+  The Memories page shows the total on both tabs (`alwaysUse`, same estimate as the server) and warns at
+  each point (owner's request, 2026-11-18). The count of recalled facts doesn't matter to a reply.
 - **Recall threshold 0.38, top 6.** Measured with embeddinggemma: related 0.44-0.61, unrelated
   0.19-0.30. The first guess (0.45) missed real matches.
 - **Near-duplicate memories: embeddings pick candidates (≥0.85), the model decides** with a yes/no
@@ -243,6 +248,18 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   4 of 5 rewrites were 300-343 characters and would have been silently dropped; asking for "under
   300" made the model drop details (the tea) or overshoot anyway. The duplicate add of the same
   correction still survives about 2 runs in 3 (the yes/no judge errs to keep); harmless, as both agree.
+  **Past 80 memories the extractor sees the ones closest to the chat** (`memoriesToShow`, 2026-11-18,
+  owner's request, at 112 memories). It was shown the 80 newest-changed, so a correction to an older memory
+  couldn't find it. Now: all up to `MAX_EXISTING_SHOWN` (80), and past that the always-remembered ones
+  plus the facts with the best match against any message read (embeddings already stored), listed
+  newest-changed first as before; newest-changed if embedding fails. Probe on the live UD model, a made-up
+  user with 124 memories and the 4 targets oldest, 3 runs each (ad hoc, scratchpad): a correction updated
+  the old memory 0/12 before (each became a second, contradicting memory) and 12/12 after; two control
+  chats added their fact and touched nothing else, before and after. Leftover: a correction can still add
+  a memory beside the rewrite (6/12: "no longer drives the Civic" plus "drives a Subaru", or a duplicate
+  that agrees), never a contradiction. ~1-3 s slower per run in the probe, which embedded all 124
+  memories every run; live, only the chat's messages are new. Not raised to 150: it only postpones the
+  limit, costs ~8 s of prompt per run, and extraction was tuned on lists of 80 or fewer.
 - **Every new memory must be something the user said about themselves** (`statedByUser` in
   `extract.ts`): a yes/no check per addition, before the duplicate check. A lone lookup ("who is the
   Jaguars' quarterback?") became "interested in the Jaguars" in 3 of 20 extractions of that real chat
@@ -521,6 +538,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`), page in `client/src/MemoriesView.tsx` (its About <name> tab) |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
+| `shared/memory-budget.ts` | the memory allowance per reply (`MEMORY_BUDGET_TOKENS`), `estimateTokens` (re-exported by `context.ts`), `alwaysUse` for the Memories page's always-remembered counter |
 | `shared/no-extraction.ts` | the `[no extraction]` marker (`parseNoExtraction`) and its label; the flag is `messages.no_extraction`, read by `extract.ts`, `summarize.ts`, `retitle.ts`, `search.ts` and the title logic in `chat.ts` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |

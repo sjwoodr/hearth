@@ -23,6 +23,7 @@ import { makeWordLookup } from './word-lookup.ts';
 import { startRetitleSweeper } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
 import { searxngSearch } from './web-search.ts';
+import { MEMORY_BUDGET_TOKENS } from '../shared/memory-budget.ts';
 
 setLogFormat(config.logFormat, 'hearth');
 startMetrics('hearth');
@@ -65,8 +66,8 @@ const app = createApp({
   systemPrompt: (name) => readSystemPrompt(config.systemPromptPath, name),
   assistantName: config.assistantName,
   contextBudget: config.contextBudget,
-  // Up to ~800 tokens of memories per message, out of the context window.
-  memoryContext: (user, message) => memoryContext(db, user, message, embed, 800),
+  // Up to ~800 tokens of memories per message, out of the context window (shared with the Memories page).
+  memoryContext: (user, message) => memoryContext(db, user, message, embed, MEMORY_BUDGET_TOKENS),
   // Each Think effort's reasoning cap; the reply asks for one per request.
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
