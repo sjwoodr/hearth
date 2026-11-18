@@ -334,6 +334,15 @@ miss kept a duplicate rather than dropping a fact. Any failure keeps the memory.
 in the same batch is checked from 0.70: the model often saves a correction twice, as the update
 and as a new memory, and those pairs scored only 0.77-0.83.
 
+**`[no extraction]`.** Start a message with `[no extraction]` (any capitalisation; `[no-extraction]`
+works too) and neither it nor the reply to it is ever read by memory extraction (about you or about
+the assistant), the chat's summary or its titles, and neither is in search. The marker is removed
+before the message is saved or sent to the model, and both messages show "Not remembered"; the chat
+box says the same while you type it. They stay in the chat like any other message, so the model sees
+them until the chat grows long enough to fold them away; after that the chat has forgotten them too,
+as the summary never mentions them. The marker covers that one message: a later message that refers
+back to it is read as usual. For a conversation that's never saved at all, use a private chat (below).
+
 `hearth memories extract <chat-id>` runs it on demand, and
 `hearth memories recall <user> <text>` shows each fact's score for a message and
 the exact memory section the model would get.

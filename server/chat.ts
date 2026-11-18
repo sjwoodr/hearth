@@ -12,6 +12,7 @@ import {
   createConversation,
   deleteConversation,
   deleteMessage,
+  isNoExtraction,
   getContextState,
   getConversation,
   listConversations,
@@ -31,6 +32,7 @@ import type { DB } from './db.ts';
 import type { MemorySections } from './memories.ts';
 import type { ChatFn, ChatMessage, ToolCall } from './ollama.ts';
 import { parsePrivateHistory, PRIVATE_CHAT_ID, PrivateSearches } from './private-chat.ts';
+import { parseNoExtraction } from '../shared/no-extraction.ts';
 import { searchMessages } from './search.ts';
 import type { SessionUser } from './sessions.ts';
 import {
@@ -111,7 +113,10 @@ const withSources = (content: string, sources: Source[] | null) =>
 type ReplyOpts = {
   /** The stored message being answered (private chats have none). */
   userMessageId?: number;
+  /** The chat's first message hearth may title it from: none if this one isn't it. */
   firstMessage?: string;
+  /** The message being answered started with "[no extraction]": so is the reply (shared/no-extraction.ts). */
+  noExtraction?: boolean;
   decision: ReplyDecision;
   /** Searches already asked for while answering this message. */
   searches?: number;
@@ -349,7 +354,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       save: (reply, sources, partial, notesSaved) => {
         // Not into a chat deleted mid-reply, which is what stopped it.
         if (partial && !getConversation(db, user.id, conversationId)) return undefined;
-        return addMessage(db, conversationId, 'assistant', reply, { sources, notesSaved });
+        // The reply to a "[no extraction]" message is kept out too: it usually repeats what was said.
+        return addMessage(db, conversationId, 'assistant', reply, {
+          sources,
+          notesSaved,
+          noExtraction: isNoExtraction(db, opts.userMessageId),
+        });
       },
       holdSearch: (search) => {
         const saved = withoutImages(search.prompt, imageSource);
@@ -437,6 +447,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         await send({
           type: 'start',
           ...(opts.userMessageId !== undefined ? { userMessageId: opts.userMessageId } : {}),
+          ...(opts.noExtraction ? { noExtraction: true } : {}),
           ...(opts.model ? { model: opts.model } : {}),
           think,
           // How hard, and the cap, so the client can show progress against it.
@@ -573,7 +584,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     if (replying.running(conversation.id, user.id)) return c.json(busy, 409);
 
     const body = await c.req.json().catch(() => null);
-    const content = typeof body?.content === 'string' ? body.content.trim() : '';
+    // "[no extraction]" first keeps this message and its reply out of memories, summary, titles and
+    // search. The marker itself is dropped: neither the model nor the stored chat sees it.
+    const { content, noExtraction } = parseNoExtraction(typeof body?.content === 'string' ? body.content.trim() : '');
     const parsed = parseImages(body?.images);
     if ('error' in parsed) return c.json({ error: parsed.error }, 400);
     const { images } = parsed;
@@ -588,24 +601,27 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     }
 
     const earlier = listMessages(db, user.id, conversation.id);
-    const isFirst = earlier.length === 0;
+    // hearth titles a chat from its first message, skipping any kept out of extraction: a chat that
+    // opens with one gets its title from the next.
+    const titleFromThis = !noExtraction && !earlier.some((m) => m.role === 'user' && !m.no_extraction);
     const previousReply = earlier.findLast((m) => m.role === 'assistant')?.content;
     const decision = thinkingFor(model, decideThinking(body?.think, body?.effort, content, previousReply, images.length > 0));
     const search = searchFor(model);
     pendingImages.moveOn(conversation.id);
     // A search card left unanswered is dropped: the user moved on.
     pendingSearches.forget(conversation.id);
-    const userMessageId = addMessage(db, conversation.id, 'user', content, { imageCount: images.length });
+    const userMessageId = addMessage(db, conversation.id, 'user', content, { imageCount: images.length, noExtraction });
     if (images.length > 0) pendingImages.add(userMessageId, conversation.id, images);
     // An image alone has no words for a title yet; the model's title after the reply will name it.
     const firstMessage = content || (images.length === 1 ? '(image)' : `(${images.length} images)`);
-    if (!conversation.title) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
+    if (!conversation.title && !noExtraction) setAutoTitle(db, conversation.id, titleFrom(firstMessage));
     const notes = notesFor(model);
     const prompt = await buildPrompt(user, conversation.id, content, decision, search, notes);
-    const target = storedTarget(user, conversation.id, { userMessageId, firstMessage: isFirst ? firstMessage : undefined });
+    const target = storedTarget(user, conversation.id, { userMessageId, firstMessage: titleFromThis ? firstMessage : undefined });
     return streamReply(c, target, { prompt }, {
       userMessageId,
-      firstMessage: isFirst ? firstMessage : undefined,
+      firstMessage: titleFromThis ? firstMessage : undefined,
+      noExtraction,
       decision,
       search,
       notes,
@@ -645,10 +661,12 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const search = searchFor(model);
     const notes = notesFor(model);
     const prompt = await buildPrompt(user, conversation.id, question.content, decision, search, notes);
-    const firstMessage = messages.length <= 2 ? question.content : undefined;
+    const titleFromThis = !question.no_extraction && !before.some((m) => m.role === 'user' && !m.no_extraction);
+    const firstMessage = titleFromThis ? question.content : undefined;
     return streamReply(c, storedTarget(user, conversation.id, { userMessageId: question.id, firstMessage }), { prompt }, {
       userMessageId: question.id,
       firstMessage,
+      noExtraction: question.no_extraction,
       decision,
       search,
       notes,
@@ -692,6 +710,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     return streamReply(c, target, turn, {
       userMessageId: pending.userMessageId,
       firstMessage: pending.firstMessage,
+      noExtraction: isNoExtraction(db, pending.userMessageId),
       decision: thinkingFor(model, pending.decision),
       searches: pending.searches,
       search: searchFor(model),
@@ -729,7 +748,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const parsedImages = parseImages(body?.images);
     if ('error' in parsedImages) return c.json({ error: parsedImages.error }, 400);
     const { images } = parsedImages;
-    const { messages } = parsed;
+    // Nothing here is stored or learned from anyway; the model just shouldn't see the marker.
+    const messages = parsed.messages.map((m) => (m.role === 'user' ? { ...m, content: parseNoExtraction(m.content).content } : m));
     const latest = messages.at(-1)!;
     if (!latest.content.trim() && images.length === 0) return c.json({ error: 'Message is empty.' }, 400);
 

@@ -339,6 +339,20 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   (`endsWithConnection`): nothing can catch up on them. Keys are per user (`private:<user>:<id>`).
   `private-chat.test.ts` diffs every table before and after; keep that test for anything new on
   this path, and never add a log line with message text.
+- **`[no extraction]` keeps one message and its reply out of everything learned from a chat**
+  (`shared/no-extraction.ts`, `messages.no_extraction`, migration 015; owner's request, 2026-11-18:
+  something shared that shouldn't be auto-saved as a memory, sensitive or not). The marker is parsed on
+  the server and dropped before saving and before the model sees it. The reply inherits the flag from
+  the message it answers (`isNoExtraction`), so a retry or a reply resumed after a search card keeps it.
+  Skipped by: both extraction passes (the chat is still marked read past them), the summary (folded out
+  but never written in; a fold of only flagged messages calls no model), first titles (a chat opening
+  with one is titled from its next message) and retitling, and search. **Search has two guards**: the
+  FTS triggers skip flagged rows, and the search join drops them too, because a `rebuild` of the
+  external-content index would index them again. The delete trigger must stay guarded: an FTS5
+  'delete' for a row that was never indexed corrupts the index (the test runs `integrity-check`).
+  Still stored, backed up and shown in the chat; a private chat is the never-stored option. Every guard
+  was mutation-checked (17 sabotages, all caught); verified end to end on made-up messages with the real
+  model: extraction read only the 2 unflagged messages.
 - **Personality: the pre-10-28 prompt, minus feeling-narration** (2026-10-30, after two days of caps
   that went wrong; don't repeat them). Replies ending with a question climbed from 27% (before
   2026-10-10) to 44-48% after the warmer personality and **80%** in the first full week on the UD build,
@@ -507,6 +521,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
 | `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`), page in `client/src/MemoriesView.tsx` (its About <name> tab) |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
+| `shared/no-extraction.ts` | the `[no extraction]` marker (`parseNoExtraction`) and its label; the flag is `messages.no_extraction`, read by `extract.ts`, `summarize.ts`, `retitle.ts`, `search.ts` and the title logic in `chat.ts` |
 | `server/private-chat.ts` | private chats: history parsing and limits from the browser, `PrivateSearches` (in memory) |
 | `shared/plain-symbols.ts` | LaTeX symbol markup → plain characters, gpt-oss citation marks dropped; imported by server and client |
 | `shared/think-effort.ts` | Think effort levels (Medium/High/Max), labels, `higherEffort` for "Think harder"; budgets from `config.thinkingBudgets` |

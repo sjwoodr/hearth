@@ -408,12 +408,21 @@ export async function extractMemories(
   // The name this user's assistant answers to (persona.ts), as the replies in the transcript use it.
   assistant = assistantNameFor(db, conversation.user_id, assistant);
 
-  const unread = db
-    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
-    .all(conversation.id, conversation.memory_through_message_id) as MessageRow[];
+  const since = db
+    .prepare(
+      'SELECT id, role, content, image_count, image_note, no_extraction FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id',
+    )
+    .all(conversation.id, conversation.memory_through_message_id) as (MessageRow & { no_extraction: number })[];
   const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false, self: 0 };
-  if (unread.length === 0) return none;
-  const lastId = unread.at(-1)!.id;
+  if (since.length === 0) return none;
+  const lastId = since.at(-1)!.id;
+  // A message the user started with "[no extraction]", and its reply, are never read (by either pass),
+  // but the chat is still marked read past them.
+  const unread = since.filter((m) => m.no_extraction === 0);
+  if (unread.length === 0) {
+    db.prepare('UPDATE conversations SET memory_through_message_id = ? WHERE id = ?').run(lastId, conversation.id);
+    return none;
+  }
 
   // Newest first until the budget runs out, so a very long chat keeps its latest turns.
   let used = 0;

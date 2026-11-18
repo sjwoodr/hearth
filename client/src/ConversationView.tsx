@@ -4,6 +4,7 @@ import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { WordLookup } from './WordLookup.tsx';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
+import { NO_EXTRACTION_HELP, NO_EXTRACTION_LABEL, parseNoExtraction } from '../../shared/no-extraction.ts';
 import { pendingText } from '../../shared/pending-text.ts';
 import { EFFORT_LABEL, EFFORTS, higherEffort, isEffort, type Effort } from '../../shared/think-effort.ts';
 import { timeGap } from '../../shared/time-gap.ts';
@@ -334,6 +335,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     let reason: string | undefined;
     let thoughtEffort: Effort | undefined;
     let noted = false;
+    let kept = false;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
       reply = '';
@@ -343,6 +345,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         note,
         fast: !thought,
         notes_saved: noted,
+        no_extraction: kept,
         selfCorrected,
         effort: thoughtEffort,
         sources: sources ?? null,
@@ -353,6 +356,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
       for await (const event of events) {
         if (event.type === 'start') {
           thought = event.think === true;
+          kept = event.noExtraction === true;
           reason = event.reason;
           thoughtEffort = thought ? (event.effort ?? 'medium') : undefined;
           setAutoReason(event.reason ?? null);
@@ -478,7 +482,10 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     setDraft('');
     setAttachments([]);
     setSearchRequest(null);
-    const pending = localMessage('user', text, images);
+    // Shown as the server will store it: without "[no extraction]", labelled instead. A private chat
+    // keeps nothing anyway, so there it's only dropped.
+    const marked = parseNoExtraction(text);
+    const pending = { ...localMessage('user', marked.content, images), no_extraction: marked.noExtraction && !privateChat };
     setMessages((m) => [...m, pending]);
     const controller = begin();
     if (privateChat) {
@@ -696,6 +703,11 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
       <WordLookup scroller={scrollRef} />
 
       <form className="composer" onSubmit={submit} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+        {!privateChat && parseNoExtraction(draft).noExtraction && (
+          <p className="composer-hint" role="status">
+            {NO_EXTRACTION_LABEL}: {NO_EXTRACTION_HELP}
+          </p>
+        )}
         {attachments.length > 0 && (
           <ul className="attachments" aria-label="Images to send">
             {attachments.map((src, i) => (
@@ -822,6 +834,11 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {role === 'user' && <MessageImages message={message} />}
         {/* That the model saved its private notes here; what they say is never sent to the app. */}
         {role === 'assistant' && message.notes_saved && <p className="notes-saved">Updated its private notes</p>}
+        {message.no_extraction && (
+          <p className="not-remembered" title={NO_EXTRACTION_HELP}>
+            {NO_EXTRACTION_LABEL}
+          </p>
+        )}
         {body}
         {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
       </div>

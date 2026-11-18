@@ -28,11 +28,13 @@ export function toFtsQuery(text: string): string | undefined {
 }
 
 // The snippet (column -1) comes from whichever column matched: the text or its image description.
+// "[no extraction]" messages are never indexed (migration 015); the join also leaves them out, so an
+// index rebuilt from the messages table can't bring them back into results.
 const HIT_SQL = `
   SELECT m.conversation_id AS conversationId, c.title, m.id AS messageId, m.role, m.created_at,
          snippet(messages_fts, -1, '${MARK_START}', '${MARK_END}', '…', 14) AS snippet
   FROM messages_fts
-  JOIN messages m ON m.id = messages_fts.rowid
+  JOIN messages m ON m.id = messages_fts.rowid AND m.no_extraction = 0
   JOIN conversations c ON c.id = m.conversation_id`;
 
 /** The user's messages matching `text`, best first. */

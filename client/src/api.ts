@@ -85,6 +85,8 @@ export type Message = {
   sources: Source[] | null;
   /** The model saved its private notes while writing this reply. What they say never reaches the app. */
   notes_saved?: boolean;
+  /** Sent with "[no extraction]", or the reply to one: kept out of memories, summary, titles and search. */
+  no_extraction?: boolean;
   created_at: string;
 };
 
@@ -127,7 +129,17 @@ export type Persona = {
 
 export type StreamEvent =
   /** `effort` and `budget`: how hard a thinking reply may think, and its cap in reasoning tokens. */
-  | { type: 'start'; userMessageId?: number; model?: string; think?: boolean; effort?: Effort; budget?: number; reason?: string }
+  | {
+      type: 'start';
+      userMessageId?: number;
+      /** The message being answered was sent with "[no extraction]": so is this reply. */
+      noExtraction?: boolean;
+      model?: string;
+      think?: boolean;
+      effort?: Effort;
+      budget?: number;
+      reason?: string;
+    }
   | { type: 'queued' }
   /** Ollama had unloaded the model; this reply waits while it loads (~15 s). */
   | { type: 'loading' }

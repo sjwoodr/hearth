@@ -28,8 +28,10 @@ export type ContextUse = { used: number; foldAt: number };
 
 const unsummarized = (db: DB, conversationId: number, through: number) =>
   db
-    .prepare('SELECT id, role, content, image_count, image_note FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id')
-    .all(conversationId, through) as MessageRow[];
+    .prepare(
+      'SELECT id, role, content, image_count, image_note, no_extraction FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id',
+    )
+    .all(conversationId, through) as (MessageRow & { no_extraction: number })[];
 const messageText = (m: MessageRow) => withImageText(m.content, m.image_count, m.image_note);
 
 /** For the chat's context meter. Counted the way `summarizeIfLong` counts, so 100% is where it folds. */
@@ -106,38 +108,12 @@ export async function summarizeIfLong(
     folding += estimateTokens(text(messages[end++]!));
   }
   const fold = messages.slice(0, Math.max(end, 1));
+  // A "[no extraction]" message and its reply fold out of the chat like the rest but never go into
+  // the summary, so from here on the chat has forgotten them. A fold of only those needs no model.
+  const told = fold.filter((m) => m.no_extraction === 0);
 
   console.log(`summary: folding ${fold.length} older message(s) of chat ${conversationId}…`);
-  const transcript = fold.map((m) => `${m.role === 'user' ? chat.name : assistant}: ${text(m)}`).join('\n\n');
-  const raw = await json(
-    [
-      {
-        role: 'system',
-        content: `You keep notes on a long conversation between ${chat.name} and ${assistant}, a chat
-companion, so the conversation can continue after older messages are no longer shown. You are given
-the existing notes and the newest messages. Reply with two sections, in this order.
-
-The first section starts with the line "Latest:". Under it write plain prose, third person, under 60
-words: what was decided or explained in the newest messages, details ${chat.name} shared, open questions,
-and anything ${assistant} offered to do.
-
-The second section starts with the line "${NEW_TOPICS_HEADING}". Under it put at most ${MAX_NEW_TOPICS} lines, each starting
-with "- ", one for each subject of the newest messages that the existing topics do not cover yet. Go
-through the newest messages in order, starting from the very first one, and cover all of them.
-Each line is a short phrase saying what was said about the subject, with the people and works
-involved grouped on the same line, not one line per name. Say who made a work only if the messages
-say so. Do not repeat existing topics. If nothing is new, leave the section empty.
-
-Reply with those two sections only.`,
-      },
-      { role: 'user', content: `Existing notes:\n${chat.summary ?? '(none)'}\n\nNewest messages:\n${transcript}` },
-    ],
-    // Plain text, not a JSON schema: under a schema a quoted word ended the summary mid-sentence.
-    null,
-  );
-  const reply = typeof raw === 'string' ? raw.trim() : '';
-  if (!reply) throw new Error('The model returned an empty summary.');
-  const summary = nextSummary(chat.summary, reply);
+  const summary = told.length ? await foldIn(json, chat.summary, chat.name, assistant, told) : chat.summary;
 
   // Only advance if nothing else summarized this chat in the meantime.
   const advanced =
@@ -155,6 +131,46 @@ Reply with those two sections only.`,
     );
   }
   return advanced;
+}
+
+/** The summary after folding `told` (the oldest messages being folded) into `previous`. */
+async function foldIn(
+  json: JsonFn,
+  previous: string | null,
+  name: string,
+  assistant: string,
+  told: MessageRow[],
+): Promise<string> {
+  const transcript = told.map((m) => `${m.role === 'user' ? name : assistant}: ${messageText(m)}`).join('\n\n');
+  const raw = await json(
+    [
+      {
+        role: 'system',
+        content: `You keep notes on a long conversation between ${name} and ${assistant}, a chat
+companion, so the conversation can continue after older messages are no longer shown. You are given
+the existing notes and the newest messages. Reply with two sections, in this order.
+
+The first section starts with the line "Latest:". Under it write plain prose, third person, under 60
+words: what was decided or explained in the newest messages, details ${name} shared, open questions,
+and anything ${assistant} offered to do.
+
+The second section starts with the line "${NEW_TOPICS_HEADING}". Under it put at most ${MAX_NEW_TOPICS} lines, each starting
+with "- ", one for each subject of the newest messages that the existing topics do not cover yet. Go
+through the newest messages in order, starting from the very first one, and cover all of them.
+Each line is a short phrase saying what was said about the subject, with the people and works
+involved grouped on the same line, not one line per name. Say who made a work only if the messages
+say so. Do not repeat existing topics. If nothing is new, leave the section empty.
+
+Reply with those two sections only.`,
+      },
+      { role: 'user', content: `Existing notes:\n${previous ?? '(none)'}\n\nNewest messages:\n${transcript}` },
+    ],
+    // Plain text, not a JSON schema: under a schema a quoted word ended the summary mid-sentence.
+    null,
+  );
+  const reply = typeof raw === 'string' ? raw.trim() : '';
+  if (!reply) throw new Error('The model returned an empty summary.');
+  return nextSummary(previous, reply);
 }
 
 /** A pass that folded messages into the chat's summary, for the line shown after `afterMessageId`. */

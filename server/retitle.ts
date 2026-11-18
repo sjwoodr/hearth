@@ -115,7 +115,10 @@ export async function retitle(db: DB, id: number, retitler: ReturnType<typeof ma
     .get(id) as { title: string | null; through: number | null } | undefined;
   if (!chat?.title || chat.through === null) return false;
   const said = db
-    .prepare("SELECT content, image_count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <= ? ORDER BY id")
+    // Never what the user kept out with "[no extraction]" (shared/no-extraction.ts).
+    .prepare(
+      "SELECT content, image_count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <= ? AND no_extraction = 0 ORDER BY id",
+    )
     .all(id, chat.through) as { content: string; image_count: number }[];
   const better = await retitler(
     chat.title,

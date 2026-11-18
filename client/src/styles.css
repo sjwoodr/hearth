@@ -297,6 +297,9 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .sources a:hover { color: var(--accent); border-color: var(--accent); }
 /* The model saved its private notes on this reply: a quiet line, nothing to open. */
 .notes-saved { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
+/* "[no extraction]": the message and its reply, and the chat box while one is being typed. */
+.not-remembered { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
+.composer-hint { order: -2; flex-basis: 100%; margin: 0; font-size: 0.85rem; color: var(--muted); }
 
 /* ── think toggle ── */
 .think-toggle { background: transparent; color: var(--muted); border-color: var(--border); }
