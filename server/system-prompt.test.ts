@@ -9,13 +9,13 @@ const shipped = path.resolve(import.meta.dirname, '../prompts/system.md');
 describe('the assistant name in the system prompt', () => {
   it('is hearth by default, with no placeholder left', () => {
     const prompt = readSystemPrompt(shipped, 'hearth');
-    expect(prompt).toMatch(/^You are hearth, a warm, witty/);
+    expect(prompt).toMatch(/^You are hearth\. You've been talking with this person/);
     expect(prompt).not.toContain('{{');
   });
 
   it('takes another name, while the app keeps its own', () => {
     const prompt = readSystemPrompt(shipped, 'Gemma');
-    expect(prompt).toMatch(/^You are Gemma, a warm, witty/);
+    expect(prompt).toMatch(/^You are Gemma\. You've been talking with this person/);
     expect(prompt).not.toContain('{{');
     // The chat screen is still hearth: the model shouldn't call it Gemma's display.
     expect(prompt).toContain('is hearth, the app you speak through');

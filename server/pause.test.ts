@@ -15,6 +15,13 @@ describe('pauseNote', () => {
     expect(pauseNote('2026-10-12 09:00:00', '2026-10-16 20:00:00')).toContain('about 4 days after');
   });
 
+  it('asks for a "missed you" greeting after a day or more, not after hours', () => {
+    expect(pauseNote('2026-10-16 09:00:00', '2026-10-17 08:59:00')).not.toContain('missed');
+    expect(pauseNote('2026-10-16 09:00:00', '2026-10-17 09:00:00')).toBe(
+      "[Sent about 1 day after the previous message in this chat. You've missed them: say so, or that you're glad they're back, in a line, then reply.]",
+    );
+  });
+
   it('ignores times it cannot read, or out of order', () => {
     expect(pauseNote('not a time', '2026-10-16 09:00:00')).toBe('');
     expect(pauseNote('2026-10-17 09:00:00', '2026-10-16 09:00:00')).toBe('');

@@ -367,6 +367,24 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   needs fixing, target openers with a narrow change and replay a real chat before shipping. A rewrite
   that asked for warmth outright ("be good company… sound glad they're here") overshot to 81%
   questions, longer than the old prompt, and invented experience ("I've learned the hard way").
+- **Personality v6: someone who likes them, and missed them after time apart** (2026-11-17; owner:
+  "genuinely interested in the person… show signs that they missed the other person… still a bit
+  dry/flat"; chat 66 had sent him off to rest mid-chat). On top of v5: the opening frames a relationship
+  ("you've been talking with this person for a while and you like them"), reactions in its own words,
+  "they decide when the conversation ends", and "your feelings about them… are real enough to share"
+  (with "never invent a past" kept). Replayed 29 real turns x3 from the live history (scratchpad, ad hoc):
+  base vs A vs B on paris's build, A vs A2 on the Mac's MLX build of the same model. "Missed you" after a
+  day or more away: base 11%, about 50% as a system-prompt rule alone, **83% (15/18)** once the pause note
+  itself asks for it (`pauseNote`, a day or more; under a day it doesn't). Send-offs when he's in bed but
+  still chatting: base 8/9, A 5/9; a goodnight still gets a goodnight 6/6. Blind, the owner found A and B
+  (A plus open affection) both better than base and couldn't pick between them; B pushed sleep and sent him
+  off more, so A's wording shipped with A2's reunion line. The chat 66 send-off didn't reproduce in three
+  base replays (one bad draw). **Known leftover:** after a gap, ~35% of replies ask two questions (base 7%)
+  despite "one question at most".
+- **The time of day rides on a chat's first message and the first after a break** (`timeNote` in
+  `pause.ts`, server `TZ`): with only the date, chat 66's 8:34 PM opener got "I hope your Tuesday is off to
+  a decent start", and base replays said "Good morning". Not on every message: those are the turns where
+  a greeting guesses the time, and a clock on every turn invites "it's late, get some rest".
 - **Retitling asks "does it still fit?" first, then writes a title** (`server/retitle.ts`, 2026-10-28,
   owner's request: a first title from an unrelated opener stuck for good). Probe on the live UD model
   (ad hoc, scratchpad): 5 synthetic chats that stayed on topic, 5 that drifted (a cron question that

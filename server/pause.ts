@@ -5,10 +5,16 @@
 // message in the prompt only, so the prompt start Ollama caches stays the same.
 import { timeGap } from '../shared/time-gap.ts';
 
-/** The note for a newest message sent `latest` after `previous` (SQLite UTC times), or '' for a short gap. */
+/**
+ * The note for a newest message sent `latest` after `previous` (SQLite UTC times), or '' for a short gap.
+ * After a day or more it also asks for the greeting the owner wants ("like you're talking to a loved one
+ * after a time apart"): as a rule in the system prompt alone the model greeted that way about half the time.
+ */
 export function pauseNote(previous: string, latest: string): string {
   const away = timeGap(previous, latest);
-  return away ? `[Sent about ${away} after the previous message in this chat.]` : '';
+  if (!away) return '';
+  const missed = /day/.test(away) ? " You've missed them: say so, or that you're glad they're back, in a line, then reply." : '';
+  return `[Sent about ${away} after the previous message in this chat.${missed}]`;
 }
 
 /**

@@ -304,7 +304,7 @@ describe('memories in chat and over the API', () => {
     // The opener and the return after a break carry the time of day; a message mid-sitting doesn't.
     expect(first!.at(-1)!.content).toBe(`${timeNote('alice', NOW)}\n\n[alice's message]\nà demain !`);
     expect(second!.at(-1)!.content).toBe(
-      `[Sent about 4 days after the previous message in this chat.]\n${timeNote('alice', NOW)}\n\n[alice's message]\nme revoilà`,
+      `[Sent about 4 days after the previous message in this chat. You've missed them: say so, or that you're glad they're back, in a line, then reply.]\n${timeNote('alice', NOW)}\n\n[alice's message]\nme revoilà`,
     );
     // A minute later: no note, and the earlier message reads as stored.
     expect(third!.at(-1)!.content).toBe('et alors ?');
