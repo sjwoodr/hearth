@@ -82,8 +82,12 @@ export const config = {
   // on /api/show). LFM3-Omni is 1.7B, ~3 GB loaded beside the chat model, and speaks ~2x faster than real
   // time. "off" turns reading aloud off.
   speechModel: isOff(env('HEARTH_SPEECH_MODEL', 'lfm3-omni:latest')) ? '' : env('HEARTH_SPEECH_MODEL', 'lfm3-omni:latest'),
-  // The voice until a user picks one (Memories, About <name>).
-  speechVoice: env('HEARTH_SPEECH_VOICE', 'female-french'),
+  // The voices until a user picks theirs (Memories, About <name>): French sentences are read in the
+  // French one, the rest in the English one (a French voice reading English sounds British).
+  speechVoices: {
+    english: env('HEARTH_SPEECH_VOICE_ENGLISH', 'female-american-english'),
+    french: env('HEARTH_SPEECH_VOICE_FRENCH', 'female-french'),
+  },
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
   // The name the assistant answers to ({{name}} in the prompt; summaries and memory extraction use

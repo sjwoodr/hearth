@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError, type Memory, type MemoryKind, type MemorySubject, type Persona } from './api.ts';
 import { memoryDate } from '../../shared/chat-span.ts';
 import { alwaysUse, MEMORY_BUDGET_CHARS } from '../../shared/memory-budget.ts';
-import { sortVoices, voiceLabel } from '../../shared/speech.ts';
+import { sortVoices, voiceLabel, type SpeechLanguage } from '../../shared/speech.ts';
 import { SpeakButton, SpeakerIcon } from './SpeakButton.tsx';
 import { chooseVoice, loadVoices, useSpeech } from './speech.ts';
 
@@ -309,42 +309,52 @@ function AlwaysBudget({ memories, other }: { memories: Memory[]; other: string }
 }
 
 /** How the assistant sounds read aloud: this user's voice, from the speech model's list, with a sample. */
+const VOICE_LANGUAGES: { language: SpeechLanguage; label: string; sample: (assistant: string) => string }[] = [
+  { language: 'english', label: 'English', sample: (name) => `Hi, I'm ${name}, and this is how I sound in English.` },
+  { language: 'french', label: 'French', sample: (name) => `Bonjour ! Je suis ${name}, et voici ma voix en français.` },
+];
+
 function VoicePicker({ assistant }: { assistant: string }) {
   const speech = useSpeech();
   const [error, setError] = useState('');
   // Asked again here, in case the speech model came back since the page loaded.
   useEffect(() => void loadVoices(true), []);
   if (!speech.available) return null;
-  const sample = `Bonjour ! Je suis ${assistant}, et voici ma voix. And this is how I sound in English.`;
   return (
     <section className="voice" aria-labelledby="voice-heading">
       <h3 id="voice-heading">Voice</h3>
       <p className="muted small">
-        How {assistant} sounds when you press <SpeakerIcon /> under a reply, or Hear on a word you tapped.
+        How {assistant} sounds when you press <SpeakerIcon /> under a reply, or Hear on a word you tapped. Each
+        voice is made for its own language, so French sentences are read in the French voice and the rest in the
+        English one.
       </p>
-      <div className="voice-row">
-        <label htmlFor="voice-select" className="visually-hidden">
-          Voice
-        </label>
-        <select
-          id="voice-select"
-          value={speech.voice}
-          onChange={(e) => {
-            setError('');
-            chooseVoice(e.target.value).catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't save the voice."));
-          }}
-        >
-          {sortVoices(speech.voices).map((v) => (
-            <option key={v} value={v}>
-              {voiceLabel(v)}
-              {v === speech.defaultVoice ? ' (default)' : ''}
-            </option>
-          ))}
-        </select>
-        <SpeakButton id="voice-sample" text={() => sample} label="Hear a sample">
-          Hear a sample
-        </SpeakButton>
-      </div>
+      {VOICE_LANGUAGES.map(({ language, label, sample }) => (
+        <div className="voice-row" key={language}>
+          <label htmlFor={`voice-${language}`} className="voice-language">
+            {label}
+          </label>
+          <select
+            id={`voice-${language}`}
+            value={speech.chosen[language]}
+            onChange={(e) => {
+              setError('');
+              chooseVoice(language, e.target.value).catch((err) =>
+                setError(err instanceof ApiError ? err.message : "Couldn't save the voice."),
+              );
+            }}
+          >
+            {sortVoices(speech.voices).map((v) => (
+              <option key={v} value={v}>
+                {voiceLabel(v)}
+                {v === speech.defaults[language] ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+          <SpeakButton id={`voice-sample-${language}`} text={() => sample(assistant)} label={`Hear a sample in ${label}`} language={language}>
+            Hear a sample
+          </SpeakButton>
+        </div>
+      ))}
       {error && (
         <p className="error" role="alert">
           {error}

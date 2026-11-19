@@ -163,7 +163,8 @@ export function WordLookup({ scroller }: { scroller: RefObject<HTMLDivElement | 
         <p className="word-popup-text" lang="fr">
           {text}
         </p>
-        <SpeakButton id={`word:${text}`} text={() => text} label={`Hear “${text}”`}>
+        {/* Looked-up words are French, so always the French voice (one sign-less word would read as English). */}
+        <SpeakButton id={`word:${text}`} text={() => text} label={`Hear “${text}”`} language="french">
           Hear
         </SpeakButton>
       </div>

@@ -508,9 +508,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   user can override the name** (persona.ts, below): the setting is the default for users who haven't.
   The UI uses that name where the assistant itself acts (chat box, search card, Think: Auto help, the
   private-chat note; `assistantName` on `/me` and `/login`) and keeps "hearth" for background work.
-- **Reading aloud streams, in the user's voice** (`server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`;
-  owner's request, 2026-11-19: a speaker under replies, Hear in the word popup, any of the model's voices,
-  `female-french` by default). Ollama's `/v1/audio/speech` streams the WAV as it's made: first bytes in
+- **Reading aloud streams, in the user's voices** (`server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`;
+  owner's request, 2026-11-19: a speaker under replies, Hear in the word popup, any of the model's voices). Ollama's `/v1/audio/speech` streams the WAV as it's made: first bytes in
   ~0.25 s, then ~2.15x real time (measured on the mini PC; its length fields are 0xFFFFFFFF placeholders). So the
   server passes the bytes straight through (gateway and api, `releaseWhenDone` holds the slot until the
   last byte) and the browser decodes and schedules them with Web Audio as they arrive; an `<audio>` element
@@ -520,13 +519,23 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   under 0.3 s was queued), replay instant from the page's memory with no request, and the audio the page
   played transcribed back to the reply word for word (code and emoji left out). **A press is a reply** for
   the scheduler (`scheduler.speech`, `X-Hearth-Priority: reply`): someone is waiting, and a background
-  priority could leave them behind a 20 s extraction. Pieces of ≤300 characters (`speechChunks`), the next
-  asked for when the last finishes arriving, so one slot at a time. Nothing stored but `users.voice`
-  (migration 016); the text never goes in a log (a test spies on `console.error`). Hidden when the model
+  priority could leave them behind a 20 s extraction. Pieces of ≤300 characters (`speechParts`), the next
+  asked for when the last finishes arriving, so one slot at a time. **A voice per language** (same day):
+  shipped with one voice, `female-french`, and the owner heard English replies come out British, in hearth
+  and in `ollama run lfm3-omni --voice female-french`. The model has no speakers, only a language and a
+  gender: its TTS chat template (`/api/show`, `tokenizer.chat_template.tts`) turns `female-french` into
+  "Perform TTS in French using a female voice", and given English text that prompt sounds British. So each
+  sentence is read in the voice for its language (`speechLanguage`: French-only words, accented words and
+  elisions against English-only words; a tie takes the sentence before), neighbours of one language packed
+  together, never two languages in one request; Hear is always French. Defaults `female-american-english`
+  and `female-french` (owner's choice). Through the real model in a browser: each piece went to its
+  language's voice, first sound ~0.26 s, no gap at the switches. Known leftover: a little French quoted
+  in an English sentence is read in the English voice. Nothing stored but `users.english_voice` and
+  `french_voice` (migration 017; 016's `users.voice` moved to the language it names and is left unread); the text never goes in a log (a test spies on `console.error`). Hidden when the model
   can't speak (`/api/show` lists no voices; asked once per 10 min, a failure retried after 30 s). iOS:
   Web Audio starts inside the tap with a silent buffer, and `navigator.audioSession.type = 'playback'` so
   the ringer switch doesn't mute it (untested on a real iPhone). Every guard was mutation-checked (32
-  sabotages, all caught).
+  sabotages, then 24 for the voice per language, all caught).
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -556,7 +565,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
-| `server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`, `client/src/SpeakButton.tsx` | reading aloud: `GET /voices`, `PUT /voice` (`users.voice`), `POST /speech` (WAV streamed through), `cachedVoices`; `speechText` (Markdown → words to say), `speechChunks`, `readWavHeader`/`pcm16Decoder` (shared, tested in `server/speech-text.test.ts`); the Web Audio player and the button under replies, in the word popup and the voice picker (Memories, About <name>) |
+| `server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`, `client/src/SpeakButton.tsx` | reading aloud: `GET /voices`, `PUT /voice` (`users.english_voice`, `french_voice`), `POST /speech` (WAV streamed through), `cachedVoices`; `speechText` (Markdown → words to say), `speechLanguage` and `speechParts` (each sentence to its language's voice), `readWavHeader`/`pcm16Decoder` (shared, tested in `server/speech-text.test.ts`); the Web Audio player and the button under replies, in the word popup and the voice picker (Memories, About <name>) |
 | `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`, `DELETE /persona/history/:id`), page in `client/src/MemoriesView.tsx` (its About <name> tab) |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
 | `shared/memory-budget.ts` | the memory allowance per reply (`MEMORY_BUDGET_TOKENS`), `estimateTokens` (re-exported by `context.ts`), `alwaysUse` for the Memories page's always-remembered counter |

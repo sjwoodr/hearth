@@ -93,30 +93,93 @@ function inline(line: string): string {
     .trim();
 }
 
-const ENDS_A_THOUGHT = /[.!?…:;,»"”')\]]$/;
+/**
+ * The languages read aloud, each in its own voice. The model's voices are a language and a gender
+ * ("female-french" asks it to "perform TTS in French using a female voice"), so a French voice
+ * reading English sounds British: French sentences go to the French voice, the rest to the English.
+ */
+export const SPEECH_LANGUAGES = ['english', 'french'] as const;
+export type SpeechLanguage = (typeof SPEECH_LANGUAGES)[number];
+export type SpeechPart = { text: string; language: SpeechLanguage };
+
+// Words only one of the two languages uses much. Shared spellings are left out of both: "on", "a",
+// "an" and "or" are words in each, "pour", "son", "car" and "plus" are English too, "non" starts
+// "non-native", and "ai" is how a lowercased "AI" looks.
+const FRENCH_WORDS = new Set(
+  (
+    'je tu il elle nous vous ils elles le la les un une des du de au aux et ou est sont suis es êtes sommes ' +
+    'avez avons ont été était être avoir faire fait vais va vas allons allez peux peut veux veut dit ne pas ' +
+    'que qui quoi dont où quand comment pourquoi ce cet cette ces se mon ma mes ta tes sa ses notre votre ' +
+    'nos vos leur leurs moi toi lui eux dans sur avec sans chez mais donc puis comme très aussi bien encore ' +
+    'toujours beaucoup oui merci bonjour bonsoir salut voilà voici ça bonne nuit y en alors enfin tout rien ' +
+    'parfait exactement absolument'
+  ).split(' '),
+);
+const ENGLISH_WORDS = new Set(
+  (
+    'the and is are was were be been being i you he she it we they me him her his its our their them my ' +
+    'your this that these those to of in for with from at by about into than then there here what which who ' +
+    'when where why how not but if so just can could would should will do does did have has had get got ' +
+    'yes no very too also really because like more some all any one out up know think want good great say said'
+  ).split(' '),
+);
+// An elided article or pronoun (j'ai, l'eau, qu'il, c'est): only French writes a letter, an apostrophe
+// and then the word. English's ('s, n't, 're) come after the word.
+const ELISION = /(?<!\p{L})(?:c|j|l|d|qu|n|m|t|s)'(?=\p{L})/giu;
+const ACCENTED = /[éèêëàâçùûîïôœ]/;
 
 /**
- * Text cut into pieces of at most `max` characters for one speech request each: whole sentences where
- * they fit, else clauses, else words. A line that ends without punctuation gets a full stop, so a list
- * read as one piece still pauses between its items.
+ * The language a sentence is in, by counting words only one of the two uses (accented words and
+ * elisions count as French); undefined when they tie, as "Exactement !", a name or a number do.
  */
-export function speechChunks(text: string, max = SPEECH_CHUNK_CHARS): string[] {
-  const pieces: string[] = [];
+export function speechLanguage(text: string): SpeechLanguage | undefined {
+  const plain = text.replace(/[\u2018\u2019\u02bc]/g, "'").toLowerCase();
+  let french = plain.match(ELISION)?.length ?? 0;
+  let english = 0;
+  for (const word of plain.replace(ELISION, ' ').match(/\p{L}+/gu) ?? []) {
+    if (FRENCH_WORDS.has(word) || ACCENTED.test(word)) french++;
+    else if (ENGLISH_WORDS.has(word)) english++;
+  }
+  return french > english ? 'french' : english > french ? 'english' : undefined;
+}
+
+const ENDS_A_THOUGHT = /[.!?…:;,»"”')\]]$/;
+// Between sentences: after . ! ? or … and any closing quote or bracket (French puts a space before
+// « » 's closer), and never just before a closer, so « Je suis allé. » stays whole.
+const SENTENCE_GAP = /(?<=[.!?…](?:\s?[»"”’')\]])*)\s+(?![»”’)\]])/u;
+
+/**
+ * Text cut into pieces for one speech request each, each in one language: whole sentences of the same
+ * language packed up to `max` characters, an overlong one cut at its clauses, else words. A sentence
+ * with no sign of either language takes the one before it (the first, the text's as a whole). A line
+ * that ends without punctuation gets a full stop, so a list read as one piece still pauses between its
+ * items. `language` reads it all in one (the word popup's French).
+ */
+export function speechParts(text: string, opts: { max?: number; language?: SpeechLanguage } = {}): SpeechPart[] {
+  const max = opts.max ?? SPEECH_CHUNK_CHARS;
+  let language: SpeechLanguage = opts.language ?? speechLanguage(text) ?? 'english';
+  const pieces: SpeechPart[] = [];
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!/[\p{L}\p{N}]/u.test(line)) continue;
     const ended = ENDS_A_THOUGHT.test(line) ? line : `${line}.`;
-    for (const sentence of splitTo(ended, max, /(?<=[.!?…])\s+/)) {
-      for (const clause of splitTo(sentence, max, /(?<=[,;:])\s+/)) pieces.push(...splitTo(clause, max, /\s+/, true));
+    for (const sentence of ended.split(SENTENCE_GAP)) {
+      language = opts.language ?? speechLanguage(sentence) ?? language;
+      for (const clause of splitTo(sentence, max, /(?<=[,;:])\s+/)) {
+        for (const piece of splitTo(clause, max, /\s+/, true)) {
+          // A stray "..." or closing quote has nothing to say, and alone it would be refused.
+          if (/[\p{L}\p{N}]/u.test(piece)) pieces.push({ text: piece, language });
+        }
+      }
     }
   }
-  const chunks: string[] = [];
+  const parts: SpeechPart[] = [];
   for (const piece of pieces) {
-    const last = chunks.at(-1);
-    if (last !== undefined && last.length + 1 + piece.length <= max) chunks[chunks.length - 1] = `${last} ${piece}`;
-    else chunks.push(piece);
+    const last = parts.at(-1);
+    if (last && last.language === piece.language && last.text.length + 1 + piece.text.length <= max) last.text += ` ${piece.text}`;
+    else parts.push({ ...piece });
   }
-  return chunks;
+  return parts;
 }
 
 // `text` as is if it fits, else split at `at` and packed back up to `max`; a single word longer than

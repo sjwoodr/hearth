@@ -1,11 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_SPEECH_CHARS } from '../shared/speech.ts';
 import { createModelScheduler, PreemptedError } from './busy.ts';
 import type { SpeakFn } from './ollama.ts';
-import { cachedVoices, savedVoice, type SpeechDeps } from './speech.ts';
+import { connect, migrate } from './db.ts';
+import { cachedVoices, savedVoices, type SpeechDeps } from './speech.ts';
 import { call, ORIGIN, setupApp, signIn } from './testing.ts';
 
-const VOICES = ['default', 'female-french', 'male-french', 'female-american-english'];
+const VOICES = ['default', 'female-french', 'male-french', 'female-american-english', 'male-british-english'];
+const DEFAULTS = { english: 'female-american-english', french: 'female-french' };
 const AUDIO = new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4]);
 
 const bytesOf = (...parts: Uint8Array[]) =>
@@ -16,7 +20,7 @@ const bytesOf = (...parts: Uint8Array[]) =>
     },
   });
 
-function setup(opts: { voices?: string[] | undefined; defaultVoice?: string; speak?: SpeakFn } = {}) {
+function setup(opts: { voices?: string[] | undefined; defaultVoices?: SpeechDeps['defaultVoices']; speak?: SpeakFn } = {}) {
   const spoken: { text: string; voice: string; userId?: number }[] = [];
   const speech: SpeechDeps = {
     speak:
@@ -26,7 +30,7 @@ function setup(opts: { voices?: string[] | undefined; defaultVoice?: string; spe
         return bytesOf(AUDIO.subarray(0, 4), AUDIO.subarray(4));
       }),
     voices: async () => ('voices' in opts ? opts.voices : VOICES),
-    defaultVoice: opts.defaultVoice ?? 'female-french',
+    defaultVoices: opts.defaultVoices ?? DEFAULTS,
   };
   const ctx = setupApp({ speech });
   return { ctx, spoken };
@@ -35,18 +39,19 @@ function setup(opts: { voices?: string[] | undefined; defaultVoice?: string; spe
 afterEach(() => vi.restoreAllMocks());
 
 describe('GET /api/voices', () => {
-  it("lists the model's voices, with the default until the user picks one", async () => {
+  it("lists the model's voices, with each language's default until the user picks one", async () => {
     const { ctx } = setup();
     const alice = await signIn(ctx, 'alice');
     const res = await call(ctx.app, alice, 'GET', '/voices');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ voices: VOICES, voice: 'female-french', defaultVoice: 'female-french' });
+    expect(await res.json()).toEqual({ voices: VOICES, chosen: DEFAULTS, defaults: DEFAULTS });
   });
 
-  it("falls back to the model's first voice when the default isn't one of them", async () => {
-    const { ctx } = setup({ defaultVoice: 'female-klingon' });
+  it("falls back to the model's first voice when a default isn't one of them", async () => {
+    const { ctx } = setup({ defaultVoices: { english: 'female-klingon', french: 'female-french' } });
     const alice = await signIn(ctx, 'alice');
-    expect(await (await call(ctx.app, alice, 'GET', '/voices')).json()).toMatchObject({ voice: 'default', defaultVoice: 'default' });
+    const fallback = { english: 'default', french: 'female-french' };
+    expect(await (await call(ctx.app, alice, 'GET', '/voices')).json()).toMatchObject({ chosen: fallback, defaults: fallback });
   });
 
   it("says unavailable when the model can't speak", async () => {
@@ -59,30 +64,42 @@ describe('GET /api/voices', () => {
 });
 
 describe('PUT /api/voice', () => {
-  it("saves each user's own voice, and only theirs", async () => {
+  it("saves each user's own voice for each language, and only theirs", async () => {
     const { ctx } = setup();
     const alice = await signIn(ctx, 'alice');
     const bob = await signIn(ctx, 'bob');
-    const res = await call(ctx.app, alice, 'PUT', '/voice', { voice: 'male-french' });
+    const chosen = async (who: typeof alice) => (await (await call(ctx.app, who, 'GET', '/voices')).json()).chosen;
+    const res = await call(ctx.app, alice, 'PUT', '/voice', { language: 'french', voice: 'male-french' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ voice: 'male-french' });
-    expect((await (await call(ctx.app, alice, 'GET', '/voices')).json()).voice).toBe('male-french');
-    expect((await (await call(ctx.app, bob, 'GET', '/voices')).json()).voice).toBe('female-french');
+    expect(await res.json()).toEqual({ language: 'french', voice: 'male-french' });
+    expect(await chosen(alice)).toEqual({ english: 'female-american-english', french: 'male-french' });
+    await call(ctx.app, alice, 'PUT', '/voice', { language: 'english', voice: 'male-british-english' });
+    expect(await chosen(alice)).toEqual({ english: 'male-british-english', french: 'male-french' });
+    expect(await chosen(bob)).toEqual(DEFAULTS);
   });
 
-  it("refuses a voice the model doesn't have, saving nothing", async () => {
+  it("refuses a voice the model doesn't have, or a language it isn't for, saving nothing", async () => {
     const { ctx } = setup();
     const alice = await signIn(ctx, 'alice');
-    for (const body of [{ voice: 'female-klingon' }, { voice: 5 }, {}]) {
+    for (const body of [
+      { language: 'french', voice: 'female-klingon' },
+      { language: 'french', voice: 5 },
+      { language: 'french' },
+      { voice: 'male-french' },
+      { language: 'german', voice: 'male-french' },
+      { language: 'voice = 1; --', voice: 'male-french' },
+      {},
+    ]) {
       expect((await call(ctx.app, alice, 'PUT', '/voice', body)).status).toBe(400);
     }
-    expect((await (await call(ctx.app, alice, 'GET', '/voices')).json()).voice).toBe('female-french');
+    expect((await (await call(ctx.app, alice, 'GET', '/voices')).json()).chosen).toEqual(DEFAULTS);
+    expect(savedVoices(ctx.db, 1)).toEqual({ english: null, french: null });
   });
 
   it("refuses while the model can't be asked which voices it has", async () => {
     const { ctx } = setup({ voices: undefined });
     const alice = await signIn(ctx, 'alice');
-    expect((await call(ctx.app, alice, 'PUT', '/voice', { voice: 'male-french' })).status).toBe(503);
+    expect((await call(ctx.app, alice, 'PUT', '/voice', { language: 'french', voice: 'male-french' })).status).toBe(503);
   });
 });
 
@@ -99,14 +116,25 @@ describe('POST /api/speech', () => {
     expect(spoken).toEqual([{ text: 'Bonjour, ça va ?', voice: 'male-french', userId: user!.id }]);
   });
 
-  it("uses the user's saved voice when none is given, and the default for a voice the model lost", async () => {
+  it("uses the user's voice for the text's language when none is given, and the default for one the model lost", async () => {
     const { ctx, spoken } = setup();
     const alice = await signIn(ctx, 'alice');
-    await call(ctx.app, alice, 'PUT', '/voice', { voice: 'female-american-english' });
-    await (await call(ctx.app, alice, 'POST', '/speech', { text: 'Hello.' })).arrayBuffer();
-    ctx.db.prepare("UPDATE users SET voice = 'female-retired' WHERE username = 'alice'").run();
-    await (await call(ctx.app, alice, 'POST', '/speech', { text: 'Hello.' })).arrayBuffer();
-    expect(spoken.map((s) => s.voice)).toEqual(['female-american-english', 'female-french']);
+    await call(ctx.app, alice, 'PUT', '/voice', { language: 'english', voice: 'male-british-english' });
+    await call(ctx.app, alice, 'PUT', '/voice', { language: 'french', voice: 'male-french' });
+    const say = async (text: string) => (await call(ctx.app, alice, 'POST', '/speech', { text })).arrayBuffer();
+    await say('Hello, how are you?');
+    await say("Bonjour, c'est moi.");
+    await say('Marie.'); // no sign of either: English
+    ctx.db.prepare("UPDATE users SET english_voice = 'female-retired', french_voice = 'male-retired' WHERE username = 'alice'").run();
+    await say('Hello, how are you?');
+    await say("Bonjour, c'est moi.");
+    expect(spoken.map((s) => s.voice)).toEqual([
+      'male-british-english',
+      'male-french',
+      'male-british-english',
+      'female-american-english',
+      'female-french',
+    ]);
   });
 
   it('refuses empty, wordless, oversized or unknown-voice requests without calling the model', async () => {
@@ -156,7 +184,7 @@ describe('POST /api/speech', () => {
     }
   });
 
-  it('keeps nothing but the voice', async () => {
+  it('keeps nothing but the voices', async () => {
     const { ctx } = setup();
     const alice = await signIn(ctx, 'alice');
     const tables = () =>
@@ -166,7 +194,29 @@ describe('POST /api/speech', () => {
     const before = tables();
     await (await call(ctx.app, alice, 'POST', '/speech', { text: 'Un mot privé.' })).arrayBuffer();
     expect(tables()).toEqual(before);
-    expect(savedVoice(ctx.db, 1)).toBeNull();
+    expect(savedVoices(ctx.db, 1)).toEqual({ english: null, french: null });
+  });
+});
+
+describe('migration 017', () => {
+  it("moves each user's one voice to the language it names", () => {
+    const db = connect(':memory:');
+    // The database as 016 left it, with a voice of each kind saved, then the rest of the migrations.
+    const dir = path.join(import.meta.dirname, 'migrations');
+    for (const file of fs.readdirSync(dir).filter((f) => /^\d+_.+\.sql$/.test(f) && Number.parseInt(f, 10) <= 16).sort()) {
+      db.exec(fs.readFileSync(path.join(dir, file), 'utf8'));
+    }
+    db.pragma('user_version = 16');
+    const add = db.prepare("INSERT INTO users (username, password_hash, voice) VALUES (?, 'x', ?)");
+    for (const [name, voice] of [['fr', 'male-french'], ['en', 'female-british-english'], ['own', 'default'], ['none', null]]) add.run(name, voice);
+    migrate(db);
+    expect(db.prepare('SELECT username, english_voice, french_voice FROM users ORDER BY id').all()).toEqual([
+      { username: 'fr', english_voice: null, french_voice: 'male-french' },
+      { username: 'en', english_voice: 'female-british-english', french_voice: null },
+      { username: 'own', english_voice: 'default', french_voice: null },
+      { username: 'none', english_voice: null, french_voice: null },
+    ]);
+    db.close();
   });
 });
 

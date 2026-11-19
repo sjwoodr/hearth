@@ -1,3 +1,4 @@
+import type { SpeechLanguage } from '../../shared/speech.ts';
 import type { Effort } from '../../shared/think-effort.ts';
 
 export class ApiError extends Error {
@@ -54,8 +55,8 @@ const request = async <T,>(method: string, path: string, body?: unknown): Promis
 
 /** `name` is the display name, or the username when none is set. An admin can switch the model. */
 export type WordMeaning = { translation: string; note: string };
-/** Reading aloud: the voices the speech model has, the one this user hears, and the server's default. */
-export type Voices = { voices: string[]; voice: string; defaultVoice: string };
+/** Reading aloud: the voices the speech model has, and this user's and the server's for each language. */
+export type Voices = { voices: string[]; chosen: Record<SpeechLanguage, string>; defaults: Record<SpeechLanguage, string> };
 export type Me = {
   username: string;
   name: string;
@@ -250,7 +251,7 @@ export const api = {
   lookupWord: (text: string, sentence: string) => request<WordMeaning>('POST', '/api/word', { text, sentence }),
   /** The speech model's voices and this user's; fails (503, or 404 when it's off) if nothing can read aloud. */
   voices: () => request<Voices>('GET', '/api/voices'),
-  setVoice: (voice: string) => request<{ voice: string }>('PUT', '/api/voice', { voice }),
+  setVoice: (language: SpeechLanguage, voice: string) => request<{ language: SpeechLanguage; voice: string }>('PUT', '/api/voice', { language, voice }),
   /** `text` read aloud: a 16-bit PCM WAV, streamed as the model makes it (its length fields are placeholders). */
   speech: (text: string, voice: string, signal: AbortSignal) => send('POST', '/api/speech', { text, voice }, signal),
 };

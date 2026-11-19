@@ -205,6 +205,7 @@ button.icon.speak.waiting .speaker-icon { animation: speak-wait 0.9s ease-in-out
 .speak-error { font-size: 0.75rem; color: var(--error); }
 .voice-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.4rem; }
 .voice select { max-width: 100%; }
+.voice-language { flex-basis: 100%; margin-top: 0.4rem; }
 /* Raw: the stored text as is, wrapped like the rest of the chat. */
 .message pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 

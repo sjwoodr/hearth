@@ -1,17 +1,18 @@
-// Reading aloud: a reply, or a word from the lookup popup, in the voice the user picked (Memories, About
-// <name>). The server streams a WAV as the model makes it (first sound in ~0.3 s, then ~2x faster than it
+// Reading aloud: a reply, or a word from the lookup popup, in the voices the user picked (Memories, About
+// <name>): French sentences in their French voice, the rest in their English one. The server streams a WAV as the model makes it (first sound in ~0.3 s, then ~2x faster than it
 // plays), so it's played with Web Audio block by block as it arrives, not handed to an <audio> element
 // that would wait for the whole file. Pieces already heard are kept in memory, so a replay is instant.
 import { useEffect, useSyncExternalStore } from 'react';
-import { pcm16Decoder, readWavHeader, speechChunks } from '../../shared/speech.ts';
+import { pcm16Decoder, readWavHeader, speechParts, type SpeechLanguage, type SpeechPart } from '../../shared/speech.ts';
 import { api, ApiError } from './api.ts';
 
 export type SpeechState = {
   /** null until the server has answered; false if nothing can read aloud there. */
   available: boolean | null;
   voices: string[];
-  voice: string;
-  defaultVoice: string;
+  /** The user's voice for each language, and the server's. */
+  chosen: Record<SpeechLanguage, string>;
+  defaults: Record<SpeechLanguage, string>;
   /** What's being read: a key its button chose. */
   playing: string | null;
   /** True until its first sound. */
@@ -20,7 +21,8 @@ export type SpeechState = {
   failed: { key: string; message: string } | null;
 };
 
-let state: SpeechState = { available: null, voices: [], voice: '', defaultVoice: '', playing: null, waiting: false, failed: null };
+const NONE = { english: '', french: '' };
+let state: SpeechState = { available: null, voices: [], chosen: NONE, defaults: NONE, playing: null, waiting: false, failed: null };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<SpeechState>) => {
   state = { ...state, ...patch };
@@ -49,14 +51,14 @@ export function useSpeech(): SpeechState {
   return useSyncExternalStore(subscribe, () => state);
 }
 
-/** Saves the voice for this user; it applies to the next thing read. */
-export async function chooseVoice(voice: string): Promise<void> {
-  const before = state.voice;
-  set({ voice });
+/** Saves this user's voice for `language`; it applies to the next thing read. */
+export async function chooseVoice(language: SpeechLanguage, voice: string): Promise<void> {
+  const before = state.chosen[language];
+  set({ chosen: { ...state.chosen, [language]: voice } });
   try {
-    await api.setVoice(voice);
+    await api.setVoice(language, voice);
   } catch (err) {
-    set({ voice: before });
+    set({ chosen: { ...state.chosen, [language]: before } });
     throw err;
   }
 }
@@ -101,17 +103,22 @@ export function stopSpeaking(): void {
   set({ playing: null, waiting: false });
 }
 
-/** Reads `text` (speech text, see shared/speech.ts) aloud, or stops it if `key` is what's playing. Call from a tap. */
-export function toggleSpeaking(key: string, text: string): void {
+/**
+ * Reads `text` (speech text, see shared/speech.ts) aloud, or stops it if `key` is what's playing. Each
+ * sentence goes to the voice for its language, or all of it to `language`'s. Call from a tap.
+ */
+export function toggleSpeaking(key: string, text: string, language?: SpeechLanguage): void {
   if (state.playing === key) return stopSpeaking();
   stopSpeaking();
-  const chunks = speechChunks(text);
-  if (!chunks.length || !state.voice) return;
+  const parts = speechParts(text, { language });
+  // The voices as they are now: a change while this plays applies to the next thing read.
+  const voices = state.chosen;
+  if (!parts.length || !voices.english || !voices.french) return;
   const out = audioOut();
   const mine: Run = { key, abort: new AbortController(), sources: new Set() };
   run = mine;
   set({ playing: key, waiting: true, failed: null });
-  play(out, mine, chunks, state.voice).catch((err) => {
+  play(out, mine, parts, voices).catch((err) => {
     if (run !== mine) return; // stopped: the abort is what failed
     stopSpeaking();
     set({ failed: { key, message: err instanceof ApiError ? err.message : "Couldn't read that aloud." } });
@@ -125,7 +132,7 @@ const LEAD_S = 0.06;
 const BLOCK_S = 0.4;
 const LOW_S = 0.3;
 
-async function play(out: AudioContext, mine: Run, chunks: string[], voice: string) {
+async function play(out: AudioContext, mine: Run, parts: SpeechPart[], voices: Record<SpeechLanguage, string>) {
   let at = 0; // when the next block starts, on the audio clock
   const queued = () => at - out.currentTime;
   const schedule = (samples: Float32Array, rate: number) => {
@@ -149,15 +156,16 @@ async function play(out: AudioContext, mine: Run, chunks: string[], voice: strin
     };
     if (state.waiting) set({ waiting: false });
   };
-  for (const chunk of chunks) {
-    const key = `${voice}\n${chunk}`;
+  for (const part of parts) {
+    const voice = voices[part.language];
+    const key = `${voice}\n${part.text}`;
     const kept = heard.get(key);
     if (kept) {
       heard.delete(key); // to the back of the line
       heard.set(key, kept);
       schedule(kept.samples, kept.rate);
     } else {
-      await stream(chunk, voice, mine, schedule, queued);
+      await stream(part.text, voice, mine, schedule, queued);
     }
     if (run !== mine) return;
   }

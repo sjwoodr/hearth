@@ -75,7 +75,7 @@ const app = createApp({
   lookupWord: makeWordLookup(models.wordJson),
   speech:
     models.speak && models.voices
-      ? { speak: models.speak, voices: cachedVoices(models.voices), defaultVoice: config.speechVoice }
+      ? { speak: models.speak, voices: cachedVoices(models.voices), defaultVoices: config.speechVoices }
       : undefined,
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
@@ -113,7 +113,7 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
     `hearth listening on http://${info.address}:${info.port} (origin ${config.origin}, model ${config.model}, ` +
       `thinking ${config.thinkingModel} ≤${Object.values(config.thinkingBudgets).join('/')} tokens, ` +
       `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'}, ` +
-      `reading aloud ${config.speechModel ? `${config.speechModel} (default voice ${config.speechVoice})` : 'off'}, ` +
+      `reading aloud ${config.speechModel ? `${config.speechModel} (default voices ${config.speechVoices.english}, ${config.speechVoices.french})` : 'off'}, ` +
       `${models.describe()}${jobs.memories ? '' : ', api only: the worker extracts memories and summarizes'})`,
   );
 });

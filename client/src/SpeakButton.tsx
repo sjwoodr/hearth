@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { voiceLabel } from '../../shared/speech.ts';
+import { voiceLabel, type SpeechLanguage } from '../../shared/speech.ts';
 import { speechState, stopSpeaking, toggleSpeaking, useSpeech } from './speech.ts';
 
 export const SpeakerIcon = () => (
@@ -16,10 +16,23 @@ const StopIcon = () => (
 );
 
 /**
- * Plays `text()` aloud in the user's voice, or stops it. Nothing shows when the server can't read
+ * Plays `text()` aloud in the user's voices (French sentences in the French one, the rest in the
+ * English), or all of it in `language`'s; or stops it. Nothing shows when the server can't read
  * aloud. What it started stops if it goes away (another chat opened, the popup closed).
  */
-export function SpeakButton({ id, text, label, children }: { id: string; text: () => string; label: string; children?: string }) {
+export function SpeakButton({
+  id,
+  text,
+  label,
+  language,
+  children,
+}: {
+  id: string;
+  text: () => string;
+  label: string;
+  language?: SpeechLanguage;
+  children?: string;
+}) {
   const speech = useSpeech();
   const on = speech.playing === id;
   useEffect(
@@ -38,8 +51,8 @@ export function SpeakButton({ id, text, label, children }: { id: string; text: (
         className={`icon speak${on ? ' on' : ''}${on && speech.waiting ? ' waiting' : ''}${children ? ' with-label' : ''}`}
         aria-label={on ? 'Stop reading aloud' : label}
         aria-pressed={on}
-        title={on ? 'Stop' : `${label} (${voiceLabel(speech.voice)})`}
-        onClick={() => toggleSpeaking(id, text())}
+        title={on ? 'Stop' : language ? `${label} (${voiceLabel(speech.chosen[language])})` : label}
+        onClick={() => toggleSpeaking(id, text(), language)}
       >
         {on ? <StopIcon /> : <SpeakerIcon />}
         {children && <span>{children}</span>}
