@@ -498,6 +498,17 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   opener-only ones modelled on the good ones: on-topic 25/25 kept, two-subject 20/20 kept, opener-only
   20/20 renamed, full drifts 22/25 (a cron question that became a job vent stayed "Cron Job Setup"
   3/5: the safe way to be wrong). Next real signal: the renames after the next live pass.
+  **Suggest in the rename box** (2026-11-19, owner's request: a manual rename was a one-way door, and the
+  cautious check rarely changes a title that's merely all right). ✎ opens an inline box (no more
+  `window.prompt`); Suggest calls `writeTitle`, the retitler's title prompt without the fit check, and
+  saves nothing. Kept unedited, the PATCH carries `auto: true`: `title_is_auto` back to 1 and checked
+  through the newest message, so the retitler waits for 4 more; typed or edited, the title stays the
+  user's. At the background temperature (0.2) a second press gave the same title, so the box sends the
+  current title and everything it has shown (`avoid`, newest 5) and the model is told to write a
+  different one; a repeat anyway is refused (502, "try again"). Real model, two synthetic chats, 4
+  presses x3: 24/24 different from every title before them, ~0.8 s each (word swaps: "Raised Garden Bed
+  Construction" → "Garden Bed Planning" → "...Materials"). Background priority, like the word popup: a
+  reply preempts it (503). Mutation-checked, 31 sabotages, all caught.
 - **The assistant's name is a setting, not a prompt copy** (`HEARTH_ASSISTANT_NAME`, default
   `hearth`; 2026-11-05, owner's request). It fills `{{name}}` in the prompt (`server/system-prompt.ts`)
   and is passed to the summarizer and extraction, whose transcripts and instructions name the
@@ -555,7 +566,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/system-prompt.ts` | reads the system prompt, filling `{{name}}` with `HEARTH_ASSISTANT_NAME` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |
-| `server/retitle.ts` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then a title); runs beside extraction |
+| `server/retitle.ts`, `client/src/RenameChat.tsx` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then `writeTitle`); runs beside extraction. `titleLines` (what both read), and the rename box's Suggest (`POST /conversations/:id/title-suggestion`, `writeTitle` with titles to `avoid`) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts`, `version.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json`; the build (`HEARTH_VERSION`, `sha-<short>` from CI) on `/healthz` and `X-Hearth-Version`, shown in the footer, a reload offered when it changes |

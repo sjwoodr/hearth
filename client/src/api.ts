@@ -187,7 +187,11 @@ export const api = {
       'GET',
       `/api/conversations/${id}`,
     ),
-  renameConversation: (id: number, title: string) => request('PATCH', `/api/conversations/${id}`, { title }),
+  /** `auto`: the title is hearth's suggestion, kept as it was, so hearth may retitle the chat later. */
+  renameConversation: (id: number, title: string, auto = false) => request('PATCH', `/api/conversations/${id}`, { title, auto }),
+  /** A model-written title for the whole chat, for the rename box, other than `avoid`; nothing is saved. */
+  suggestTitle: async (id: number, avoid: string[], signal: AbortSignal) =>
+    (await send('POST', `/api/conversations/${id}/title-suggestion`, { avoid }, signal)).json() as Promise<{ title: string }>,
   deleteConversation: (id: number) => request('DELETE', `/api/conversations/${id}`),
   /**
    * `images`: data URLs, sent once and never stored. `think`: true always thinks, false never,

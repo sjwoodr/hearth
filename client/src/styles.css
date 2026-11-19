@@ -108,6 +108,19 @@ button.icon:hover, button.link:hover { color: var(--accent); }
   .sidebar li:not(:hover, :focus-within, .active) .icon { display: none; }
 }
 .sidebar li:hover { background: var(--bg); }
+/* The rename box takes the row's place (RenameChat): the title on its own line, the buttons under it. */
+.sidebar li.renaming { display: block; padding: 0.4rem 8px; background: var(--bg); }
+.rename-chat { display: grid; gap: 0.35rem; }
+.rename-chat input {
+  /* 16px or more, or iOS zooms the page in when the box takes focus. */
+  font: inherit; font-size: max(1rem, 16px); width: 100%; box-sizing: border-box; padding: 0.4rem 0.55rem;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.rename-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem; font-size: 0.9rem; }
+.rename-actions button { padding: 0.3rem 0.7rem; }
+.rename-actions button.link { padding: 0.3rem 0.5rem; }
+.rename-actions button.link:first-child { margin-right: auto; color: var(--accent); }
+.rename-chat p { margin: 0; font-size: 0.8rem; }
 .sidebar li.active { background: var(--user-bubble); }
 .sidebar-foot {
   display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 16px;

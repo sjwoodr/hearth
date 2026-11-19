@@ -2,7 +2,8 @@
 // exchange (titles.ts), so a chat that opened with a quick question and became something else kept
 // that question's name. Once a chat goes quiet with a few new messages, the model sees the current
 // title and the user's side of the whole chat, and keeps the title or writes a better one.
-// Never touches a chat the user renamed (setAutoTitle).
+// Never touches a chat the user renamed (setAutoTitle). The rename box's Suggest uses the same
+// title prompt on request (`writeTitle`).
 import { isPreempted } from './busy.ts';
 import { setAutoTitle } from './conversations.ts';
 import type { DB } from './db.ts';
@@ -58,7 +59,6 @@ const FITS_SCHEMA = { type: 'object', properties: { fits: { type: 'boolean' } },
  */
 export function makeRetitler(json: JsonFn) {
   return async (title: string, userMessages: string[]): Promise<string | undefined> => {
-    const said = `The user's messages, oldest first:\n${sampleLines(userMessages).map((m) => `- ${m}`).join('\n')}`;
     const check = (await json(
       [
         {
@@ -69,28 +69,67 @@ export function makeRetitler(json: JsonFn) {
             'names nothing but a passing start (a greeting, a one-off question) and the chat is really about ' +
             'something else.',
         },
-        { role: 'user', content: `TITLE: ${title}\n\n${said}` },
+        { role: 'user', content: `TITLE: ${title}\n\n${userSide(userMessages)}` },
       ],
       FITS_SCHEMA,
     )) as { fits?: unknown };
     if (check?.fits !== false) return undefined;
-    const raw = await json(
-      [
-        {
-          role: 'system',
-          content:
-            'Write a short title, 2 to 6 words, for the chat below. Name its main subject, the one most messages ' +
-            "are about, like a heading: one subject, don't join two with \"and\". No quotes, no trailing period, " +
-            'no emoji. Reply with the title only.',
-        },
-        { role: 'user', content: said },
-      ],
-      // Plain text, as for the first title (titles.ts).
-      null,
-    );
-    const better = cleanTitle(raw);
+    const better = await writeTitle(json, userMessages);
     return better && !sameSubject(title, better) ? better : undefined;
   };
+}
+
+/** The user's side of a chat as both title prompts read it. */
+const userSide = (userMessages: string[]) =>
+  `The user's messages, oldest first:\n${sampleLines(userMessages).map((m) => `- ${m}`).join('\n')}`;
+
+/**
+ * A title naming the chat's main subject, from the user's messages; undefined if the answer isn't
+ * usable. The retitler calls it once its check says the old title doesn't fit; the rename box's
+ * Suggest calls it directly (asking is the user saying it doesn't fit). `avoid`: titles Suggest has
+ * already shown, so pressing it again gives another (at the background temperature, 0.2, the same
+ * chat got the same title every time).
+ */
+export async function writeTitle(
+  json: JsonFn,
+  userMessages: string[],
+  signal?: AbortSignal,
+  avoid: string[] = [],
+): Promise<string | undefined> {
+  const others = avoid.length
+    ? `\n\nThese titles were already suggested and rejected; write a different one:\n${avoid.map((t) => `- ${t}`).join('\n')}`
+    : '';
+  const raw = await json(
+    [
+      {
+        role: 'system',
+        content:
+          'Write a short title, 2 to 6 words, for the chat below. Name its main subject, the one most messages ' +
+          "are about, like a heading: one subject, don't join two with \"and\". No quotes, no trailing period, " +
+          'no emoji. Reply with the title only.',
+      },
+      { role: 'user', content: userSide(userMessages) + others },
+    ],
+    // Plain text, as for the first title (titles.ts).
+    null,
+    signal,
+  );
+  const title = cleanTitle(raw);
+  return title && !avoid.some((t) => t.toLowerCase() === title.toLowerCase()) ? title : undefined;
+}
+
+/**
+ * What the title prompts read of a chat: the user's messages up to `throughId`, oldest first, never
+ * what they kept out with "[no extraction]" (shared/no-extraction.ts). Not scoped to a user: the
+ * caller has already checked the chat is theirs.
+ */
+export function titleLines(db: DB, conversationId: number, throughId = Number.MAX_SAFE_INTEGER): string[] {
+  const said = db
+    .prepare(
+      "SELECT content, image_count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <= ? AND no_extraction = 0 ORDER BY id",
+    )
+    .all(conversationId, throughId) as { content: string; image_count: number }[];
+  return said.map((m) => m.content || (m.image_count ? '[an image]' : '')).filter(Boolean);
 }
 
 /** Auto-titled chats, quiet for `idleMinutes`, with at least RETITLE_AFTER messages since the last check. */
@@ -114,16 +153,7 @@ export async function retitle(db: DB, id: number, retitler: ReturnType<typeof ma
     .prepare('SELECT title, (SELECT max(id) FROM messages WHERE conversation_id = c.id) AS through FROM conversations c WHERE id = ?')
     .get(id) as { title: string | null; through: number | null } | undefined;
   if (!chat?.title || chat.through === null) return false;
-  const said = db
-    // Never what the user kept out with "[no extraction]" (shared/no-extraction.ts).
-    .prepare(
-      "SELECT content, image_count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <= ? AND no_extraction = 0 ORDER BY id",
-    )
-    .all(id, chat.through) as { content: string; image_count: number }[];
-  const better = await retitler(
-    chat.title,
-    said.map((m) => m.content || (m.image_count ? '[an image]' : '')).filter(Boolean),
-  );
+  const better = await retitler(chat.title, titleLines(db, id, chat.through));
   // One transaction: the title (unless the user renamed it meanwhile) and how far this check read.
   return db.transaction(() => {
     db.prepare('UPDATE conversations SET title_checked_through_message_id = ? WHERE id = ?').run(chat.through, id);

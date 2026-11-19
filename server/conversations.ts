@@ -41,14 +41,23 @@ export function createConversation(db: DB, userId: number): Conversation {
   return getConversation(db, userId, Number(id))!;
 }
 
-/** A rename by the user: hearth will never retitle this chat. */
-export function renameConversation(db: DB, userId: number, id: number, title: string): boolean {
+/**
+ * A rename by the user. A title they wrote is theirs: hearth never retitles the chat. `auto` means
+ * they kept hearth's suggestion as it was, which hands the title back to hearth: the retitler looks
+ * at the chat again only after RETITLE_AFTER new messages (retitle.ts), as after one of its own checks.
+ */
+export function renameConversation(db: DB, userId: number, id: number, title: string, auto = false): boolean {
   return (
     db
       .prepare(
-        "UPDATE conversations SET title = ?, title_is_auto = 0, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+        `UPDATE conversations SET title = ?, title_is_auto = ?,
+           title_checked_through_message_id = CASE WHEN ? THEN
+             coalesce((SELECT max(id) FROM messages WHERE conversation_id = conversations.id), 0)
+             ELSE title_checked_through_message_id END,
+           updated_at = datetime('now')
+         WHERE id = ? AND user_id = ?`,
       )
-      .run(title, id, userId).changes > 0
+      .run(title, auto ? 1 : 0, auto ? 1 : 0, id, userId).changes > 0
   );
 }
 

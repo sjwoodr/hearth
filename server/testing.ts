@@ -26,6 +26,13 @@ export type FakeModel = {
   recallQueries: { userId: number; message: string }[];
   /** The next model-written title; an Error makes titling fail. */
   title: string | Error | undefined;
+  /** What Suggest (the rename box) answers, and the user's messages each request read; an Error makes it fail. */
+  suggestion: string | Error | undefined;
+  suggestCalls: string[][];
+  /** The abort signal each Suggest request passed on (the request's own, so a closed box frees the slot). */
+  suggestSignals: (AbortSignal | undefined)[];
+  /** The earlier suggestions each Suggest request asked the model to avoid. */
+  suggestAvoid: (string[] | undefined)[];
   /** Chats afterReply was called for. */
   afterReply: number[];
   /** While set, every reply waits for it before streaming: how a test holds a reply open. */
@@ -118,6 +125,10 @@ export function setupApp(
     recalled: '',
     recallQueries: [],
     title: undefined,
+    suggestion: 'Raised Garden Beds',
+    suggestCalls: [],
+    suggestSignals: [],
+    suggestAvoid: [],
     afterReply: [],
     thinkingCalls: [],
     thinkingBudgets: [],
@@ -188,6 +199,13 @@ export function setupApp(
     titleFor: async () => {
       if (model.title instanceof Error) throw model.title;
       return model.title;
+    },
+    suggestTitle: async (said, signal, avoid) => {
+      model.suggestCalls.push(said);
+      model.suggestSignals.push(signal);
+      model.suggestAvoid.push(avoid);
+      if (model.suggestion instanceof Error) throw model.suggestion;
+      return model.suggestion;
     },
     describeImages: async (messages) => {
       model.describeCalls.push(messages);

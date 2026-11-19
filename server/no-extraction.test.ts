@@ -253,6 +253,17 @@ describe('what skips it', () => {
     expect(seen).toEqual([[ORDINARY]]);
   });
 
+  it('titles: Suggest in the rename box never reads it', async () => {
+    const ctx = setupApp();
+    const cookie = await signIn(ctx, 'alice');
+    const id = await newChat(ctx.app, cookie);
+    await say(ctx.app, cookie, id, `[no extraction] ${SECRET}`);
+    expect((await call(ctx.app, cookie, 'POST', `/conversations/${id}/title-suggestion`)).status).toBe(409);
+    await say(ctx.app, cookie, id, ORDINARY);
+    expect((await call(ctx.app, cookie, 'POST', `/conversations/${id}/title-suggestion`)).status).toBe(200);
+    expect(ctx.model.suggestCalls).toEqual([[ORDINARY]]);
+  });
+
   it("titles: retrying a chat's only flagged question writes no title", async () => {
     const ctx = setupApp();
     const cookie = await signIn(ctx, 'alice');

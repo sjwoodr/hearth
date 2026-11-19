@@ -6,6 +6,7 @@ import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNot
 import { fitHistory } from './context.ts';
 import { pauseNote, timeNote } from './pause.ts';
 import { assistantNameFor } from './persona.ts';
+import { titleLines } from './retitle.ts';
 import { contextUse, listFolds } from './summarize.ts';
 import {
   addMessage,
@@ -69,6 +70,8 @@ export type ChatDeps = {
   thinkingBudgets?: Record<Effort, number>;
   /** A model-written title for a chat's first exchange. */
   titleFor?: (userMessage: string, reply: string) => Promise<string | undefined>;
+  /** A title for a whole chat on request, from the user's messages (retitle.ts `writeTitle`). */
+  suggestTitle?: (userMessages: string[], signal?: AbortSignal, avoid?: string[]) => Promise<string | undefined>;
   /** Runs a describe request (images.ts) in the background and returns the description. */
   describeImages?: (messages: ChatMessage[]) => Promise<string>;
   /** Called after each saved reply, for background work such as summarizing long chats. */
@@ -103,6 +106,8 @@ const MAX_NOTE_ROUNDS = 2;
 export const thinkingReserve = (budget: number) => 2 * budget + 64;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_TITLE_CHARS = 120;
+/** Earlier suggestions a Suggest request may ask the model to avoid (the newest are kept). */
+const MAX_AVOID = 5;
 
 type Env = { Variables: { user: SessionUser } };
 
@@ -233,8 +238,34 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
       return c.json({ error: `Title must be 1-${MAX_TITLE_CHARS} characters.` }, 400);
     }
     const id = parseId(c.req.param('id'));
-    if (!id || !renameConversation(db, c.get('user').id, id, title)) return c.json(notFound, 404);
+    // `auto`: the user kept hearth's suggestion unedited, so hearth may retitle the chat again later.
+    if (!id || !renameConversation(db, c.get('user').id, id, title, body?.auto === true)) return c.json(notFound, 404);
     return c.json({ ok: true });
+  });
+
+  // A title written on request (Suggest, in the rename box): the retitler's prompt without its "does
+  // the current one fit?" check, since asking means it doesn't. Nothing is saved here: the user sees
+  // it in the box and saves it or not. Background priority, as for the word popup: a reply preempts it.
+  api.post('/conversations/:id/title-suggestion', async (c) => {
+    const id = parseId(c.req.param('id'));
+    if (!id || !getConversation(db, c.get('user').id, id)) return c.json(notFound, 404);
+    if (!deps.suggestTitle) return c.json({ error: "Suggestions aren't available." }, 503);
+    const said = titleLines(db, id);
+    if (said.length === 0) return c.json({ error: 'Nothing to name yet: say something first.' }, 409);
+    // Titles this box already showed (`avoid`), so another press gives another; a few, short ones only.
+    const body = await c.req.json().catch(() => null);
+    const avoid = (Array.isArray(body?.avoid) ? (body.avoid as unknown[]) : [])
+      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0 && t.length <= MAX_TITLE_CHARS)
+      .map((t) => t.replace(/\s+/g, ' ').trim())
+      .slice(-MAX_AVOID);
+    const failed = { error: "Couldn't come up with a title. Try again." };
+    try {
+      const title = await deps.suggestTitle(said, c.req.raw.signal, avoid);
+      return title ? c.json({ title }) : c.json(failed, 502);
+    } catch (err) {
+      if (isPreempted(err)) return c.json({ error: 'Busy with a reply. Try again in a moment.' }, 503);
+      return c.json(failed, 502);
+    }
   });
 
   api.delete('/conversations/:id', (c) => {

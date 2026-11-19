@@ -5,6 +5,7 @@ import { ContextMeter } from './ContextMeter.tsx';
 import { ConversationView } from './ConversationView.tsx';
 import { MemoriesView } from './MemoriesView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
+import { RenameChat } from './RenameChat.tsx';
 
 const readHash = (): number | undefined => {
   const match = /^#\/c\/(\d+)$/.exec(location.hash);
@@ -47,6 +48,8 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // The chat whose title is being edited in the list (RenameChat).
+  const [renaming, setRenaming] = useState<number | null>(null);
   const [error, setError] = useState('');
   // The model in use, from the X-Hearth-Model header on every answer. An admin's switch shows up on
   // this browser's next request with a notice, unless this browser made it.
@@ -188,13 +191,6 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
     setError('');
   };
 
-  async function rename(c: Conversation) {
-    const title = window.prompt('Rename chat', c.title ?? '')?.trim();
-    if (!title || title === c.title) return;
-    await api.renameConversation(c.id, title).catch(handleError);
-    refresh();
-  }
-
   async function remove(c: Conversation) {
     if (!window.confirm(`Delete "${c.title ?? 'New chat'}"? This can't be undone.`)) return;
     await api.deleteConversation(c.id).catch(handleError);
@@ -291,26 +287,39 @@ export function ChatApp({ me, onSignedOut }: { me: Me; onSignedOut: () => void }
             conversations.length === 0 && <p className="muted">No chats yet.</p>
           )}
           <ul hidden={hits !== null}>
-            {conversations.map((c) => (
-              <li key={c.id} className={c.id === activeId ? 'active' : undefined}>
-                <a
-                  href={`#/c/${c.id}`}
-                  aria-current={c.id === activeId ? 'page' : undefined}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    open(c.id);
-                  }}
-                >
-                  {c.title ?? 'New chat'}
-                </a>
-                <button type="button" className="icon" title="Rename" aria-label={`Rename ${c.title ?? 'chat'}`} onClick={() => rename(c)}>
-                  ✎
-                </button>
-                <button type="button" className="icon" title="Delete" aria-label={`Delete ${c.title ?? 'chat'}`} onClick={() => remove(c)}>
-                  ✕
-                </button>
-              </li>
-            ))}
+            {conversations.map((c) =>
+              c.id === renaming ? (
+                <li key={c.id} className="renaming">
+                  <RenameChat
+                    chat={c}
+                    onClose={() => setRenaming(null)}
+                    onSaved={() => {
+                      setRenaming(null);
+                      refresh();
+                    }}
+                  />
+                </li>
+              ) : (
+                <li key={c.id} className={c.id === activeId ? 'active' : undefined}>
+                  <a
+                    href={`#/c/${c.id}`}
+                    aria-current={c.id === activeId ? 'page' : undefined}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      open(c.id);
+                    }}
+                  >
+                    {c.title ?? 'New chat'}
+                  </a>
+                  <button type="button" className="icon" title="Rename" aria-label={`Rename ${c.title ?? 'chat'}`} onClick={() => setRenaming(c.id)}>
+                    ✎
+                  </button>
+                  <button type="button" className="icon" title="Delete" aria-label={`Delete ${c.title ?? 'chat'}`} onClick={() => remove(c)}>
+                    ✕
+                  </button>
+                </li>
+              ),
+            )}
           </ul>
         </nav>
         {model && (

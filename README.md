@@ -588,7 +588,19 @@ one: once it has been quiet for `HEARTH_MEMORY_IDLE_MINUTES` with 4 or more mess
 check, the model reads the user's side of the whole chat (up to 100 messages, sampled evenly, each
 cut to 200 characters), says whether the title names one of its main subjects, and only if it names
 nothing but a passing start (a greeting, a one-off question) writes a new one, naming one subject (`server/retitle.ts`; it runs wherever memory extraction runs, and pauses with
-it). The sidebar shows it the next time it loads. A chat the user has renamed is never retitled. The title bar follows the title with when the chat ran, from its first message
+it). The sidebar shows it the next time it loads. A chat the user has renamed is never retitled.
+
+**Renaming.** ✎ in the chat list opens a rename box in place of the title. **Suggest** asks the model
+for a title right away, from the same reading of the user's side as above but without the "does it
+still fit?" check, since asking means it doesn't (`POST /api/conversations/:id/title-suggestion`;
+nothing is saved). Pressing it again asks for a different one: the box sends the current title and
+every title it has shown, and the model is told to avoid them. Save a suggestion as it is and the
+title is hearth's again, so the chat can be retitled as it moves on (checked again after 4 more
+messages); type or edit one and it is yours, never retitled. Escape or Cancel saves nothing. A message
+sent with `[no extraction]` is never read for a suggestion. The suggestion is background work, like
+the word popup: a reply preempts it, and the box says to try again.
+
+The title bar follows the title with when the chat ran, from its first message
 to its last, in the browser's time zone: "(Oct 24 – Oct 27)", or "(Oct 27, 6:14 PM – 9:02 PM)" within a
 day; the year shows only when it isn't this one (`shared/chat-span.ts`).
 

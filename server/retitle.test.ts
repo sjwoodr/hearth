@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PreemptedError } from './busy.ts';
 import type { DB } from './db.ts';
 import type { ChatMessage, JsonFn } from './ollama.ts';
-import { chatsToRetitle, createRetitleSweep, RETITLE_AFTER, sameSubject, sampleLines } from './retitle.ts';
+import { chatsToRetitle, createRetitleSweep, RETITLE_AFTER, sameSubject, sampleLines, titleLines, writeTitle } from './retitle.ts';
 import { setupApp } from './testing.ts';
 import { createUser } from './users.ts';
 
@@ -67,6 +67,49 @@ describe('retitling chats that moved on', () => {
     expect(chatsToRetitle(db, 5)).toEqual([]);
     addTurn(db, id, 'how many boards');
     expect(chatsToRetitle(db, 5)).toEqual([id]);
+  });
+
+  it("writeTitle (Suggest) is the retitler's title call alone: one plain-text call, cleaned, the signal passed on", async () => {
+    const { db, alice } = await seed();
+    const id = chatWith(db, alice.id, 'Greeting', ['hi', 'I want a raised garden bed']);
+    const retitled = fakeModel(false);
+    await createRetitleSweep(db, retitled.json, 5)();
+
+    const signals: (AbortSignal | undefined)[] = [];
+    const calls: { messages: ChatMessage[]; schema: unknown }[] = [];
+    const signal = new AbortController().signal;
+    const title = await writeTitle(
+      async (messages, schema, s) => {
+        calls.push({ messages, schema });
+        signals.push(s);
+        return '  "Raised Garden Beds."  ';
+      },
+      titleLines(db, id),
+      signal,
+    );
+    expect(title).toBe('Raised Garden Beds');
+    expect(calls).toEqual([retitled.calls[1]]);
+    expect(signals).toEqual([signal]);
+    expect(await writeTitle(async () => '', ['hi'])).toBeUndefined();
+  });
+
+  it('writeTitle with titles to avoid lists them for the model, and never answers one of them', async () => {
+    const seen: string[] = [];
+    let answer = 'Garden Beds';
+    const json: JsonFn = async (messages) => {
+      seen.push(messages[1]!.content);
+      return answer;
+    };
+    expect(await writeTitle(json, ['hi', 'a raised bed'], undefined, ['Cron Job Question', 'Raised Beds'])).toBe('Garden Beds');
+    expect(seen[0]).toBe(
+      "The user's messages, oldest first:\n- hi\n- a raised bed\n\n" +
+        'These titles were already suggested and rejected; write a different one:\n- Cron Job Question\n- Raised Beds',
+    );
+    answer = 'raised beds.';
+    expect(await writeTitle(json, ['hi'], undefined, ['Raised Beds'])).toBeUndefined();
+    // Nothing to avoid: the retitler's prompt, unchanged.
+    await writeTitle(json, ['hi']);
+    expect(seen[2]).toBe("The user's messages, oldest first:\n- hi");
   });
 
   it('keeps a title that fits, with one call', async () => {

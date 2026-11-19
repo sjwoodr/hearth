@@ -21,7 +21,7 @@ import { readSystemPrompt } from './system-prompt.ts';
 import { makeTitler } from './titles.ts';
 import { cachedVoices } from './speech.ts';
 import { makeWordLookup } from './word-lookup.ts';
-import { startRetitleSweeper } from './retitle.ts';
+import { startRetitleSweeper, writeTitle } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
 import { searxngSearch } from './web-search.ts';
 import { MEMORY_BUDGET_TOKENS } from '../shared/memory-budget.ts';
@@ -72,6 +72,7 @@ const app = createApp({
   // Each Think effort's reasoning cap; the reply asks for one per request.
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
+  suggestTitle: (said, signal, avoid) => writeTitle(json, said, signal, avoid),
   lookupWord: makeWordLookup(models.wordJson),
   speech:
     models.speak && models.voices
