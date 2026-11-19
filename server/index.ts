@@ -19,6 +19,7 @@ import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
 import { readSystemPrompt } from './system-prompt.ts';
 import { makeTitler } from './titles.ts';
+import { cachedVoices } from './speech.ts';
 import { makeWordLookup } from './word-lookup.ts';
 import { startRetitleSweeper } from './retitle.ts';
 import { closeGracefully } from './shutdown.ts';
@@ -72,6 +73,10 @@ const app = createApp({
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
   lookupWord: makeWordLookup(models.wordJson),
+  speech:
+    models.speak && models.voices
+      ? { speak: models.speak, voices: cachedVoices(models.voices), defaultVoice: config.speechVoice }
+      : undefined,
   describeImages: makeImageDescriber(json),
   // With HEARTH_ROLE=api the worker finds long chats itself (createSummarySweep).
   afterReply: jobs.summariesAfterReply ? createSummarizer(db, json, config.contextBudget, config.assistantName) : undefined,
@@ -108,6 +113,7 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
     `hearth listening on http://${info.address}:${info.port} (origin ${config.origin}, model ${config.model}, ` +
       `thinking ${config.thinkingModel} ≤${Object.values(config.thinkingBudgets).join('/')} tokens, ` +
       `web search ${webSearch ? `${config.searxngUrl}, each search approved by the user` : 'off'}, ` +
+      `reading aloud ${config.speechModel ? `${config.speechModel} (default voice ${config.speechVoice})` : 'off'}, ` +
       `${models.describe()}${jobs.memories ? '' : ', api only: the worker extracts memories and summarizes'})`,
   );
 });

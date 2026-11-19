@@ -19,6 +19,7 @@ import {
 import { LoginThrottle } from './throttle.ts';
 import { findUser, nameOf } from './users.ts';
 import { VERSION } from './version.ts';
+import { registerSpeechRoutes, type SpeechDeps } from './speech.ts';
 import { registerWordRoutes, type LookupWord } from './word-lookup.ts';
 
 const MINUTE = 60_000;
@@ -34,6 +35,8 @@ export type AppOptions = Omit<ChatDeps, 'db'> & {
   checkModels?: ModelsProbe;
   /** The translation popup's lookup; without one the route doesn't exist. */
   lookupWord?: LookupWord;
+  /** Reading aloud (speech.ts); without it the routes don't exist and the app shows no play buttons. */
+  speech?: SpeechDeps;
 };
 
 type Env = { Variables: { user: SessionUser } };
@@ -127,6 +130,7 @@ export function createApp(opts: AppOptions) {
   registerMemoryRoutes(authed, db, opts.assistantName, opts.systemPrompt);
   registerModelRoutes(authed, opts);
   registerWordRoutes(authed, opts.lookupWord);
+  registerSpeechRoutes(authed, db, opts.speech);
 
   app.route('/api', authed);
   return app;

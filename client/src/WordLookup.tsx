@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { sentenceAt, wordAt } from '../../shared/tapped-word.ts';
 import { api, type WordMeaning } from './api.ts';
+import { SpeakButton } from './SpeakButton.tsx';
 
 const POPUP_WIDTH = 260;
 const SELECTION_PAUSE_MS = 500;
@@ -158,7 +159,14 @@ export function WordLookup({ scroller }: { scroller: RefObject<HTMLDivElement | 
   const position = box.bottom + 110 < window.innerHeight ? { top: box.bottom + 6 } : { bottom: window.innerHeight - box.top + 6 };
   return (
     <div ref={shown} className="word-popup" role="status" style={{ left, width: POPUP_WIDTH, ...position }}>
-      <p className="word-popup-text" lang="fr">{text}</p>
+      <div className="word-popup-head">
+        <p className="word-popup-text" lang="fr">
+          {text}
+        </p>
+        <SpeakButton id={`word:${text}`} text={() => text} label={`Hear “${text}”`}>
+          Hear
+        </SpeakButton>
+      </div>
       {meaning ? (
         <>
           <p className="word-popup-meaning">{meaning.translation}</p>

@@ -265,6 +265,49 @@ export function ollamaJson(endpoint: Endpoint, model: ModelName, numCtx: number)
 }
 
 /**
+ * Text read aloud: Ollama's OpenAI-style /v1/audio/speech, for a model that speaks. The WAV streams as
+ * it's made (first bytes in ~0.25 s, then ~2x faster than it plays), so its length fields are
+ * placeholders. A person is waiting, so it goes as a reply.
+ */
+export type SpeakFn = (text: string, voice: string, opts?: { userId?: number; signal?: AbortSignal }) => Promise<ReadableStream<Uint8Array>>;
+
+export function ollamaSpeech(endpoint: Endpoint, model: string): SpeakFn {
+  return async (text, voice, opts = {}) => {
+    const res = await fetch(`${urlOf(endpoint)}/v1/audio/speech`, {
+      method: 'POST',
+      headers: headersFor(endpoint, 'reply', opts.userId),
+      body: JSON.stringify({ model, input: text, voice, response_format: 'wav' }),
+      signal: opts.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
+    return res.body;
+  };
+}
+
+const VOICE_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
+
+/** The voices `model` speaks in (Ollama's /api/show), or undefined if it can't speak or can't be asked. */
+export function ollamaVoices(endpoint: Endpoint, model: string): () => Promise<string[] | undefined> {
+  return async () => {
+    try {
+      const res = await fetch(`${urlOf(endpoint)}/api/show`, {
+        method: 'POST',
+        headers: headersFor(endpoint, 'reply'),
+        body: JSON.stringify({ model }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return undefined;
+      const info = (await res.json()) as { capabilities?: unknown; voices?: unknown };
+      if (!Array.isArray(info.capabilities) || !info.capabilities.includes('speech') || !Array.isArray(info.voices)) return undefined;
+      const voices = info.voices.filter((v): v is string => typeof v === 'string' && VOICE_NAME.test(v));
+      return voices.length ? voices : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+/**
  * Whether Ollama has `model` in memory, from its /api/ps (the gateway passes it through). Ollama
  * unloads an idle model after OLLAMA_KEEP_ALIVE, and loading it again takes ~15 s. Undefined when
  * it can't tell (no answer within a second, an error): callers then say nothing.

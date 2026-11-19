@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError, type Memory, type MemoryKind, type MemorySubject, type Persona } from './api.ts';
 import { memoryDate } from '../../shared/chat-span.ts';
 import { alwaysUse, MEMORY_BUDGET_CHARS } from '../../shared/memory-budget.ts';
+import { sortVoices, voiceLabel } from '../../shared/speech.ts';
+import { SpeakButton, SpeakerIcon } from './SpeakButton.tsx';
+import { chooseVoice, loadVoices, useSpeech } from './speech.ts';
 
 const MAX_CHARS = 400;
 const MAX_NAME_CHARS = 40;
@@ -181,6 +184,7 @@ export function MemoriesView({
               onForget={(id) => run(() => api.forgetPersonaVersion(id))}
             />
           )}
+          <VoicePicker assistant={assistant} />
           <h3>Memories about {assistant}</h3>
           <AddMemory
             id="memory-new-assistant"
@@ -301,6 +305,52 @@ function AlwaysBudget({ memories, other }: { memories: Memory[]; other: string }
       Uses {chars.toLocaleString('en-US')} of about {MEMORY_BUDGET_CHARS.toLocaleString('en-US')} characters, shared with {other}.
       {BUDGET_NOTE[state]}
     </p>
+  );
+}
+
+/** How the assistant sounds read aloud: this user's voice, from the speech model's list, with a sample. */
+function VoicePicker({ assistant }: { assistant: string }) {
+  const speech = useSpeech();
+  const [error, setError] = useState('');
+  // Asked again here, in case the speech model came back since the page loaded.
+  useEffect(() => void loadVoices(true), []);
+  if (!speech.available) return null;
+  const sample = `Bonjour ! Je suis ${assistant}, et voici ma voix. And this is how I sound in English.`;
+  return (
+    <section className="voice" aria-labelledby="voice-heading">
+      <h3 id="voice-heading">Voice</h3>
+      <p className="muted small">
+        How {assistant} sounds when you press <SpeakerIcon /> under a reply, or Hear on a word you tapped.
+      </p>
+      <div className="voice-row">
+        <label htmlFor="voice-select" className="visually-hidden">
+          Voice
+        </label>
+        <select
+          id="voice-select"
+          value={speech.voice}
+          onChange={(e) => {
+            setError('');
+            chooseVoice(e.target.value).catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't save the voice."));
+          }}
+        >
+          {sortVoices(speech.voices).map((v) => (
+            <option key={v} value={v}>
+              {voiceLabel(v)}
+              {v === speech.defaultVoice ? ' (default)' : ''}
+            </option>
+          ))}
+        </select>
+        <SpeakButton id="voice-sample" text={() => sample} label="Hear a sample">
+          Hear a sample
+        </SpeakButton>
+      </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 

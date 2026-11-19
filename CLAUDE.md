@@ -68,6 +68,7 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 | Thinking (`HEARTH_MODEL_THINKING`) | same model, `think: true` | same model = one copy in memory; a different one loads a second |
 | Background (titles, summaries, extraction, duplicate checks) | `HEARTH_MODEL` via `ollamaJson` | never thinks; `format` JSON schema (extraction) or plain text, temperature 0.2 |
 | Embeddings (`HEARTH_EMBED_MODEL`) | `embeddinggemma:300m-qat-q8_0` | memory recall and near-duplicate candidates |
+| Reading aloud (`HEARTH_SPEECH_MODEL`) | `lfm3-omni:latest` | Liquid AI LFM3-Omni 1.7B, ~3 GB loaded beside the chat model; Ollama 0.40.13+; speech only, its text generation loops |
 
 The chat model is a **local tag**, made with `ollama create gemma4-26b-a4b-ud-64k -f
 deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile` after pulling
@@ -507,6 +508,25 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   user can override the name** (persona.ts, below): the setting is the default for users who haven't.
   The UI uses that name where the assistant itself acts (chat box, search card, Think: Auto help, the
   private-chat note; `assistantName` on `/me` and `/login`) and keeps "hearth" for background work.
+- **Reading aloud streams, in the user's voice** (`server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`;
+  owner's request, 2026-11-19: a speaker under replies, Hear in the word popup, any of the model's voices,
+  `female-french` by default). Ollama's `/v1/audio/speech` streams the WAV as it's made: first bytes in
+  ~0.25 s, then ~2.15x real time (measured on the mini PC; its length fields are 0xFFFFFFFF placeholders). So the
+  server passes the bytes straight through (gateway and api, `releaseWhenDone` holds the slot until the
+  last byte) and the browser decodes and schedules them with Web Audio as they arrive; an `<audio>` element
+  would wait for the whole file, and a GET URL would put reply text in access logs. Measured in a headless
+  browser through a real gateway, on a synthetic chat: first sound ~0.4 s after the tap, a 20 s reply in two
+  pieces with no gap (one 52 ms gap after a tiny first block until blocks went out as they came whenever
+  under 0.3 s was queued), replay instant from the page's memory with no request, and the audio the page
+  played transcribed back to the reply word for word (code and emoji left out). **A press is a reply** for
+  the scheduler (`scheduler.speech`, `X-Hearth-Priority: reply`): someone is waiting, and a background
+  priority could leave them behind a 20 s extraction. Pieces of ≤300 characters (`speechChunks`), the next
+  asked for when the last finishes arriving, so one slot at a time. Nothing stored but `users.voice`
+  (migration 016); the text never goes in a log (a test spies on `console.error`). Hidden when the model
+  can't speak (`/api/show` lists no voices; asked once per 10 min, a failure retried after 30 s). iOS:
+  Web Audio starts inside the tap with a silent buffer, and `navigator.audioSession.type = 'playback'` so
+  the ringer switch doesn't mute it (untested on a real iPhone). Every guard was mutation-checked (32
+  sabotages, all caught).
 - **System prompt** (`prompts/system.md`) is re-read on every message. It tells the model to write
   symbols as plain characters, but Gemma still emitted LaTeX (`$\rightarrow$`) in 3 of 115 replies, so
   `shared/plain-symbols.ts` converts known symbol commands on save and on render. It only touches short
@@ -531,11 +551,12 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts`, `version.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json`; the build (`HEARTH_VERSION`, `sha-<short>` from CI) on `/healthz` and `X-Hearth-Version`, shown in the footer, a reload offered when it changes |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |
-| `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()` |
-| `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, embed and read-only lookups (`PASS_THROUGH`), never model management |
+| `server/busy.ts` | chat-first model scheduler: `ModelScheduler`, slots, `lease()`, `chat()`, `background()`, `speech()`; `releaseWhenDone` (a slot held while bytes stream) |
+| `server/gateway.ts`, `gateway-main.ts` | the model gateway: Ollama-compatible proxy owning the slots (token, priority headers, queue lines, `preempted`); forwards only chat, generate, speech (`/v1/audio/speech`, streamed through), embed and read-only lookups (`PASS_THROUGH`), never model management |
 | `server/images.ts` | image checks, `PendingImages`, describe requests, `withImageText` for text-only readers |
 | `server/word-lookup.ts`, `client/src/WordLookup.tsx`, `shared/tapped-word.ts` | word lookup popup: `POST /api/word` on its own small model (`HEARTH_WORD_MODEL`). The client finds the word from the tap's position, so messages aren't split into spans; taps are pointer events because phones don't reliably send `click` for plain text |
 | `server/web-search.ts` | `web_search` tool, search instructions, SearXNG client, `PendingSearches` |
+| `server/speech.ts`, `shared/speech.ts`, `client/src/speech.ts`, `client/src/SpeakButton.tsx` | reading aloud: `GET /voices`, `PUT /voice` (`users.voice`), `POST /speech` (WAV streamed through), `cachedVoices`; `speechText` (Markdown → words to say), `speechChunks`, `readWavHeader`/`pcm16Decoder` (shared, tested in `server/speech-text.test.ts`); the Web Audio player and the button under replies, in the word popup and the voice picker (Memories, About <name>) |
 | `server/persona.ts` | who each user's assistant is: name and description (`personas`, `persona_history`, last 20 kept), `assistantNameFor` (used by the prompt, summaries and extraction); routes in `memory-routes.ts` (`GET`/`PUT /persona`, `POST /persona/restore`, `DELETE /persona/history/:id`), page in `client/src/MemoriesView.tsx` (its About <name> tab) |
 | `server/chat-notes.ts` | the model's private per-chat notes: `save_notes` tool and instructions, `getNotes`/`saveNotes` (user-scoped), `PrivateNotes` (in memory); read only by `bin/hearth chats notes` |
 | `shared/memory-budget.ts` | the memory allowance per reply (`MEMORY_BUDGET_TOKENS`), `estimateTokens` (re-exported by `context.ts`), `alwaysUse` for the Memories page's always-remembered counter |
@@ -621,6 +642,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   see `TODO.md`.
 - Bench models no longer needed may still be pulled in Ollama; the scorecard's verdicts say which
   ones failed. Remove them if disk matters.
+- **Speaking practice (record a sentence, have it graded) isn't built, and its transcription can't be
+  trusted to keep mistakes.** LFM3-Omni's `/v1/audio/transcriptions` takes WAV only (any rate; webm, ogg
+  and m4a, the browser recorders' formats, are refused), ~0.5 s a sentence. A literal synthetic French
+  voice (piper) reading planted mistakes, x3 (2026-11-19, ad hoc, scratchpad): kept *j'ai allé*, *mon
+  sœur*, *nous avez*, *un pomme* every time; fixed *je va* → *je vais* 3/3, *à le* → *au* 3/3, *tu viens*
+  → *viennes* 2/3; wrote every *je suis allé* as *allée* (a silent spelling the speaker never chose: a
+  grader reading it would make a false correction). A robotic espeak voice came back as nonsense. Before
+  building it: a bench of the owner's own recordings with planted mistakes, a grader told it reads a
+  transcription (judge what's audible, ignore silent spelling), and the transcript shown to the user. No
+  pronunciation scoring from this model.
 - **Grading French from a photo is unmeasured.** In the first real run (2026-10-01, typed homework
   image, Think: Auto thought first) the reply called "Tu écoute" correct, while the background
   transcription kept the mistake verbatim. A 3-run probe was mixed (image + thinking caught it 3/3,

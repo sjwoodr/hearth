@@ -282,6 +282,23 @@ work, so a reply can interrupt it. On the mini PC a word takes about half a seco
 loaded, and the first lookup after it unloads takes about 4 s. It's a quick gloss and can be wrong: it
 knows common idioms, but in testing it missed *vendre la mèche*.
 
+## Listen
+
+The speaker under a reply reads it aloud, and **Hear** in the word popup says the word or phrase. Press
+the speaker again to stop. Code blocks, link addresses, Markdown and emoji are left out; the rest is read
+in one voice, French and English alike. Each user picks the voice on the Memories page (About <name>,
+**Voice**, with a sample to hear); the default is `HEARTH_SPEECH_VOICE` (`female-french`), and the list
+is every voice the speech model has (39 for LFM3-Omni: female and male for 19 languages, plus its own).
+
+It runs on `HEARTH_SPEECH_MODEL` (default `lfm3-omni:latest`, Liquid AI's LFM3-Omni: 1.7B, about 3 GB
+loaded beside the chat model; needs Ollama 0.40.13 or later and `ollama pull lfm3-omni`). Set it to `off`
+to hide the buttons; they also hide themselves when Ollama doesn't have the model. The audio streams to
+the browser as it's made, so the first words play about half a second after the press, and the model
+keeps ahead at about twice the speed it plays. A long reply goes in pieces of up to 300 characters. Each
+press counts as a reply for Ollama's slots (it waits its turn behind replies, and background work makes
+way). Nothing is stored except the choice of voice: the audio is kept in the page so a replay starts at
+once, until it reloads. The speech model only reads text; it doesn't write any.
+
 ## Memory
 
 Two kinds of memory, both per user and both editable on the Memories page or

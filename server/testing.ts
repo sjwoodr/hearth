@@ -9,6 +9,7 @@ import { openDb, type DB } from './db.ts';
 import type { ChatFn, ChatMessage, ChatOptions, ModelInfo } from './ollama.ts';
 import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
+import type { SpeechDeps } from './speech.ts';
 import type { LookupWord } from './word-lookup.ts';
 import type { Effort } from '../shared/think-effort.ts';
 
@@ -103,6 +104,7 @@ export function setupApp(
     /** What the model-loaded check answers (undefined: can't tell); omitted, the app has no check. */
     modelLoaded?: LoadedCheck;
     lookupWord?: LookupWord;
+    speech?: SpeechDeps;
     /** A model switch to test (active-model.ts) and the fake Ollama models it can choose from. */
     modelChoice?: ModelChoice;
     models?: ModelInfo[];
@@ -194,6 +196,7 @@ export function setupApp(
     },
     afterReply: (id) => model.afterReply.push(id),
     lookupWord: opts.lookupWord,
+    speech: opts.speech,
     modelChoice: opts.modelChoice,
     ...(opts.models
       ? {

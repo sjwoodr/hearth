@@ -7,7 +7,7 @@ import { stream } from 'hono/streaming';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createModelScheduler, PreemptedError } from './busy.ts';
 import { createGateway } from './gateway.ts';
-import { ollamaChat, ollamaEmbed, ollamaJson, ollamaThinkingChat, type Endpoint } from './ollama.ts';
+import { ollamaChat, ollamaEmbed, ollamaJson, ollamaSpeech, ollamaThinkingChat, ollamaVoices, type Endpoint } from './ollama.ts';
 
 const TOKEN = 'client-test-token';
 const servers: { close: () => void }[] = [];
@@ -28,9 +28,14 @@ async function until(ready: () => boolean) {
 
 /** A fake Ollama: records what reached it, can hold a call open, and notices aborts. */
 function fakeOllama() {
-  const seen: { priority?: string; user?: string; auth?: string; think?: boolean; stream?: boolean }[] = [];
+  const seen: { priority?: string; user?: string; auth?: string; think?: boolean; stream?: boolean; body?: unknown }[] = [];
   const aborted: string[] = [];
-  const state = { hold: undefined as Promise<void> | undefined };
+  const state = {
+    hold: undefined as Promise<void> | undefined,
+    /** What /api/show answers: model info, or an HTTP status. */
+    show: { capabilities: ['completion', 'speech'], voices: ['default', 'female-french', 'Bad Name!', 7] } as object | number,
+    speechStatus: 200,
+  };
   const app = new Hono();
   const held = (signal: AbortSignal, label: string) =>
     new Promise<void>((resolve, reject) => {
@@ -69,6 +74,17 @@ function fakeOllama() {
     seen.push({ auth: c.req.header('authorization') });
     return c.json({ embeddings: [[0.5, 0.5]] });
   });
+  app.post('/api/show', (c) => (typeof state.show === 'number' ? c.json({ error: 'not found' }, state.show as 404) : c.json(state.show)));
+  app.post('/v1/audio/speech', async (c) => {
+    const body = await c.req.json();
+    seen.push({ auth: c.req.header('authorization'), body });
+    if (state.speechStatus !== 200) return c.json({ error: 'model not found' }, state.speechStatus as 404);
+    c.header('Content-Type', 'audio/wav');
+    return stream(c, async (s) => {
+      await s.write(new Uint8Array([1, 2]));
+      await s.write(new Uint8Array([3]));
+    });
+  });
   return { app, seen, aborted, state };
 }
 
@@ -104,6 +120,40 @@ async function collect(chunks: AsyncIterable<string>) {
   for await (const c of chunks) text += c;
   return text;
 }
+
+describe('reading aloud through the gateway', () => {
+  it("streams the audio back, sent as the user's reply with the token", async () => {
+    const { ollama, endpoint, arrived } = await setup();
+    const audio = await ollamaSpeech(endpoint, 'lfm')('Bonjour.', 'female-french', { userId: 3 });
+    expect(new Uint8Array(await new Response(audio).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(arrived).toEqual([{ priority: 'reply', user: '3', token: true }]);
+    expect(ollama.seen).toEqual([
+      { auth: undefined, body: { model: 'lfm', input: 'Bonjour.', voice: 'female-french', response_format: 'wav' } },
+    ]);
+  });
+
+  it("fails with Ollama's answer when it can't", async () => {
+    const { ollama, endpoint } = await setup();
+    ollama.state.speechStatus = 404;
+    await expect(ollamaSpeech(endpoint, 'lfm')('Bonjour.', 'female-french')).rejects.toThrow('Ollama returned 404');
+  });
+
+  it('lists the voices of a model that speaks, and none otherwise', async () => {
+    const { ollama, endpoint, url } = await setup();
+    const voices = ollamaVoices(endpoint, 'lfm');
+    expect(await voices()).toEqual(['default', 'female-french']); // names that aren't voice names are dropped
+    ollama.state.show = { capabilities: ['completion'], voices: ['female-french'] };
+    expect(await voices()).toBeUndefined();
+    ollama.state.show = { capabilities: ['speech'] };
+    expect(await voices()).toBeUndefined();
+    ollama.state.show = { capabilities: ['speech'], voices: [] };
+    expect(await voices()).toBeUndefined();
+    ollama.state.show = 404;
+    expect(await voices()).toBeUndefined();
+    expect(await ollamaVoices({ url, token: 'wrong' }, 'lfm')()).toBeUndefined();
+    expect(await ollamaVoices('http://127.0.0.1:9', 'lfm')()).toBeUndefined();
+  });
+});
 
 describe('hearth through the gateway', () => {
   it('streams a reply, sending the token, its priority and the user', async () => {

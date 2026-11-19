@@ -6,7 +6,7 @@ import { createModelScheduler } from './busy.ts';
 import type { DB } from './db.ts';
 import { schedulerHooks, watchScheduler } from './metrics.ts';
 import type { config as appConfig } from './config.ts';
-import { ollamaEmbed, ollamaJson, ollamaModelLoaded, type ChatFn, type Endpoint, type JsonFn } from './ollama.ts';
+import { ollamaEmbed, ollamaJson, ollamaModelLoaded, ollamaSpeech, ollamaVoices, type ChatFn, type Endpoint, type JsonFn } from './ollama.ts';
 
 type Config = typeof appConfig;
 
@@ -61,6 +61,13 @@ export function connectModels(config: Config, db: DB) {
     json: asBackground(ollamaJson(endpoint, model, config.numCtx)),
     // One word and its sentence, so a small window; the popup uses its own model (config.wordModel).
     wordJson: asBackground(ollamaJson(endpoint, config.wordModel, 4096)),
+    // Reading aloud, on its own small model; none when HEARTH_SPEECH_MODEL is off. Scheduled as a reply.
+    speak: config.speechModel
+      ? scheduler
+        ? scheduler.speech(ollamaSpeech(endpoint, config.speechModel))
+        : ollamaSpeech(endpoint, config.speechModel)
+      : undefined,
+    voices: config.speechModel ? ollamaVoices(endpoint, config.speechModel) : undefined,
     // Embeddings go through the gateway too when there is one, so only the gateway reaches Ollama.
     embed: ollamaEmbed(endpoint, config.embedModel),
     describe: () =>

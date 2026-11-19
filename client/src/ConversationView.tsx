@@ -3,6 +3,8 @@ import { api, ApiError, type ContextUse, type Message, type PrivateMessage, type
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { WordLookup } from './WordLookup.tsx';
+import { SpeakButton } from './SpeakButton.tsx';
+import { speechText } from '../../shared/speech.ts';
 import { plainSymbols } from '../../shared/plain-symbols.ts';
 import { NO_EXTRACTION_HELP, NO_EXTRACTION_LABEL, parseNoExtraction } from '../../shared/no-extraction.ts';
 import { pendingText } from '../../shared/pending-text.ts';
@@ -823,6 +825,8 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
   // Replies only (your own messages show as you typed them), and only with a code block: on plain
   // prose, raw just shows the same words with asterisks (owner's call).
   const canShowRaw = role === 'assistant' && !streaming && hasCodeFence(content);
+  // Any finished reply can be read aloud (its button hides itself when the server can't).
+  const canSpeak = role === 'assistant' && !streaming;
   const body = raw ? (
     <pre className="raw">{content}</pre>
   ) : (
@@ -842,9 +846,16 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {body}
         {role === 'assistant' && message.sources?.length ? <Sources sources={message.sources} /> : null}
       </div>
-      {(canShowRaw || (role === 'assistant' && message.note)) && (
+      {(canShowRaw || canSpeak || (role === 'assistant' && message.note)) && (
         <div className="message-meta">
           {message.note && <p className="reply-note">{message.note}</p>}
+          {canSpeak && (
+            <SpeakButton
+              id={id !== undefined ? `reply-${id}` : `reply-${content.slice(0, 80)}`}
+              text={() => speechText(content)}
+              label="Read this reply aloud"
+            />
+          )}
           {canShowRaw && (
           <button
             type="button"

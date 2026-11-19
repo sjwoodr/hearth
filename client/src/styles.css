@@ -191,6 +191,20 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .word-popup-text { font-size: 0.8rem; color: var(--muted); }
 .word-popup-meaning { font-weight: 600; }
 .word-popup-note { font-size: 0.85rem; color: var(--muted); }
+/* The word popup's first line: the word, and Hear. */
+.word-popup-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.word-popup-head .speak { margin: -0.3rem -0.4rem -0.3rem 0; font-size: 0.8rem; }
+/* Reading aloud: the speaker under a reply, Hear in the popup, the voice sample. */
+button.icon.speak { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.3rem; line-height: 1; }
+button.icon.speak.on { color: var(--accent); }
+button.icon.speak.waiting .speaker-icon { animation: speak-wait 0.9s ease-in-out infinite; }
+@keyframes speak-wait { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { button.icon.speak.waiting .speaker-icon { animation: none; opacity: 0.6; } }
+.speaker-icon { display: block; flex: none; }
+.muted .speaker-icon { display: inline-block; vertical-align: -0.2em; }
+.speak-error { font-size: 0.75rem; color: var(--error); }
+.voice-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.4rem; }
+.voice select { max-width: 100%; }
 /* Raw: the stored text as is, wrapped like the rest of the chat. */
 .message pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -215,17 +229,18 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 .hljs-strong { font-weight: 600; }
 
 /* Under each message: the reply's timing (this session only) and the Raw toggle. */
-.message-meta { display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.15rem; line-height: 1.2; }
+.message-meta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.15rem; line-height: 1.2; }
+.message-meta .speak { margin-left: -0.3rem; }
 .message-meta .reply-note { margin: 0; }
 .raw-toggle { font-size: 0.75rem; padding: 0.1rem 0.3rem; }
 /* With a mouse, Raw shows on hover; on a touch screen there's no hover, so it stays visible. */
 @media (hover: hover) {
   .raw-toggle { opacity: 0; transition: opacity 0.15s; }
   .bubble:hover .raw-toggle, .raw-toggle:focus-visible, .raw-toggle.on { opacity: 1; }
-  /* With no timing note beside it, Raw sits in the gap below the message instead of adding a line. */
+  /* With no timing note or speaker beside it, Raw sits in the gap below the message instead of adding a line. */
   .bubble { position: relative; }
-  .message-meta:not(:has(.reply-note)) { position: absolute; top: 100%; margin-top: 0; }
-  .message-meta .raw-toggle { padding: 0 0.3rem; }
+  .message-meta:not(:has(.reply-note)):not(:has(.speak)) { position: absolute; top: 100%; margin-top: 0; }
+  .message-meta .raw-toggle, .message-meta .speak { padding: 0 0.3rem; }
 }
 
 .composer {
@@ -358,7 +373,7 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .small { font-size: 0.85rem; margin: 0.2rem 0 0; }
 .memory-add { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .memory-add input { flex: 1 1 16rem; }
-.memory-add input, .memory-add select, .memory.editing textarea {
+.memory-add input, .memory-add select, .memory.editing textarea, .voice select {
   font: inherit; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text);
 }

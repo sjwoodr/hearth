@@ -78,6 +78,12 @@ export const config = {
   embedModel: env('HEARTH_EMBED_MODEL', 'embeddinggemma:300m-qat-q8_0'),
   // The translation popup. Small and fast on purpose: about 0.5 s a word against 1.4 s on the chat model.
   wordModel: env('HEARTH_WORD_MODEL', 'gemma4:e2b-it-qat'),
+  // Reading replies aloud (README "Listen"): a model Ollama can speak with (/v1/audio/speech, its voices
+  // on /api/show). LFM3-Omni is 1.7B, ~3 GB loaded beside the chat model, and speaks ~2x faster than real
+  // time. "off" turns reading aloud off.
+  speechModel: isOff(env('HEARTH_SPEECH_MODEL', 'lfm3-omni:latest')) ? '' : env('HEARTH_SPEECH_MODEL', 'lfm3-omni:latest'),
+  // The voice until a user picks one (Memories, About <name>).
+  speechVoice: env('HEARTH_SPEECH_VOICE', 'female-french'),
   memoryIdleMinutes: Number(env('HEARTH_MEMORY_IDLE_MINUTES', '5')),
   systemPromptPath: path.resolve(root, env('HEARTH_SYSTEM_PROMPT', './prompts/system.md')),
   // The name the assistant answers to ({{name}} in the prompt; summaries and memory extraction use

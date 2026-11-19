@@ -1,4 +1,4 @@
-import type { ChatFn, JsonFn } from './ollama.ts';
+import type { ChatFn, JsonFn, SpeakFn } from './ollama.ts';
 
 /** A background model call was cancelled so a chat reply could go first. Retry it later. */
 export class PreemptedError extends Error {
@@ -143,6 +143,22 @@ export class ModelScheduler {
     };
   }
 
+  /**
+   * Speech (reading aloud): a reply's priority, since someone pressed play and is waiting, and the slot
+   * held until the last byte of audio is through, not just until it starts.
+   */
+  speech(fn: SpeakFn): SpeakFn {
+    return async (text, voice, callOpts = {}) => {
+      const lease = await this.lease('reply', { userId: callOpts.userId, signal: callOpts.signal });
+      try {
+        return releaseWhenDone(await fn(text, voice, { ...callOpts, signal: lease.signal }), lease.release);
+      } catch (err) {
+        lease.release();
+        throw err;
+      }
+    };
+  }
+
   background(fn: JsonFn): JsonFn {
     return async (messages, schema, signal) => {
       const lease = await this.lease('background', { signal });
@@ -246,4 +262,30 @@ export class ModelScheduler {
       if (entry.kind === 'reply' && position > this.#freeing()) onQueued?.(position - this.#freeing());
     });
   }
+}
+
+/**
+ * `body` passed on unchanged, with `release` called once it ends, fails or is cancelled (the client
+ * went away): a model call whose answer streams as bytes holds its slot for exactly as long as they flow.
+ */
+export function releaseWhenDone(body: ReadableStream<Uint8Array>, release: () => void): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else controller.enqueue(value);
+      } catch (err) {
+        release();
+        controller.error(err);
+      }
+    },
+    cancel(reason) {
+      release();
+      return reader.cancel(reason);
+    },
+  });
 }

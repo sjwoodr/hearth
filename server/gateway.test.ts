@@ -57,6 +57,22 @@ function fakeOllama() {
     return c.json({ embeddings: [[0.1, 0.2]] });
   });
   app.get('/api/version', (c) => c.json({ version: '0.0-test' }));
+  // Speech streams a WAV as it's made: three bytes, then (once a held test lets it) two more.
+  app.post('/v1/audio/speech', async (c) => {
+    const body = await c.req.json();
+    seen.push({ path: '/v1/audio/speech', body, auth: c.req.header('authorization') });
+    if (state.status !== 200) return c.json({ error: 'model "m" not found' }, state.status as 404);
+    c.header('Content-Type', 'audio/wav');
+    return stream(c, async (s) => {
+      await s.write(new Uint8Array([1, 2, 3]));
+      try {
+        await waitOrAbort(c.req.raw.signal, `speech: ${body.input}`);
+      } catch {
+        return;
+      }
+      await s.write(new Uint8Array([4, 5]));
+    });
+  });
   // Anything else reaching "Ollama" is recorded too, so a refusal can't pass for a forwarded 404.
   app.all('*', async (c) => {
     seen.push({ path: new URL(c.req.url).pathname, body: {}, auth: c.req.header('authorization') });
@@ -172,6 +188,93 @@ describe('proxying', () => {
     expect(await (await send('/api/version')).json()).toEqual({ version: '0.0-test' });
     held.open();
     await (await busy).text();
+  });
+});
+
+describe('speech', () => {
+  it('needs the token', async () => {
+    const { send, ollama } = setup();
+    const body = { model: 'm', input: 'Bonjour.', voice: 'female-french' };
+    expect((await send('/v1/audio/speech', { body, token: null })).status).toBe(401);
+    expect((await send('/v1/audio/speech', { body, token: 'wrong' })).status).toBe(401);
+    expect(ollama.seen).toEqual([]);
+  });
+
+  it('streams the audio through byte for byte, holding a reply slot until the last byte', async () => {
+    const { send, ollama, scheduler } = setup(1);
+    const held = gate();
+    ollama.state.hold = held.promise;
+    const res = await send('/v1/audio/speech', {
+      body: { model: 'm', input: 'Bonjour.', voice: 'female-french' },
+      priority: 'reply',
+      user: 7,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('audio/wav');
+    const reader = res.body!.getReader();
+    expect([...(await reader.read()).value!]).toEqual([1, 2, 3]); // before Ollama has finished
+    expect(scheduler.stats()).toMatchObject({ runningReplies: 1 });
+    held.open();
+    const rest: number[] = [];
+    for (let r = await reader.read(); !r.done; r = await reader.read()) rest.push(...r.value);
+    expect(rest).toEqual([4, 5]);
+    await until(() => scheduler.stats().runningReplies === 0);
+    expect(ollama.seen).toMatchObject([{ path: '/v1/audio/speech', body: { input: 'Bonjour.', voice: 'female-french' }, auth: undefined }]);
+  });
+
+  it('waits its turn like any other call', async () => {
+    const { send, chat, ollama, scheduler } = setup(1);
+    const held = gate();
+    ollama.state.hold = held.promise;
+    const busy = chat('long reply', { priority: 'reply', user: 1 });
+    await until(() => scheduler.stats().runningReplies === 1);
+    const speaking = send('/v1/audio/speech', { body: { model: 'm', input: 'Oui.', voice: 'v' }, priority: 'reply', user: 2 });
+    await until(() => scheduler.stats().waitingReplies === 1);
+    expect(ollama.seen.map((r) => r.path)).toEqual(['/api/chat']);
+    held.open();
+    await (await busy).text();
+    expect(new Uint8Array(await (await speaking).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  });
+
+  it("passes Ollama's error on and frees the slot", async () => {
+    const { send, ollama, scheduler } = setup(1);
+    ollama.state.status = 404;
+    const res = await send('/v1/audio/speech', { body: { model: 'm', input: 'Oui.', voice: 'v' }, priority: 'reply' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'model "m" not found' });
+    expect(scheduler.stats()).toMatchObject({ runningReplies: 0 });
+  });
+
+  it('frees the slot when the listener goes away mid-audio, and stops Ollama', async () => {
+    const { send, ollama, scheduler } = setup(1);
+    const held = gate();
+    ollama.state.hold = held.promise;
+    const leaving = new AbortController();
+    const res = await send('/v1/audio/speech', {
+      body: { model: 'm', input: 'abandoned', voice: 'v' },
+      priority: 'reply',
+      signal: leaving.signal,
+    });
+    await res.body!.getReader().read();
+    leaving.abort();
+    await until(() => scheduler.stats().runningReplies === 0);
+    expect(ollama.aborted).toEqual(['speech: abandoned']);
+    held.open();
+  });
+
+  it("offers nothing else of OpenAI's API", async () => {
+    const { send, ollama } = setup();
+    for (const [method, path] of [
+      ['POST', '/v1/chat/completions'],
+      ['POST', '/v1/audio/transcriptions'],
+      ['GET', '/v1/models'],
+      ['GET', '/v1/audio/speech'],
+    ] as const) {
+      const res = await send(path, { method, body: method === 'POST' ? { model: 'm' } : undefined });
+      expect(res.status, path).toBe(404);
+      expect((await res.json()).error, path).toMatch(/is not offered by the gateway/);
+    }
+    expect(ollama.seen).toEqual([]);
   });
 });
 

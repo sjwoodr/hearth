@@ -3,7 +3,7 @@
 // scheduler sees all of them: replies first, background work preempted, turns between users.
 //
 // It speaks Ollama's API, so a client only changes its base URL and adds three headers:
-//   Authorization: Bearer <HEARTH_GATEWAY_TOKEN>   required on /api/*: the gateway runs with host
+//   Authorization: Bearer <HEARTH_GATEWAY_TOKEN>   required on /api/* and /v1/*: the gateway runs with host
 //                                                  networking on a LAN with no host firewall, and
 //                                                  without the token it would expose Ollama to it
 //   X-Hearth-Priority: reply | background          absent means background
@@ -11,13 +11,14 @@
 // Differences from plain Ollama:
 //   - a streamed reply waiting for a slot first gets lines {"hearth":{"queued":<position>}}
 //   - a preempted background call gets {"error":"preempted"} (HTTP 409, or as a stream line)
-// Only /api/chat and /api/generate are scheduled. Embeddings and a few read-only endpoints pass
+// Only /api/chat, /api/generate and /v1/audio/speech (reading aloud; its audio streams through as it's
+// made) are scheduled. Embeddings and a few read-only endpoints pass
 // straight through (the embedding model runs apart from the chat slots); everything else is 404,
 // so the token can't manage Ollama's models (see PASS_THROUGH).
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
-import type { ModelScheduler } from './busy.ts';
+import { releaseWhenDone, type ModelScheduler } from './busy.ts';
 import { metricsResponse } from './metrics.ts';
 
 export const PREEMPTED = 'preempted';
@@ -131,6 +132,35 @@ function proxyStream(c: Context, call: Call, scheduler: ModelScheduler, forward:
   });
 }
 
+// Bytes as Ollama sends them (speech audio, which streams as it's made), the slot held until the last
+// one is through or the caller goes away.
+async function proxyBytes(c: Context, call: Call, scheduler: ModelScheduler, forward: Forward) {
+  let lease;
+  try {
+    lease = await scheduler.lease(call.priority, { userId: call.userId, signal: c.req.raw.signal });
+  } catch {
+    return c.json({ error: 'The caller went away.' }, 503); // left while queued; nobody reads this
+  }
+  try {
+    if (lease.isPreempted()) {
+      lease.release();
+      return c.json({ error: PREEMPTED }, 409);
+    }
+    const res = await forward(c, call.path, call.body, lease.signal);
+    const type = res.headers.get('content-type') ?? 'application/octet-stream';
+    if (!res.ok || !res.body) {
+      const text = await res.text();
+      lease.release();
+      return c.body(text, res.status as 200, { 'Content-Type': type });
+    }
+    return c.body(releaseWhenDone(res.body, lease.release), 200, { 'Content-Type': type });
+  } catch (err) {
+    lease.release();
+    if (lease.isPreempted()) return c.json({ error: PREEMPTED }, 409);
+    return c.json({ error: `The gateway couldn't reach Ollama: ${message(err)}` }, 502);
+  }
+}
+
 export function createGateway(opts: GatewayOptions) {
   const upstreamFetch = opts.fetch ?? fetch;
   const app = new Hono();
@@ -145,6 +175,7 @@ export function createGateway(opts: GatewayOptions) {
     return next();
   };
   app.use('/api/*', tokenRequired);
+  app.use('/v1/*', tokenRequired);
   // Behind the token too (unlike the api's): the gateway's port is on the LAN, with no firewall.
   app.get('/metrics', tokenRequired, metricsResponse);
 
@@ -164,6 +195,11 @@ export function createGateway(opts: GatewayOptions) {
   };
   app.post('/api/chat', scheduled);
   app.post('/api/generate', scheduled);
+  // Reading aloud (OpenAI's API, which Ollama serves): scheduled by its priority header like the rest.
+  app.post('/v1/audio/speech', async (c) => {
+    const call = await readCall(c);
+    return call instanceof Response ? call : proxyBytes(c, call, opts.scheduler, forward);
+  });
 
   // Straight through, unscheduled; the rest of Ollama's API is refused below.
   const passThrough = async (c: Context) => {
@@ -178,7 +214,9 @@ export function createGateway(opts: GatewayOptions) {
     }
   };
   for (const [method, path] of PASS_THROUGH) app.on(method, path, passThrough);
-  app.all('/api/*', (c) => c.json({ error: `${c.req.method} ${new URL(c.req.url).pathname} is not offered by the gateway` }, 404));
+  const notOffered = (c: Context) => c.json({ error: `${c.req.method} ${new URL(c.req.url).pathname} is not offered by the gateway` }, 404);
+  app.all('/api/*', notOffered);
+  app.all('/v1/*', notOffered);
 
   return app;
 }
