@@ -199,6 +199,33 @@ text. A local tag with Gemma's renderer and parser fixes that
 ([deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](../deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile)).
 Every other result in this write-up was measured on the library build.
 
+### 8. The same model, guessing ahead (2026-11-23)
+
+Google publishes a small assistant model for the QAT checkpoint (330 MB as a GGUF) for speculative
+decoding: it guesses the next few tokens, and the big model checks them all in one pass, keeping the
+ones it agrees with. Since the big model still decides every token, the answers shouldn't change, and
+they didn't: run the same night with and without it, the French bench gave identical answers on all
+158 quiz items and all 300 grading answers, and the extraction bench matched.
+
+| | Without | With the assistant |
+|---|---|---|
+| A chat reply (temperature 1) | 27.1 tok/s | 29.3 tok/s |
+| A summary (temperature 0.2) | 26.5 tok/s | 31.9 tok/s |
+| Code (temperature 0) | 27.0 tok/s | 38.1 tok/s |
+| First word after a 12.8k-token prompt | 28.5 s | 28.4 s |
+| Two chat replies at once, in all | 39.8 tok/s | 35.3 tok/s |
+| GPU memory | | +1.3 GiB |
+
+Two settings mattered. Guessing 4 tokens ahead (Ollama's default) was *slower* than no assistant in
+chat: in a mixture-of-experts model each guessed token can need different experts, so checking more
+of them costs more memory reads than it saves; 2 was best. And it has to be the assistant trained for
+the QAT weights: a build of the one for the original checkpoint made chat slower than none.
+The one cost is when both of Ollama's slots are busy: 3-11% slower in all, depending on what runs
+together, which is rare for hearth. Earlier, a different build of the model with its own built-in
+guessing heads (Ollama's `gemma4:26b-a4b-it-mtp-q4_K_M`, 2026-10-26) was rejected: it was heavier, no
+faster overall, and it lost facts in memory extraction. This one keeps hearth's own weights, and its
+answers matched them item for item.
+
 ## Other things the measurements changed
 
 - **Prompt caching mattered more than context size.** Ollama reuses its cached conversation up to the

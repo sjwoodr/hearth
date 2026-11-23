@@ -433,8 +433,10 @@ planned chapters. Only models that can call tools get the tool.
 ## Model
 
 Gemma 4 26B-A4B as `gemma4-26b-a4b-ud-64k`, `num_ctx` 65536 with prompts kept to 16k, thinking off: a mixture-of-experts model (~4B of 26B
-active per token), 15.6 GB loaded, ~26 tokens/s on the Radeon 780M. The tag is Unsloth's UD-Q4_K_XL build
-of Google's QAT checkpoint with Gemma's renderer and parser; create it from
+active per token), ~17 GB loaded, ~29 tokens/s on the Radeon 780M. The tag is Unsloth's UD-Q4_K_XL build
+of Google's QAT checkpoint with Gemma's renderer and parser, plus Google's small assistant model for that
+checkpoint, which guesses the next few tokens for the model to check (speculative decoding: same
+answers, faster writing; [docs/model-scorecard.md](docs/model-scorecard.md)); create it from
 [deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile](deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile) (the file
 says how). It replaced Ollama's library build, `gemma4:26b-a4b-it-qat`, on 2026-10-21: a little faster,
 level on accuracy. Chosen with a 158-question French

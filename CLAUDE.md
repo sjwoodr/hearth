@@ -64,7 +64,7 @@ Mini PC: Ryzen 9 7940HS, **integrated Radeon 780M, no discrete GPU**, 64 GB DDR5
 
 | Role | Model | Notes |
 |---|---|---|
-| Chat (`HEARTH_MODEL`) | `gemma4-26b-a4b-ud-64k` | Gemma 4 26B-A4B, Unsloth's UD-Q4_K_XL build of the QAT checkpoint; thinking off, ~0.9 s/answer, ~26 tok/s, 15.6 GB loaded |
+| Chat (`HEARTH_MODEL`) | `gemma4-26b-a4b-ud-64k` | Gemma 4 26B-A4B, Unsloth's UD-Q4_K_XL build of the QAT checkpoint, with Google's QAT assistant guessing ahead (`DRAFT`); thinking off, ~0.9 s/answer, ~29 tok/s in chat (38 on code at temperature 0), ~17 GB loaded |
 | Thinking (`HEARTH_MODEL_THINKING`) | same model, `think: true` | same model = one copy in memory; a different one loads a second |
 | Background (titles, summaries, extraction, duplicate checks) | `HEARTH_MODEL` via `ollamaJson` | never thinks; `format` JSON schema (extraction) or plain text, temperature 0.2 |
 | Embeddings (`HEARTH_EMBED_MODEL`) | `embeddinggemma:300m-qat-q8_0` | memory recall and near-duplicate candidates |
@@ -77,6 +77,20 @@ template, so thinking and tool calls aren't separated. It replaced `gemma4:26b-a
 model, Ollama's library build) after the 2026-10-21 bench: ~6% faster run back to back, level on
 everything else ([docs/model-scorecard.md](docs/model-scorecard.md)). The benches below were run on
 the library build.
+
+**Since 2026-11-23 the tag carries Google's assistant model for the QAT checkpoint** (speculative
+decoding: `DRAFT` + `PARAMETER draft_num_predict 2` in the Modelfile; scorecard footnote ¹⁹). It
+guesses the next tokens and the model verifies each, so answers don't change: the French bench gave
+identical answers on all 458 items, and extraction matched. Writing speeds up 8-9% in chat at
+temperature 1, ~20% on summaries, 41% on code at temperature 0; prompt reading and the first word
+after a long prompt are unchanged. The costs: +1.3 GiB on the GPU, and **with both slots busy, 3-11%
+slower in all** (two chats ~18 tok/s each instead of ~20). Don't undo these details: Ollama's default
+of 4 guessed tokens is slower than no assistant at temperature 1 on this MoE, and the non-QAT
+assistant is slower than none. `DRAFT` takes only a file path (`hf.co/...` fails), so the Modelfile
+names the pulled assistant's blob; recreating the tag needs that `ollama pull` first. With the
+assistant, `ollama ps` misreports the size (1.8 GB); the GPU's counter is the truth. pi and
+`local-llm` use the same tag, so they get it too. One reply alone now writes ~27 tok/s without the
+assistant and two at once ~20 each (Ollama 0.40.16, 2026-11-23), above the 0.33-era figures above.
 
 Defaults live in `server/config.ts`; `.env` overrides them; the real environment overrides both.
 `.env.example` mirrors the defaults and is read by nothing.

@@ -2,9 +2,18 @@
 # Pulled from Hugging Face it gets a generic template, so thinking and tool calls aren't separated;
 # Gemma's renderer and parser fix that, with Gemma's sampling settings and hearth's 64k window
 # (HEARTH_NUM_CTX: a different num_ctx makes Ollama reload the model between callers).
+#
+# DRAFT is Google's speculative-decoding assistant for this QAT checkpoint: it guesses the next tokens
+# and the model checks every one, so answers don't change (the French bench gave identical answers on
+# all 458 items). It must be the QAT assistant; the non-QAT one was slower than none. DRAFT takes a file,
+# never a model name, so it points at the pulled assistant's blob (Ollama's Linux service store; on a
+# Mac, ~/.ollama/models/blobs). `ollama create` copies it into the tag, so it is read only here.
+# draft_num_predict 2: Ollama's default of 4 was slower than no assistant at temperature 1.
 #   ollama pull hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL
+#   ollama pull hf.co/mradermacher/gemma-4-26B-A4B-it-qat-q4_0-unquantized-assistant-GGUF:Q4_K_M
 #   ollama create gemma4-26b-a4b-ud-64k -f deploy/ollama/gemma4-26b-a4b-ud-64k.Modelfile
 FROM hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL
+DRAFT /usr/share/ollama/.ollama/models/blobs/sha256-b4ee308edc095cba54a47e15a2113d83d451253593c5cceede27a31ccf6c91a3
 RENDERER gemma4
 PARSER gemma4
 TEMPLATE {{ .Prompt }}
@@ -12,3 +21,4 @@ PARAMETER temperature 1
 PARAMETER top_k 64
 PARAMETER top_p 0.95
 PARAMETER num_ctx 65536
+PARAMETER draft_num_predict 2
