@@ -349,6 +349,31 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   lines) but took up to 60 s and turned one chat's list into ~100 bare names. Gemma 4 E2B was twice as
   fast but lost early topics; given small pieces it found them by quoting the chat, at ~29 s a fold.
   Older chats aren't refolded: their prose becomes the list's "Earlier" line at their next fold.
+- **Look-back: a long chat finds its own folded-out past** (`server/lookback.ts`, 2026-11-23; owner: a
+  long chat "totally forgot what we talked about a couple hours ago"). The summary keeps a "Latest" of
+  under 60 words, rewritten each fold, and a topic line per subject, so a detail two folds back (a time,
+  which day, what hearth recommended) was gone. Folded messages are cut into pieces of up to 500
+  characters, embedded and stored (`message_pieces`), and each new message in a summarized chat gets the
+  best-matching earlier exchanges (cosine ≥ 0.45, at most 3 and 2,400 characters) on the newest message,
+  like recalled facts: never stored, never in the system prompt. Measured on a synthetic 93-message chat
+  (7 folds, 390 pieces; live UD model, 3 runs per arm; ad hoc, scratchpad): back-references answered
+  13/33 → **27/33**. Five details only the verbatim text held went 0/3 → 3/3 each (a vet appointment's
+  time, the day a trip had Sintra, the side vegetables, a brine time, the part of a recital piece the
+  child worried about); what the topic list names (a neighbour's name, a paint colour, a French word) was
+  3/3 either way. Six new-subject controls: nothing attached on 5; the sixth (history podcasts) got the
+  French-podcast exchange and opened with a fitting "since you're already doing the French podcasts". No
+  old subject was dragged in. **Use EmbeddingGemma's task prompts** (`title: none | text: ` for pieces,
+  `task: search result | query: ` for the message): raw, "can you explain how tides work?" scored 0.58
+  against "can you explain what brining does?" (worded alike) and controls reached 0.65, overlapping the
+  back-references (0.46-0.73); with the prompts controls topped out at 0.40 (podcasts 0.48),
+  back-references 0.46-0.68, and the right exchange ranked first 7/11 instead of 5/11. Memory recall
+  still embeds raw text; whether the prompts help it is untested. Cost: first word 0.53 s → 1.17 s median
+  (max 2.0 s) when something is attached (~370 tokens), one ~17 ms embedding otherwise. The reply after
+  it doesn't reread more: its first word was 0.93 s vs 0.98 s without look-back (median, 12 pairs), as
+  the block leaves with its turn, like recalled facts.
+  Leftover: a detail said in passing in a message worded unlike the question ("He's a beagle mix, about 9
+  years old" for "how old is he?", 0.33) isn't found; both arms then said it was never mentioned, and
+  neither invented an age.
 - **The model can be switched by an admin, for everyone** (`server/active-model.ts`,
   `model-routes.ts`; owner's call, 2026-10-11, "just for fun"). One model fits in memory, so the switch
   is server-wide, stored in `settings` (api and worker share the DB; 2 s read cache), and every model
@@ -582,6 +607,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |
 | `server/retitle.ts`, `client/src/RenameChat.tsx` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then `writeTitle`); runs beside extraction. `titleLines` (what both read), and the rename box's Suggest (`POST /conversations/:id/title-suggestion`, `writeTitle` with titles to `avoid`) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
+| `server/lookback.ts` | look-back: `indexFolded` (folded messages → `message_pieces`, embedded; `startLookbackIndexer` wherever summaries fold), `lookBack` (the earlier exchanges matching the newest message, attached to it like recalled facts; `lookBackForPrompt` counts and swallows failures) |
 | `server/metrics.ts` | Prometheus registry and every metric; `job()`, `recordModelStats()`, scheduler hooks, `zeroCounters()` (api, worker), `watchOllama()` (whoever talks to Ollama); served at `/metrics` |
 | `server/health.ts`, `shutdown.ts`, `logging.ts`, `version.ts` | `/healthz` + `/readyz` (models reported, never failing readiness); graceful SIGTERM; `HEARTH_LOG_FORMAT=json`; the build (`HEARTH_VERSION`, `sha-<short>` from CI) on `/healthz` and `X-Hearth-Version`, shown in the footer, a reload offered when it changes |
 | `server/worker.ts`, `models.ts` | the worker entry point; shared model wiring (`connectModels`), `backgroundJobs(role)`, the gateway-required check |

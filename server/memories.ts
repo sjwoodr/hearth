@@ -81,7 +81,7 @@ export function deleteMemory(db: DB, userId: number, id: number): boolean {
 const localDate = (sqliteUtc: string) => new Date(`${sqliteUtc.replace(' ', 'T')}Z`).toLocaleDateString('en-CA');
 
 export const toBlob = (v: ArrayLike<number>) => Buffer.from(new Float32Array(v).buffer);
-const fromBlob = (b: Buffer) => new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
+export const fromBlob = (b: Buffer) => new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
 
 export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   let dot = 0;

@@ -584,6 +584,22 @@ messages into my notes…", a different wording each time; hover for how many me
 The folded messages stay on screen; only the model sees the summary in their place. Folds are
 recorded in `summary_folds` (since migration 010), so folds from before it have no line.
 
+**Looking back.** The summary keeps a short note and a topic line, so a detail from a couple of
+folds back (a name, a time, what hearth recommended) is gone from what the model sees. So folded
+messages stay findable (`server/lookback.ts`): wherever summaries are folded, a job every minute cuts
+each newly folded message into pieces of up to 500 characters and embeds them with the embedding
+model (`message_pieces`, migration 018; "[no extraction]" messages are skipped, as the summary skips
+them). For each new message in a chat with a summary, hearth scores those pieces against it and
+attaches the best-matching earlier exchanges to the newest message, the way recalled memories ride
+on it: at most 3 exchanges and 2,400 characters, each with when it was said, the user's side and
+the reply's matching pieces ("…" for what's left out). Nothing is attached when nothing scores at
+least 0.45 (cosine, with EmbeddingGemma's task prompts: pieces embedded as documents, the message as
+a search query), and it is never stored. When something is attached, the first word comes ~0.6 s
+later (the extra ~370 tokens to read); otherwise it costs one ~17 ms embedding. A deploy indexes the folds of existing
+chats in the background, the most recently active chat first. Private chats are never folded, so they
+have no look-back. `hearth_lookback_total{outcome}` counts replies with something attached, with
+nothing close enough, and failures (embedding down: the reply goes ahead without it).
+
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a
 2-6 word title, which reaches the sidebar through the reply stream. A chat that moves on gets a new
 one: once it has been quiet for `HEARTH_MEMORY_IDLE_MINUTES` with 4 or more messages since its last

@@ -66,6 +66,8 @@ export type ChatDeps = {
   contextBudget: number;
   /** Memory for this user and message: a stable part for the system prompt, and facts recalled for this message. */
   memoryContext: (user: SessionUser, message: string) => Promise<MemorySections>;
+  /** A long chat's earlier exchanges that match this message, from the part folded into its summary (lookback.ts); '' for none. */
+  lookBack?: (user: SessionUser, conversationId: number, message: string) => Promise<string>;
   /** Each Think effort's cap on reasoning tokens; without them the thinking model uses its own default. */
   thinkingBudgets?: Record<Effort, number>;
   /** A model-written title for a chat's first exchange. */
@@ -321,7 +323,9 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const [before, newest] = all.slice(-2);
     const pause = before && newest?.role === 'user' ? pauseNote(before.created_at, newest.created_at) : '';
     const notes = notesOn ? getNotes(db, user.id, conversationId) : '';
-    return assemble(user, history, latest, decision, search, { summary: state.summary, pause, notesOn, notes });
+    // Only a chat with a summary has folded messages to look back on.
+    const lookBack = state.summary && deps.lookBack ? deps.lookBack(user, conversationId, latest) : undefined;
+    return assemble(user, history, latest, decision, search, { summary: state.summary, pause, notesOn, notes, lookBack });
   }
 
   // The rest of a prompt, for stored and private chats alike: memory, recall on the newest message,
@@ -332,15 +336,15 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     latest: string,
     decision: ReplyDecision | undefined,
     search: boolean,
-    extra: { summary?: string | null; pause?: string; notesOn?: boolean; notes?: string } = {},
+    extra: { summary?: string | null; pause?: string; notesOn?: boolean; notes?: string; lookBack?: Promise<string> } = {},
   ): Promise<ChatMessage[]> {
-    const { stable, recalled } = await memoryContext(user, latest);
+    const [{ stable, recalled }, lookedBack] = await Promise.all([memoryContext(user, latest), extra.lookBack ?? '']);
     const last = history.at(-1);
     // The time of day where a greeting would otherwise guess it: the chat's first message, or the first after a break.
     const opening = !extra.summary && history.filter((m) => m.role === 'user').length === 1;
     const time = opening || extra.pause ? timeNote(user.name, deps.now?.() ?? new Date()) : '';
     const away = [extra.pause, time].filter(Boolean).join('\n');
-    const notes = [recalled, away, notesForPrompt(extra.notes ?? '')].filter(Boolean).join('\n\n');
+    const notes = [recalled, lookedBack, away, notesForPrompt(extra.notes ?? '')].filter(Boolean).join('\n\n');
     if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };
       const source = imageSource.get(last);

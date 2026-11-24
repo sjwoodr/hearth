@@ -58,12 +58,19 @@ export const searches = new Counter({
 
 export const backgroundJobs = new Counter({
   name: 'hearth_background_jobs_total',
-  help: 'Background jobs by outcome (ok, preempted, failed): memory, summary, title, retitle, image.',
+  help: 'Background jobs by outcome (ok, preempted, failed): memory, summary, title, retitle, image, lookback (indexing).',
   labelNames: ['job', 'outcome'],
   registers,
 });
-export const job = (name: 'memory' | 'summary' | 'title' | 'retitle' | 'image', outcome: 'ok' | 'preempted' | 'failed') =>
+export const job = (name: 'memory' | 'summary' | 'title' | 'retitle' | 'image' | 'lookback', outcome: 'ok' | 'preempted' | 'failed') =>
   backgroundJobs.inc({ job: name, outcome });
+
+export const lookBacks = new Counter({
+  name: 'hearth_lookback_total',
+  help: "Look-back on a long chat's newest message (lookback.ts): earlier exchanges attached, none close enough, or failed.",
+  labelNames: ['outcome'],
+  registers,
+});
 
 export const modelTokensPerSecond = new Histogram({
   name: 'hearth_model_tokens_per_second',
@@ -156,7 +163,8 @@ export function zeroCounters() {
   for (const outcome of ['done', 'search', 'error', 'stopped'])
     for (const effort of ['none', ...EFFORTS]) replies.inc({ outcome, think: String(effort !== 'none'), effort }, 0);
   for (const outcome of ['asked', 'approved', 'declined', 'failed']) searches.inc({ outcome }, 0);
-  for (const name of ['memory', 'summary', 'title', 'retitle', 'image'] as const)
+  for (const outcome of ['attached', 'none', 'failed']) lookBacks.inc({ outcome }, 0);
+  for (const name of ['memory', 'summary', 'title', 'retitle', 'image', 'lookback'] as const)
     for (const outcome of ['ok', 'preempted', 'failed'] as const) backgroundJobs.inc({ job: name, outcome }, 0);
 }
 

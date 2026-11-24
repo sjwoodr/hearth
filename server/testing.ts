@@ -24,6 +24,9 @@ export type FakeModel = {
   memory: string;
   recalled: string;
   recallQueries: { userId: number; message: string }[];
+  /** What look-back returns for a chat with a summary (lookback.ts), and every lookup made. */
+  lookedBack: string;
+  lookBackQueries: { userId: number; conversationId: number; message: string }[];
   /** The next model-written title; an Error makes titling fail. */
   title: string | Error | undefined;
   /** What Suggest (the rename box) answers, and the user's messages each request read; an Error makes it fail. */
@@ -124,6 +127,8 @@ export function setupApp(
     memory: '',
     recalled: '',
     recallQueries: [],
+    lookedBack: '',
+    lookBackQueries: [],
     title: undefined,
     suggestion: 'Raised Garden Beds',
     suggestCalls: [],
@@ -186,6 +191,10 @@ export function setupApp(
     memoryContext: async (user, message) => {
       model.recallQueries.push({ userId: user.id, message });
       return { stable: model.memory, recalled: model.recalled };
+    },
+    lookBack: async (user, conversationId, message) => {
+      model.lookBackQueries.push({ userId: user.id, conversationId, message });
+      return model.lookedBack;
     },
     thinkingChat: scheduler.chat(async function* (messages, _signal, o) {
       model.thinkingCalls.push(messages);

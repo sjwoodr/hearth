@@ -17,6 +17,7 @@ import { backgroundJobs, connectModels, modelSetupProblem } from './models.ts';
 import { startModelReverter } from './active-model.ts';
 import { ollamaChat, ollamaModels, ollamaThinkingChat } from './ollama.ts';
 import { createSummarizer } from './summarize.ts';
+import { lookBackForPrompt, startLookbackIndexer } from './lookback.ts';
 import { readSystemPrompt } from './system-prompt.ts';
 import { makeTitler } from './titles.ts';
 import { cachedVoices } from './speech.ts';
@@ -69,6 +70,8 @@ const app = createApp({
   contextBudget: config.contextBudget,
   // Up to ~800 tokens of memories per message, out of the context window (shared with the Memories page).
   memoryContext: (user, message) => memoryContext(db, user, message, embed, MEMORY_BUDGET_TOKENS),
+  // A long chat's earlier exchanges that match the message, from the part folded into its summary.
+  lookBack: (user, conversationId, message) => lookBackForPrompt(db, user, conversationId, message, embed),
   // Each Think effort's reasoning cap; the reply asks for one per request.
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),
@@ -102,6 +105,8 @@ const stopRetitles = jobs.memories
   : undefined;
 // Whoever extracts memories also reverts an idle switch (with HEARTH_ROLE=api that's the worker).
 const stopReverter = jobs.memories ? startModelReverter(models.choice, models.loaded) : undefined;
+// Whoever folds summaries also indexes what they fold, for look-back (with HEARTH_ROLE=api, the worker).
+const stopLookback = jobs.summariesAfterReply ? startLookbackIndexer(db, embed) : undefined;
 
 // Built front end (pnpm build). In development, Vite serves it and proxies /api here.
 app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
@@ -125,6 +130,7 @@ closeGracefully(server, {
     stopMemories?.();
     stopRetitles?.();
     stopReverter?.();
+    stopLookback?.();
   },
   cleanup: () => void db.close(),
 });

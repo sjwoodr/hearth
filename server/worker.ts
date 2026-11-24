@@ -15,6 +15,7 @@ import { startModelReverter } from './active-model.ts';
 import { connectModels, modelSetupProblem } from './models.ts';
 import { closeGracefully } from './shutdown.ts';
 import { startSummarySweeper } from './summarize.ts';
+import { startLookbackIndexer } from './lookback.ts';
 import { startRetitleSweeper } from './retitle.ts';
 
 setLogFormat(config.logFormat, 'worker');
@@ -39,6 +40,8 @@ const stopRetitles = startRetitleSweeper(db, models.json, config.memoryIdleMinut
 });
 const stopReverter = startModelReverter(models.choice, models.loaded);
 const stopSummaries = startSummarySweeper(db, models.json, config.contextBudget, config.assistantName);
+// What the summaries fold is indexed for look-back (lookback.ts): the api reads it for each reply.
+const stopLookback = startLookbackIndexer(db, models.embed);
 // Only health endpoints, for probes. Its server also keeps the process alive.
 const health = new Hono();
 registerHealthRoutes(health, { db, models: probeModels(config.gatewayUrl, true) });
@@ -58,6 +61,7 @@ closeGracefully(server, {
     stopRetitles();
     stopReverter();
     stopSummaries();
+    stopLookback();
   },
   cleanup: () => void db.close(),
 });
