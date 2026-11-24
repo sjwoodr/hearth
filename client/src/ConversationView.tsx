@@ -1,5 +1,15 @@
-import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { api, ApiError, type ContextUse, type Message, type PrivateMessage, type Source, type StreamEvent, type SummaryFold } from './api.ts';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  api,
+  ApiError,
+  type ContextUse,
+  type Message,
+  type PrivateMessage,
+  type Remembered,
+  type Source,
+  type StreamEvent,
+  type SummaryFold,
+} from './api.ts';
 import { imageFiles, MAX_ATTACHMENTS, shrinkImage } from './images.ts';
 import { MessageMarkdown } from './Markdown.tsx';
 import { WordLookup } from './WordLookup.tsx';
@@ -10,6 +20,7 @@ import { NO_EXTRACTION_HELP, NO_EXTRACTION_LABEL, parseNoExtraction } from '../.
 import { pendingText } from '../../shared/pending-text.ts';
 import { EFFORT_LABEL, EFFORTS, higherEffort, isEffort, type Effort } from '../../shared/think-effort.ts';
 import { timeGap } from '../../shared/time-gap.ts';
+import { saidAt } from '../../shared/chat-span.ts';
 
 type Props = {
   id: number | undefined;
@@ -163,11 +174,23 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [highlight, setHighlight] = useState<number | undefined>(undefined);
+  // When each message on the page was said, for the "Recalled" line's links. Rebuilt only when the
+  // messages change, so typing doesn't re-render the replies that carry the line.
+  const saidAtById = useMemo(() => new Map(messages.map((m) => [m.id, m.created_at])), [messages]);
+  const timeOf = useCallback(
+    (id: number) => {
+      const created = saidAtById.get(id);
+      return created ? saidAt(created) : undefined;
+    },
+    [saidAtById],
+  );
   // A web search the model asked for, waiting on the user's answer; and the one running now.
   const [searchRequest, setSearchRequest] = useState<string | null>(null);
   const [searchingFor, setSearchingFor] = useState<string | null>(null);
   // The reply being written saved the model's private notes (only that it did, never what they say).
   const [notesSaved, setNotesSaved] = useState(false);
+  // What the reply being written drew on: earlier exchanges of this chat, and memories.
+  const [drewOn, setDrewOn] = useState<{ recalled: number[]; remembered: Remembered[] } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set while the page waits for a reply the server kept writing after the stream dropped.
   const [catchingUp, setCatchingUp] = useState(false);
@@ -337,6 +360,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     let reason: string | undefined;
     let thoughtEffort: Effort | undefined;
     let noted = false;
+    let drew: { recalled: number[]; remembered: Remembered[] } | undefined;
     let kept = false;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
@@ -347,6 +371,8 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         note,
         fast: !thought,
         notes_saved: noted,
+        recalled: drew?.recalled,
+        remembered: drew?.remembered,
         no_extraction: kept,
         selfCorrected,
         effort: thoughtEffort,
@@ -370,6 +396,9 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         else if (event.type === 'notes') {
           noted = true;
           setNotesSaved(true);
+        } else if (event.type === 'recall') {
+          drew = { recalled: event.recalled, remembered: event.remembered };
+          setDrewOn(drew);
         }
         else if (event.type === 'search') {
           // The model wants to search: the reply waits for the user's answer on the card.
@@ -428,6 +457,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
       setAutoReason(null);
       setSearchingFor(null);
       setNotesSaved(false);
+      setDrewOn(null);
       setStreamText(null);
       setStartedAt(null);
       // After a drop the sidebar refresh would fail too; catching up refreshes it once the reply is in.
@@ -606,7 +636,11 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
                   <span>{gap} later</span>
                 </p>
               )}
-              <MessageBubble message={m} highlight={m.id === highlight} />
+              <MessageBubble
+                message={m}
+                highlight={m.id === highlight}
+                {...(m.recalled?.length ? { timeOf, onJump: setHighlight } : {})}
+              />
               {foldsHere.map(foldNote)}
             </Fragment>
           );
@@ -614,7 +648,18 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         {streaming &&
           (streamText ? (
             <>
-              <MessageBubble message={{ role: 'assistant', content: streamText, notes_saved: notesSaved }} streaming />
+              <MessageBubble
+                message={{
+                  role: 'assistant',
+                  content: streamText,
+                  notes_saved: notesSaved,
+                  recalled: drewOn?.recalled,
+                  remembered: drewOn?.remembered,
+                }}
+                timeOf={timeOf}
+                onJump={setHighlight}
+                streaming
+              />
               <p className="reply-note" aria-hidden="true">
                 {seconds(now - (startedAt ?? now))}s
               </p>
@@ -808,6 +853,9 @@ type BubbleProps = {
   highlight?: boolean;
   /** The reply still arriving: no Raw button yet. */
   streaming?: boolean;
+  /** For the "Recalled" line: when a message of this chat was said (none if it isn't on the page), and a jump to it. */
+  timeOf?: (id: number) => string | undefined;
+  onJump?: (id: number) => void;
 };
 
 // Memoized: every keystroke in the composer re-renders this view, and re-parsing every message's
@@ -816,7 +864,7 @@ type BubbleProps = {
 /** A fenced code block (``` or ~~~) anywhere in the text: the only replies that get Show raw. */
 const hasCodeFence = (text: string) => /^ {0,3}(`{3,}|~{3,})/m.test(text);
 
-const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false }: BubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false, timeOf, onJump }: BubbleProps) {
   const { id, role, content } = message;
   // Raw: a reply's text exactly as stored, Markdown and all, to read or copy as sent.
   const [raw, setRaw] = useState(false);
@@ -838,6 +886,8 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {role === 'user' && <MessageImages message={message} />}
         {/* That the model saved its private notes here; what they say is never sent to the app. */}
         {role === 'assistant' && message.notes_saved && <p className="notes-saved">Updated its private notes</p>}
+        {role === 'assistant' && message.recalled?.length ? <RecalledLine ids={message.recalled} timeOf={timeOf} onJump={onJump} /> : null}
+        {role === 'assistant' && message.remembered?.length ? <RememberedLine items={message.remembered} /> : null}
         {message.no_extraction && (
           <p className="not-remembered" title={NO_EXTRACTION_HELP}>
             {NO_EXTRACTION_LABEL}
@@ -882,6 +932,45 @@ const site = (url: string) => {
 };
 
 /** The pages a reply drew on, one pill per site (its first page). */
+/**
+ * "Recalled from earlier in this chat · Sat 3:10 PM · 4:05 PM": the earlier exchanges the reply looked
+ * back on (lookback.ts), each time a jump to that message, which is still on the page. Hidden if none is.
+ */
+function RecalledLine({ ids, timeOf, onJump }: { ids: number[]; timeOf?: (id: number) => string | undefined; onJump?: (id: number) => void }) {
+  const said = ids.flatMap((id) => {
+    const at = timeOf?.(id);
+    return at ? [{ id, at }] : [];
+  });
+  if (said.length === 0) return null;
+  return (
+    <p className="recalled">
+      Recalled from earlier in this chat
+      {said.map(({ id, at }) => (
+        <Fragment key={id}>
+          {' · '}
+          <button type="button" className="link" onClick={() => onJump?.(id)} title="Show where this was said">
+            {at}
+          </button>
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+/** "Remembered 2 things": the memories recalled for this reply, listed when opened. */
+function RememberedLine({ items }: { items: Remembered[] }) {
+  return (
+    <details className="remembered">
+      <summary>Remembered {items.length === 1 ? '1 thing' : `${items.length} things`}</summary>
+      <ul>
+        {items.map((m) => (
+          <li key={m.id}>{m.content}</li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function Sources({ sources }: { sources: Source[] }) {
   const bySite = new Map<string, Source>();
   for (const s of sources) if (!bySite.has(site(s.url))) bySite.set(site(s.url), s);

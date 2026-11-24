@@ -161,6 +161,9 @@ const USER_CHARS = 500;
 const REPLY_CHARS = 1000;
 
 type Piece = { messageId: number; text: string; score: number; index: number; of: number };
+/** The block for the newest message, and the first message of each exchange in it (for the "Recalled" line). */
+export type LookedBack = { text: string; recalled: number[] };
+export const LOOKED_BACK_NOTHING: LookedBack = { text: '', recalled: [] };
 type Line = { role: 'user' | 'assistant'; created_at: string; pieces: Piece[] };
 
 /**
@@ -198,8 +201,9 @@ const when = (sqliteUtc: string, timeZone?: string) =>
 
 /**
  * The earlier exchanges of this chat, out of what the prompt still shows, that match `query` (the
- * newest message), as a block for the newest message; '' when the chat has none indexed or none match.
- * Scoped to the user's own chat. Throws if embedding fails; `lookBackForPrompt` turns that into ''.
+ * newest message), as a block for the newest message, with each exchange's first message id; nothing
+ * when the chat has none indexed or none match. Scoped to the user's own chat. Throws if embedding
+ * fails; `lookBackForPrompt` turns that into nothing.
  */
 export async function lookBack(
   db: DB,
@@ -209,16 +213,16 @@ export async function lookBack(
   embed: EmbedFn,
   opts: LookBackOptions = DEFAULT_LOOKBACK,
   timeZone?: string,
-): Promise<string> {
-  if (!query.trim()) return '';
+): Promise<LookedBack> {
+  if (!query.trim()) return LOOKED_BACK_NOTHING;
   const chat = db.prepare('SELECT summary_through_message_id AS through FROM conversations WHERE id = ? AND user_id = ?').get(conversationId, user.id) as
     | { through: number }
     | undefined;
-  if (!chat) return '';
+  if (!chat) return LOOKED_BACK_NOTHING;
   const rows = db
     .prepare('SELECT message_id AS messageId, text, embedding FROM message_pieces WHERE conversation_id = ? ORDER BY id')
     .all(conversationId) as { messageId: number; text: string; embedding: Buffer }[];
-  if (rows.length === 0) return '';
+  if (rows.length === 0) return LOOKED_BACK_NOTHING;
   const [q] = await embed([QUERY_PREFIX + query]);
 
   // The folded messages, each with the exchange it belongs to: the user message that opened it. Only
@@ -260,33 +264,34 @@ export async function lookBack(
     picked.push({ start, text });
     used += text.length;
   }
-  if (picked.length === 0) return '';
+  if (picked.length === 0) return LOOKED_BACK_NOTHING;
   picked.sort((a, b) => a.start - b.start);
-  return [
+  const text = [
     `[Earlier in this chat, from messages too old to show in full, possibly relevant to ${user.name}'s newest message. ` +
       'This is your memory of the conversation: use it only if it helps.]',
     ...picked.map((p) => p.text),
   ].join('\n\n');
+  return { text, recalled: picked.map((p) => p.start) };
 }
 
-/** `lookBack` for a reply's prompt: counted, and '' if it fails (a nicety, like memory recall). */
+/** `lookBack` for a reply's prompt: counted, and nothing if it fails (a nicety, like memory recall). */
 export async function lookBackForPrompt(
   db: DB,
   user: { id: number; name: string },
   conversationId: number,
   query: string,
   embed: EmbedFn,
-): Promise<string> {
+): Promise<LookedBack> {
   try {
-    const block = await lookBack(db, user, conversationId, query, embed);
+    const found = await lookBack(db, user, conversationId, query, embed);
     // Chats with nothing folded yet aren't counted: the counter is about long chats.
-    if (block) lookBacks.inc({ outcome: 'attached' });
+    if (found.text) lookBacks.inc({ outcome: 'attached' });
     else if (hasPieces(db, conversationId)) lookBacks.inc({ outcome: 'none' });
-    return block;
+    return found;
   } catch (err) {
     lookBacks.inc({ outcome: 'failed' });
     console.error(`lookback: chat ${conversationId} failed:`, err instanceof Error ? err.message : err);
-    return '';
+    return LOOKED_BACK_NOTHING;
   }
 }
 

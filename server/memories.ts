@@ -150,9 +150,10 @@ export async function rankFacts(db: DB, userId: number, query: string, embed: Em
  *   the newest message instead, where it only costs rereading that message. (Measured: with a
  *   changing system prompt every reply reread the whole ~7k-token chat, ~22 s; appended at the
  *   end, ~1 s.)
- * Both are empty when the user has no memories.
+ * - `remembered`: those recalled facts' ids and text, for the "Remembered" line under the reply.
+ * All are empty when the user has no memories.
  */
-export type MemorySections = { stable: string; recalled: string };
+export type MemorySections = { stable: string; recalled: string; remembered: { id: number; content: string }[] };
 
 export async function memoryContext(
   db: DB,
@@ -164,7 +165,7 @@ export async function memoryContext(
 ): Promise<MemorySections> {
   const all = listMemories(db, user.id);
   const { about } = getPersona(db, user.id);
-  if (all.length === 0 && !about) return { stable: '', recalled: '' };
+  if (all.length === 0 && !about) return { stable: '', recalled: '', remembered: [] };
   const theirs = all.filter((m) => m.subject === 'user');
   const self = all.filter((m) => m.subject === 'assistant');
   let facts: ScoredFact[] = [];
@@ -229,5 +230,8 @@ export async function memoryContext(
   if (keptSelfFacts.length) {
     blocks.push(['[What you know about yourself, possibly relevant here.]', ...keptSelfFacts.map((m) => `- ${m.content}`)].join('\n'));
   }
-  return { stable: sections.join('\n\n'), recalled: blocks.join('\n\n') };
+  // The facts recalled for this message, for the "Remembered" line under the reply (never the
+  // always-remembered ones, which ride on every reply).
+  const remembered = [...keptFacts, ...keptSelfFacts].map(({ id, content }) => ({ id, content }));
+  return { stable: sections.join('\n\n'), recalled: blocks.join('\n\n'), remembered };
 }

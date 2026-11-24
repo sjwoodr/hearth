@@ -6,7 +6,7 @@ import {
   createLookbackIndexer,
   DOC_PREFIX,
   indexFolded,
-  lookBack,
+  lookBack as lookBackFull,
   lookBackForPrompt,
   PIECE_CHARS,
   pieces,
@@ -51,6 +51,9 @@ function chat(db: DB, userId: number, lines: [string, string, number?][], folded
   }
   return id;
 }
+
+/** The block alone, for tests about what it says. */
+const lookBack = async (...args: Parameters<typeof lookBackFull>) => (await lookBackFull(...args)).text;
 
 const stored = (db: DB, id: number) =>
   db.prepare('SELECT message_id AS messageId, text FROM message_pieces WHERE conversation_id = ? ORDER BY id').all(id) as {
@@ -300,6 +303,15 @@ describe('lookBack', () => {
     expect(tight).toContain('Priya');
   });
 
+  it('names the first message of each exchange it used, in chat order, for the "Recalled" line', async () => {
+    const { db, alice, id } = await longChat();
+    const [washer, , dog, , trip] = messageIds(db, id);
+    const found = await lookBackFull(db, alice, id, 'lisbon sintra priya', fakeEmbed(), { minScore: 0.1, maxExchanges: 2, maxChars: 10_000 });
+    expect(found.recalled).toEqual([washer, trip]);
+    expect((await lookBackFull(db, alice, id, 'waffles', fakeEmbed())).recalled).toEqual([dog]);
+    expect((await lookBackFull(db, alice, id, 'tides', fakeEmbed())).recalled).toEqual([]);
+  });
+
   it("shows a long reply's matching pieces, marking what's left out", async () => {
     const { db, alice } = await seed();
     const filler = (n: number) => `${'Some general advice about the weekend. '.repeat(10)}${n}`;
@@ -330,14 +342,14 @@ describe('lookBack', () => {
     const { db, alice, id } = await longChat();
     const count = async (outcome: string) => (await lookBacks.get()).values.find((v) => v.labels.outcome === outcome)?.value ?? 0;
     const before = { attached: await count('attached'), none: await count('none'), failed: await count('failed') };
-    expect(await lookBackForPrompt(db, alice, id, 'the pressure washer', fakeEmbed())).toContain('Priya');
-    expect(await lookBackForPrompt(db, alice, id, 'tides', fakeEmbed())).toBe('');
+    expect((await lookBackForPrompt(db, alice, id, 'the pressure washer', fakeEmbed())).text).toContain('Priya');
+    expect(await lookBackForPrompt(db, alice, id, 'tides', fakeEmbed())).toEqual({ text: '', recalled: [] });
     const errors: string[] = [];
     vi.spyOn(console, 'error').mockImplementation((...a) => void errors.push(a.join(' ')));
     const down: EmbedFn = async () => {
       throw new Error('embedder down');
     };
-    expect(await lookBackForPrompt(db, alice, id, 'my secret plans for the washer', down)).toBe('');
+    expect(await lookBackForPrompt(db, alice, id, 'my secret plans for the washer', down)).toEqual({ text: '', recalled: [] });
     expect(errors.join('\n')).toContain('embedder down');
     expect(errors.join('\n')).not.toContain('secret');
     expect(await count('attached')).toBe(before.attached + 1);
@@ -365,7 +377,7 @@ describe('in the prompt', () => {
     await say(ctx.app, cookie, id, 'second');
     const [firstId] = messageIds(ctx.db, id);
     ctx.db.prepare("UPDATE conversations SET summary = 'Earlier notes.', summary_through_message_id = ? WHERE id = ?").run(firstId, id);
-    ctx.model.lookedBack = '[Earlier in this chat: Priya lent the washer.]';
+    ctx.model.lookedBack = { text: '[Earlier in this chat: Priya lent the washer.]', recalled: [firstId!] };
     await say(ctx.app, cookie, id, 'the washer broke');
     const prompt = ctx.model.calls.at(-1)!;
     expect(prompt[0]!.content).not.toContain('Priya');
@@ -376,7 +388,7 @@ describe('in the prompt', () => {
     expect(saved.some((m) => m.content.includes('Priya'))).toBe(false);
 
     // The next turn: the block went with its turn.
-    ctx.model.lookedBack = '';
+    ctx.model.lookedBack = { text: '', recalled: [] };
     await say(ctx.app, cookie, id, 'anyway');
     expect(ctx.model.calls.at(-1)!.some((m) => m.content.includes('Priya'))).toBe(false);
   });

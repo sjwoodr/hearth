@@ -374,6 +374,16 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   Leftover: a detail said in passing in a message worded unlike the question ("He's a beagle mix, about 9
   years old" for "how old is he?", 0.33) isn't found; both arms then said it was never mentioned, and
   neither invented an age.
+  **The reply says what it drew on** (owner's request, same night): "Recalled from earlier in this chat ·
+  10:18 PM · 10:22 PM" (look-back; each time jumps to and highlights that exchange's first message) and
+  "Remembered N things" (the facts memory recall attached; tap for the list; never the always-remembered
+  ones, which ride on every reply). Owner's words: **"recalled" means this chat's own past, "remembered"
+  means memories**; keep them apart in UI and docs. One `recall` event before the first word
+  (`DrewOn`, from `assemble` with the prompt), saved as ids only (`messages.recalled`, `remembered`,
+  migration 019), memories read back with their current wording and only from the user's own (a forged
+  id of another user's memory shows nothing). It rides a waiting search card's state, so the reply after
+  the card (and after a restart) keeps it, as does a stopped one. Mutation-checked, 22 sabotages, all
+  caught; checked in a headless browser at phone width on the synthetic chat with the real model.
 - **The model can be switched by an admin, for everyone** (`server/active-model.ts`,
   `model-routes.ts`; owner's call, 2026-10-11, "just for fun"). One model fits in memory, so the switch
   is server-wide, stored in `settings` (api and worker share the DB; 2 s read cache), and every model
@@ -598,7 +608,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 |---|---|
 | `server/index.ts` | wiring: config, scheduler, Ollama functions, sweeper, static files |
 | `server/app.ts` | Hono app, CSRF, login + throttle, session auth for `/api` |
-| `server/chat.ts` | chat routes (stored and `/private`), `buildPrompt` + `assemble`, `ReplyTarget` (where a reply is saved, or not), NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`notes`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
+| `server/chat.ts` | chat routes (stored and `/private`), `buildPrompt` + `assemble`, `ReplyTarget` (where a reply is saved, or not), NDJSON stream (`start`/`searching`/`queued`/`loading`/`thinking`/`notes`/`recall`/`delta`/`done`/`stopped`/`search`/`error`/`title`), search approval route, `POST /stop` |
 | `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |

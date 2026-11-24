@@ -24,8 +24,10 @@ export type FakeModel = {
   memory: string;
   recalled: string;
   recallQueries: { userId: number; message: string }[];
+  /** What memoryContext reports as recalled for the "Remembered" line. */
+  remembered: { id: number; content: string }[];
   /** What look-back returns for a chat with a summary (lookback.ts), and every lookup made. */
-  lookedBack: string;
+  lookedBack: { text: string; recalled: number[] };
   lookBackQueries: { userId: number; conversationId: number; message: string }[];
   /** The next model-written title; an Error makes titling fail. */
   title: string | Error | undefined;
@@ -127,7 +129,8 @@ export function setupApp(
     memory: '',
     recalled: '',
     recallQueries: [],
-    lookedBack: '',
+    remembered: [],
+    lookedBack: { text: '', recalled: [] },
     lookBackQueries: [],
     title: undefined,
     suggestion: 'Raised Garden Beds',
@@ -190,7 +193,7 @@ export function setupApp(
     thinkingBudgets: opts.thinkingBudgets,
     memoryContext: async (user, message) => {
       model.recallQueries.push({ userId: user.id, message });
-      return { stable: model.memory, recalled: model.recalled };
+      return { stable: model.memory, recalled: model.recalled, remembered: model.remembered };
     },
     lookBack: async (user, conversationId, message) => {
       model.lookBackQueries.push({ userId: user.id, conversationId, message });

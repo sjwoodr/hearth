@@ -329,7 +329,11 @@ Oct 27"):
   embedded with `embeddinggemma:300m-qat-q8_0` and compared with the user's
   facts; up to 6 scoring at least 0.38 are added, each with the date it was
   learned. (Measured: related pairs scored 0.44-0.61, unrelated 0.19-0.30.)
-  Facts are embedded on first use and again after an edit.
+  Facts are embedded on first use and again after an edit. A reply that had any
+  shows **Remembered N things** above it; tap it for the list. The reply keeps
+  only the memories' ids (`messages.remembered`, migration 019), so the list
+  shows each one as it reads now, and one deleted since drops out. Private chats
+  show it too, and store nothing.
 
 **Extraction** runs in the background: once a minute the server looks for chats
 whose newest message is at least `HEARTH_MEMORY_IDLE_MINUTES` (5) old and have
@@ -597,7 +601,12 @@ least 0.45 (cosine, with EmbeddingGemma's task prompts: pieces embedded as docum
 a search query), and it is never stored. When something is attached, the first word comes ~0.6 s
 later (the extra ~370 tokens to read); otherwise it costs one ~17 ms embedding. A deploy indexes the folds of existing
 chats in the background, the most recently active chat first. Private chats are never folded, so they
-have no look-back. `hearth_lookback_total{outcome}` counts replies with something attached, with
+have no look-back. A reply that looked back says so above it: **Recalled from earlier in this chat ·
+Sat 3:10 PM · 4:05 PM**, each time a link that scrolls to where that exchange began (folded messages
+stay on the page) and highlights it; the reply keeps those message ids (`messages.recalled`). It
+shows while the reply streams (the `recall` event, sent before the first word with the Remembered
+list) and after a reload, and a reply that waited on a search card or was stopped part-way keeps it.
+"Recalled" is for this chat's own past, "Remembered" for memories. `hearth_lookback_total{outcome}` counts replies with something attached, with
 nothing close enough, and failures (embedding down: the reply goes ahead without it).
 
 **Titles.** A chat is first titled from its first message. After the first reply the model writes a

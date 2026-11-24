@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatSpan, memoryDate } from '../shared/chat-span.ts';
+import { chatSpan, memoryDate, saidAt } from '../shared/chat-span.ts';
 
 const now = new Date('2026-10-28T12:00:00Z');
 const span = (first: string, last: string, timeZone = 'America/New_York') => chatSpan(first, last, { now, locale: 'en-US', timeZone });
@@ -43,5 +43,22 @@ describe('memoryDate', () => {
 
   it('gives nothing for a time it cannot read', () => {
     expect(date('', '2026-10-24 14:00:00')).toBe('');
+  });
+});
+
+describe('saidAt', () => {
+  const at = (created: string, timeZone = 'America/New_York') => saidAt(created, { now, locale: 'en-US', timeZone });
+
+  it('is just the time today, the weekday and time this past week, and the date further back', () => {
+    // now is 8:00 AM on Wednesday Oct 28 in New York.
+    expect(at('2026-10-28 11:05:00')).toBe('7:05 AM');
+    expect(at('2026-10-27 01:14:00')).toBe('Mon 9:14 PM'); // 01:14 UTC on the 27th is Monday evening in New York
+    expect(at('2026-10-22 18:00:00')).toBe('Thu 2:00 PM');
+    expect(at('2026-10-20 18:00:00')).toBe('Oct 20, 2:00 PM');
+    expect(at('2025-10-20 18:00:00')).toBe('Oct 20, 2025, 2:00 PM');
+  });
+
+  it('shows nothing for a time it cannot read', () => {
+    expect(at('not a time')).toBe('');
   });
 });

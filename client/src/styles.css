@@ -329,6 +329,13 @@ mark { background: var(--user-bubble); color: var(--accent); font-weight: 600; b
 .always-budget.crowding, .always-budget.over { color: var(--warning); }
 
 .notes-saved { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
+/* What a reply drew on: earlier messages of this chat (each time a jump to it), and memories. */
+.recalled { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
+.recalled button.link { padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.remembered { margin: 0 0 0.45rem; font-size: 0.8rem; color: var(--muted); }
+.remembered summary { font-style: italic; cursor: pointer; width: fit-content; }
+.remembered ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+.remembered li { margin: 0.15rem 0; }
 /* "[no extraction]": the message and its reply, and the chat box while one is being typed. */
 .not-remembered { margin: 0 0 0.45rem; font-size: 0.8rem; font-style: italic; color: var(--muted); }
 .composer-hint { order: -2; flex-basis: 100%; margin: 0; font-size: 0.85rem; color: var(--muted); }

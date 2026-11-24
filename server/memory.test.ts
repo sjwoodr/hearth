@@ -208,7 +208,7 @@ describe('recall', () => {
     const { db, alice, bob } = await seed();
     addMemory(db, bob.id, 'profile', 'Bob is private.');
     addMemory(db, bob.id, 'fact', 'Bob studies French too.');
-    expect(await memoryContext(db, alice, 'french', fakeEmbed(), 800)).toEqual({ stable: '', recalled: '' });
+    expect(await memoryContext(db, alice, 'french', fakeEmbed(), 800)).toEqual({ stable: '', recalled: '', remembered: [] });
   });
 
   it('embeds facts once, and again only after their text changes', async () => {

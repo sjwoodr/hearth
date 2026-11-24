@@ -1,5 +1,6 @@
 // When a chat ran, for the title bar: "Oct 24 – Oct 27", or "Oct 27, 9:14 PM – 11:02 PM" within a day;
-// when a memory was added or last changed, for the memories page.
+// when a memory was added or last changed, for the memories page; when a message a reply recalled was
+// said, for the "Recalled" line under it.
 // Times come from SQLite in UTC ("2026-10-27 21:14:05") and are shown in the reader's own time zone.
 
 const sqliteTime = (sqliteUtc: string) => new Date(`${sqliteUtc.replace(' ', 'T')}Z`);
@@ -19,6 +20,17 @@ export function memoryDate(created: string, updated: string, options: Options = 
   if (Number.isNaN(added.getTime()) || Number.isNaN(changed.getTime())) return '';
   const day = dayFormat(options);
   return changed.getTime() > added.getTime() ? `changed ${day(changed)}` : `added ${day(added)}`;
+}
+
+/** When a message was said, for the "Recalled" line: "3:10 PM" today, "Sat 3:10 PM" this past week, else "Oct 24, 3:10 PM". */
+export function saidAt(created: string, { now = new Date(), locale, timeZone }: Options = {}): string {
+  const at = sqliteTime(created);
+  if (Number.isNaN(at.getTime())) return '';
+  const day = dayFormat({ now, locale, timeZone });
+  const time = at.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone });
+  if (day(at) === day(now)) return time;
+  if (now.getTime() - at.getTime() < 6 * 24 * 60 * 60 * 1000) return `${at.toLocaleDateString(locale, { weekday: 'short', timeZone })} ${time}`;
+  return `${day(at)}, ${time}`;
 }
 
 /** From the first message to the last; the year only when it isn't this year. */

@@ -116,13 +116,21 @@ const searchFailed = (why: string) =>
   `The search failed (${why}). Answer from what you know, and say plainly that you couldn't check.`;
 
 /** What a reply is generated from, and the pages found by searches made for it so far. */
-export type Turn = { prompt: ChatMessage[]; sources?: Source[] };
+/**
+ * What a reply drew on, for the lines under it: the earlier exchanges of the chat it looked back on
+ * (lookback.ts; the id of each one's first message) and the memories recalled for it.
+ */
+export type DrewOn = { recalled: number[]; remembered: { id: number; content: string }[] };
+export const DREW_ON_NOTHING: DrewOn = { recalled: [], remembered: [] };
+
+export type Turn = { prompt: ChatMessage[]; sources?: Source[]; drewOn?: DrewOn };
 
 const toolResult = (content: string): ChatMessage => ({ role: 'tool', tool_name: 'web_search', content });
 
 /** The user said no: the model answers without searching. */
 export const declinedTurn = (pending: PendingSearch): Turn => ({
   prompt: [...pending.prompt, toolResult(DECLINED)],
+  drewOn: pending.drewOn,
   sources: pending.sources,
 });
 
@@ -133,12 +141,13 @@ export async function searchTurn(pending: PendingSearch, search: SearchFn, chat:
     return {
       prompt: [...pending.prompt, toolResult(resultsForModel(pending.query, results))],
       sources: [...pending.sources, ...results.map(({ title, url }) => ({ title, url }))],
+      drewOn: pending.drewOn,
     };
   } catch (err) {
     const why = err instanceof Error ? err.message : 'unknown error';
     console.error(`web search: ${typeof chat === 'number' ? `chat ${chat}` : chat} failed:`, why);
     searches.inc({ outcome: 'failed' });
-    return { prompt: [...pending.prompt, toolResult(searchFailed(why))], sources: pending.sources };
+    return { prompt: [...pending.prompt, toolResult(searchFailed(why))], sources: pending.sources, drewOn: pending.drewOn };
   }
 }
 
@@ -159,6 +168,8 @@ export type PendingSearch = {
   /** Searches asked for so far while answering this message, and the pages found. */
   searches: number;
   sources: Source[];
+  /** What the reply drew on before it asked, so the reply resumed after the card shows it too. */
+  drewOn?: DrewOn;
   /** When the model asked. Its prompt holds that day's date (see withTodaysDate). */
   askedAt: Date;
 };
@@ -170,7 +181,7 @@ export const PENDING_SEARCH_TTL_MS = 24 * 60 * 60 * 1000;
 const CURRENT_FOR_USER = 'conversation_id = ? AND user_id = ? AND asked_at > ?';
 
 type Row = { user_id: number; user_message_id: number; query: string; state: string; asked_at: string };
-type State = Pick<PendingSearch, 'prompt' | 'images' | 'decision' | 'firstMessage' | 'searches' | 'sources'>;
+type State = Pick<PendingSearch, 'prompt' | 'images' | 'decision' | 'firstMessage' | 'searches' | 'sources' | 'drewOn'>;
 
 /**
  * Search requests waiting on the user, one per chat, in SQLite so they survive a restart and any
@@ -196,6 +207,7 @@ export class PendingSearches {
       firstMessage: search.firstMessage,
       searches: search.searches,
       sources: search.sources,
+      drewOn: search.drewOn,
     };
     this.#expire();
     this.#db
