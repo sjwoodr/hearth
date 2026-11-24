@@ -7,7 +7,7 @@
 import type { DB } from './db.ts';
 import { every } from './every.ts';
 import { withImageText } from './images.ts';
-import { cosine, fromBlob, toBlob } from './memories.ts';
+import { cosine, DOC_PREFIX, fromBlob, QUERY_PREFIX, toBlob } from './memories.ts';
 import { job, lookBacks } from './metrics.ts';
 import type { EmbedFn } from './ollama.ts';
 import { assistantNameFor } from './persona.ts';
@@ -51,13 +51,12 @@ export function pieces(text: string, max = PIECE_CHARS): string[] {
 type Folded = { id: number; content: string; image_count: number; image_note: string | null; no_extraction: number };
 
 /**
- * EmbeddingGemma's task prompts: stored pieces as documents, the newest message as a search query.
- * Without them "how do tides work?" matched "can you explain what brining does?" (0.58) about as
- * well as a real back-reference matched its exchange, because the two are worded alike; with them
- * new subjects scored 0.27-0.40 on a synthetic 186-message chat and back-references 0.46-0.68.
+ * EmbeddingGemma's task prompts (memories.ts): stored pieces as documents, the newest message as a
+ * search query. Without them "how do tides work?" matched "can you explain what brining does?" (0.58)
+ * about as well as a real back-reference matched its exchange, because the two are worded alike; with
+ * them new subjects scored 0.27-0.40 on a synthetic 186-message chat and back-references 0.46-0.68.
  */
-export const DOC_PREFIX = 'title: none | text: ';
-export const QUERY_PREFIX = 'task: search result | query: ';
+export { DOC_PREFIX, QUERY_PREFIX };
 
 /** Embeds at most this many pieces per request, so one call stays short (~16 ms a piece on paris). */
 const EMBED_BATCH = 64;

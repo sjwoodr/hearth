@@ -95,9 +95,21 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   return na && nb ? dot / Math.sqrt(na * nb) : 0;
 }
 
+/**
+ * EmbeddingGemma's task prompts: stored text as documents, the message as a search query. Look-back
+ * (lookback.ts) and memory recall both use them. On raw text a short message ("brb", "ok", "lol")
+ * resembled everything: 18 filler messages pulled 88 made-up memories over the old 0.38 bar. With them,
+ * filler scored 0.19-0.27.
+ */
+export const DOC_PREFIX = 'title: none | text: ';
+export const QUERY_PREFIX = 'task: search result | query: ';
+
 export type RecallOptions = { topK: number; minScore: number };
-// Measured with embeddinggemma: related memory 0.44-0.61, unrelated 0.19-0.30.
-export const DEFAULT_RECALL: RecallOptions = { topK: 6, minScore: 0.38 };
+// With the prompts (2026-11-24; 25 made-up memories, 25 filler and 20 real messages): at 0.30 filler got
+// 6 facts in all (one message, "same"), real messages 19, nearly all the fact they were about (a shrimp
+// recipe → the shellfish allergy, "Maya has a recital" → she plays piano); 3 related-but-reworded ones got
+// nothing (new tires vs the car). The old raw-text bar, 0.38, missed real matches with the prompts.
+export const DEFAULT_RECALL: RecallOptions = { topK: 6, minScore: 0.3 };
 
 export type ScoredFact = Memory & { score: number };
 
@@ -105,38 +117,53 @@ export type ScoredFact = Memory & { score: number };
  * The user's memories (optionally one kind) with their embedding vectors. Memories without one
  * (new or edited) are embedded here first, in one batch, and the vectors saved. Ceiling: a
  * linear scan over all of a user's memories, fine into the thousands; past that, add an index.
+ * This is the raw-text vector, which near-duplicate detection and the extractor's closest memories
+ * were measured on; recall has its own (`recall_embedding`, see `rankFacts`).
  */
-export async function withEmbeddings(
+export function withEmbeddings(
   db: DB,
   userId: number,
   embed: EmbedFn,
   kind?: MemoryKind,
   subject?: MemorySubject,
 ): Promise<(Memory & { vector: Float32Array })[]> {
+  return embedded(db, userId, embed, 'embedding', '', kind, subject);
+}
+
+async function embedded(
+  db: DB,
+  userId: number,
+  embed: EmbedFn,
+  column: 'embedding' | 'recall_embedding',
+  prefix: string,
+  kind?: MemoryKind,
+  subject?: MemorySubject,
+): Promise<(Memory & { vector: Float32Array })[]> {
   const rows = db
-    .prepare(`SELECT ${COLUMNS}, embedding FROM memories WHERE user_id = ?${kind ? ' AND kind = ?' : ''}${subject ? ' AND subject = ?' : ''}`)
-    .all(userId, ...(kind ? [kind] : []), ...(subject ? [subject] : [])) as (Memory & { embedding: Buffer | null })[];
-  const missing = rows.filter((r) => !r.embedding);
+    .prepare(`SELECT ${COLUMNS}, ${column} AS vec FROM memories WHERE user_id = ?${kind ? ' AND kind = ?' : ''}${subject ? ' AND subject = ?' : ''}`)
+    .all(userId, ...(kind ? [kind] : []), ...(subject ? [subject] : [])) as (Memory & { vec: Buffer | null })[];
+  const missing = rows.filter((r) => !r.vec);
   if (missing.length) {
-    const vectors = await embed(missing.map((r) => r.content));
-    const save = db.prepare('UPDATE memories SET embedding = ? WHERE id = ? AND user_id = ?');
+    const vectors = await embed(missing.map((r) => prefix + r.content));
+    const save = db.prepare(`UPDATE memories SET ${column} = ? WHERE id = ? AND user_id = ?`);
     db.transaction(() => {
       missing.forEach((r, i) => {
-        r.embedding = toBlob(vectors[i]!);
-        save.run(r.embedding, r.id, userId);
+        r.vec = toBlob(vectors[i]!);
+        save.run(r.vec, r.id, userId);
       });
     })();
   }
-  return rows.map(({ embedding, ...memory }) => ({ ...memory, vector: fromBlob(embedding!) }));
+  return rows.map(({ vec, ...memory }) => ({ ...memory, vector: fromBlob(vec!) }));
 }
 
 /** The user's facts, about them and about the assistant (see `subject`), ranked by similarity to `query`. */
 export async function rankFacts(db: DB, userId: number, query: string, embed: EmbedFn): Promise<ScoredFact[]> {
   // An image sent without words has nothing to recall by.
   if (!query.trim()) return [];
-  const facts = await withEmbeddings(db, userId, embed, 'fact');
+  // Facts as documents and the message as a search query (EmbeddingGemma's prompts): see DOC_PREFIX.
+  const facts = await embedded(db, userId, embed, 'recall_embedding', DOC_PREFIX, 'fact');
   if (facts.length === 0) return [];
-  const [q] = await embed([query]);
+  const [q] = await embed([QUERY_PREFIX + query]);
   return facts
     .map(({ vector, ...memory }) => ({ ...memory, score: cosine(q!, vector) }))
     .sort((a, b) => b.score - a.score);

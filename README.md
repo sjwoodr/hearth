@@ -326,10 +326,14 @@ Oct 27"):
   together, and warns once recalled memories start getting crowded out, or some
   of these no longer fit.
 - **Recalled when relevant** (`fact`): learned from chats. Each message is
-  embedded with `embeddinggemma:300m-qat-q8_0` and compared with the user's
-  facts; up to 6 scoring at least 0.38 are added, each with the date it was
-  learned. (Measured: related pairs scored 0.44-0.61, unrelated 0.19-0.30.)
-  Facts are embedded on first use and again after an edit. A reply that had any
+  embedded with `embeddinggemma:300m-qat-q8_0` as a search query and compared
+  with the user's facts, embedded as documents (EmbeddingGemma's task prompts);
+  up to 6 scoring at least 0.30 are added, each with the date it was learned.
+  Without the prompts a short message ("lol", "ok") resembled every memory, so
+  filler messages carried several unrelated ones; with them, filler scored
+  0.19-0.27 on made-up memories and real messages found the fact they were
+  about. Facts are embedded on first use and again after an edit (recall keeps
+  its own vector, `recall_embedding`; near-duplicate checks use the raw one). A reply that had any
   shows **Remembered N things** above it; tap it for the list. The reply keeps
   only the memories' ids (`messages.remembered`, migration 019), so the list
   shows each one as it reads now, and one deleted since drops out. Private chats

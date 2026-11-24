@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PreemptedError } from './busy.ts';
 import type { DB } from './db.ts';
 import { conversationsReadyForExtraction, createSweep, EXTRACTION_SCHEMA, extractMemories, sanitizeExtraction } from './extract.ts';
-import { addMemory, MAX_MEMORY_CHARS, memoryContext, rankFacts, updateMemory } from './memories.ts';
+import { addMemory, DOC_PREFIX, MAX_MEMORY_CHARS, memoryContext, QUERY_PREFIX, rankFacts, updateMemory, withEmbeddings } from './memories.ts';
 import type { ChatMessage, EmbedFn, JsonFn } from './ollama.ts';
 import { NOTES_INSTRUCTIONS } from './chat-notes.ts';
 import { timeNote } from './pause.ts';
@@ -218,10 +218,36 @@ describe('recall', () => {
     const embed = fakeEmbed(log);
     await rankFacts(db, alice.id, 'q1', embed);
     await rankFacts(db, alice.id, 'q2', embed);
-    expect(log).toEqual([['Alice studies French.'], ['q1'], ['q2']]);
+    // Facts as documents, the message as a search query (EmbeddingGemma's prompts).
+    expect(log).toEqual([[DOC_PREFIX + 'Alice studies French.'], [QUERY_PREFIX + 'q1'], [QUERY_PREFIX + 'q2']]);
     updateMemory(db, alice.id, fact.id, { content: 'Alice studies Spanish.' });
     await rankFacts(db, alice.id, 'q3', embed);
-    expect(log.slice(3)).toEqual([['Alice studies Spanish.'], ['q3']]);
+    expect(log.slice(3)).toEqual([[DOC_PREFIX + 'Alice studies Spanish.'], [QUERY_PREFIX + 'q3']]);
+  });
+
+  it("keeps recall's vector apart from the raw one that duplicate checks use", async () => {
+    const { db, alice } = await seed();
+    const fact = addMemory(db, alice.id, 'fact', 'Alice studies French.');
+    const vectors = () => db.prepare('SELECT embedding, recall_embedding FROM memories WHERE id = ?').get(fact.id) as Record<string, Buffer | null>;
+    await rankFacts(db, alice.id, 'french', fakeEmbed());
+    expect(vectors().embedding).toBeNull();
+    expect(vectors().recall_embedding).not.toBeNull();
+    const log: string[][] = [];
+    await withEmbeddings(db, alice.id, fakeEmbed(log));
+    expect(log).toEqual([['Alice studies French.']]);
+    expect(vectors().embedding).not.toBeNull();
+  });
+
+  it("a reworded memory loses its recall vector, whatever changed it; the same words keep it", async () => {
+    const { db, alice } = await seed();
+    const fact = addMemory(db, alice.id, 'fact', 'Alice studies French.');
+    const recallVector = () => (db.prepare('SELECT recall_embedding AS v FROM memories WHERE id = ?').get(fact.id) as { v: Buffer | null }).v;
+    await rankFacts(db, alice.id, 'french', fakeEmbed());
+    db.prepare('UPDATE memories SET content = content, kind = kind WHERE id = ?').run(fact.id);
+    expect(recallVector()).not.toBeNull();
+    // As extraction and the admin console reword one: straight SQL.
+    db.prepare("UPDATE memories SET content = 'Alice studies Spanish.' WHERE id = ?").run(fact.id);
+    expect(recallVector()).toBeNull();
   });
 
   it('falls back to the profile alone when embedding fails', async () => {

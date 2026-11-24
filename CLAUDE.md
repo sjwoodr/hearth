@@ -248,8 +248,19 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   always-remembered text past ~2,000 characters crowds recall and past ~2,800 some no longer fit, silently.
   The Memories page shows the total on both tabs (`alwaysUse`, same estimate as the server) and warns at
   each point (owner's request, 2026-11-18). The count of recalled facts doesn't matter to a reply.
-- **Recall threshold 0.38, top 6.** Measured with embeddinggemma: related 0.44-0.61, unrelated
-  0.19-0.30. The first guess (0.45) missed real matches.
+- **Memory recall: EmbeddingGemma's task prompts, threshold 0.30, top 6** (2026-11-24). It was raw text
+  at 0.38 (measured then: related 0.44-0.61, unrelated 0.19-0.30), and the owner saw a two-letter
+  goodnight get three unrelated memories once the "Remembered" line showed them. On raw text a short
+  message resembles everything: on 25 made-up memories, 18 filler messages ("lol", "brb", "ok", 👍) pulled
+  88 facts over 0.38 ("brb" matched 21). With facts embedded as documents and the message as a search
+  query (`DOC_PREFIX`/`QUERY_PREFIX`, as look-back) filler scored 0.19-0.27, but real matches dropped too
+  ("can you quiz me on French verbs?" 0.36 against learning French), so the bar moved:
+  at 0.30, 25 filler messages got 6 facts in all (one message, "same") and 20 real ones got 19, nearly all
+  the fact they were about (a shrimp recipe → the shellfish allergy, a node that keeps rebooting → the home
+  cluster); 3 related-but-reworded ones got nothing (new tires vs the car, wine for brisket vs the smoker).
+  Ad hoc, scratchpad. The prompted vector has its own column (`recall_embedding`, migration 020, cleared
+  by a trigger whenever the wording changes), because near-duplicate detection's 0.85 and the extractor's
+  closest-memories pick were measured on the raw `embedding`; those are unchanged.
 - **Near-duplicate memories: embeddings pick candidates (≥0.85), the model decides** with a yes/no
   schema. Similarity alone can't separate rewordings (0.86-0.94) from different facts on one topic
   ("learning French" vs "learning Spanish" 0.886). Any failure keeps the memory.
@@ -367,7 +378,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   against "can you explain what brining does?" (worded alike) and controls reached 0.65, overlapping the
   back-references (0.46-0.73); with the prompts controls topped out at 0.40 (podcasts 0.48),
   back-references 0.46-0.68, and the right exchange ranked first 7/11 instead of 5/11. Memory recall
-  still embeds raw text; whether the prompts help it is untested. Cost: first word 0.53 s → 1.17 s median
+  uses them too since 2026-11-24 (see "Memory recall" above). Cost: first word 0.53 s → 1.17 s median
   (max 2.0 s) when something is attached (~370 tokens), one ~17 ms embedding otherwise. The reply after
   it doesn't reread more: its first word was 0.93 s vs 0.98 s without look-back (median, 12 pairs), as
   the block leaves with its turn, like recalled facts.
