@@ -11,6 +11,7 @@ import { createUser } from './users.ts';
 import type { SearchResult } from './web-search.ts';
 import type { SpeechDeps } from './speech.ts';
 import type { LookupWord } from './word-lookup.ts';
+import type { LookedBack } from './lookback.ts';
 import type { Effort } from '../shared/think-effort.ts';
 
 export const ORIGIN = 'https://hearth.example.com';
@@ -27,7 +28,7 @@ export type FakeModel = {
   /** What memoryContext reports as recalled for the "Remembered" line. */
   remembered: { id: number; content: string }[];
   /** What look-back returns for a chat with a summary (lookback.ts), and every lookup made. */
-  lookedBack: { text: string; recalled: number[] };
+  lookedBack: LookedBack;
   lookBackQueries: { userId: number; conversationId: number; message: string }[];
   /** The next model-written title; an Error makes titling fail. */
   title: string | Error | undefined;

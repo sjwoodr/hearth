@@ -1,15 +1,16 @@
 // The lines under a reply that say what it drew on: "Recalled from earlier in this chat" (look-back)
-// and "Remembered" (memories recalled for it). Sent as a `recall` event, kept on the reply as ids, and
-// read back with each memory's current wording. Every chat here is made up.
+// and "Remembered" (memories recalled for it). Sent as a `recall` event and kept on the reply: what the
+// model was shown of each earlier exchange, and memory ids, read back with each memory's current wording. Every chat here is made up.
 import { describe, expect, it } from 'vitest';
 import type { DB } from './db.ts';
+import type { Recalled } from './lookback.ts';
 import { addMemory, deleteMemory, memoryContext, updateMemory } from './memories.ts';
 import type { EmbedFn } from './ollama.ts';
 import { call, setupApp, signIn, type TestApp } from './testing.ts';
 import { createUser, nameOf } from './users.ts';
 
-type Event = { type: string; recalled?: number[]; remembered?: { id: number; content: string }[]; messageId?: number };
-type Stored = { messages: { id: number; role: string; recalled: number[]; remembered: { id: number; content: string }[] }[] };
+type Event = { type: string; recalled?: Recalled[]; remembered?: { id: number; content: string }[]; messageId?: number };
+type Stored = { messages: { id: number; role: string; recalled: Recalled[]; remembered: { id: number; content: string }[] }[] };
 
 async function post(app: TestApp, cookie: string, path: string, body: object) {
   const res = await call(app, cookie, 'POST', path, body);
@@ -24,6 +25,8 @@ const newChat = async (app: TestApp, cookie: string) =>
   ((await (await call(app, cookie, 'POST', '/conversations')).json()) as { id: number }).id;
 const userId = (db: DB, name: string) => (db.prepare('SELECT id FROM users WHERE username = ?').get(name) as { id: number }).id;
 const columns = (db: DB, id: number) => db.prepare('SELECT recalled, remembered FROM messages WHERE id = ?').get(id);
+
+const shown = (start: number): Recalled => ({ start, best: start, said: [{ role: 'user', text: 'Our dog Waffles sees the vet Thursday at 10.' }] });
 
 /** A chat with one exchange folded into its summary, and Alice's memory about her dog. */
 async function setup(opts: { webSearch?: boolean } = {}) {
@@ -40,24 +43,27 @@ async function setup(opts: { webSearch?: boolean } = {}) {
 describe('what a reply drew on', () => {
   it('is sent before the reply, kept on it as ids, and read back with the memory as it reads now', async () => {
     const ctx = await setup();
-    ctx.model.lookedBack = { text: '[Earlier in this chat: the vet on Thursday.]', recalled: [ctx.earlier] };
+    ctx.model.lookedBack = { text: '[Earlier in this chat: the vet on Thursday.]', recalled: [shown(ctx.earlier)] };
     ctx.model.remembered = [{ id: ctx.memory.id, content: ctx.memory.content }];
     const events = await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'When was the vet again?' });
 
     const recall = events.find((e) => e.type === 'recall');
-    expect(recall).toEqual({ type: 'recall', recalled: [ctx.earlier], remembered: [{ id: ctx.memory.id, content: 'Has a beagle mix called Waffles' }] });
+    expect(recall).toEqual({ type: 'recall', recalled: [shown(ctx.earlier)], remembered: [{ id: ctx.memory.id, content: 'Has a beagle mix called Waffles' }] });
     expect(events.findIndex((e) => e.type === 'recall')).toBeLessThan(events.findIndex((e) => e.type === 'delta'));
     const done = events.find((e) => e.type === 'done')!;
-    expect(columns(ctx.db, done.messageId!)).toEqual({ recalled: `[${ctx.earlier}]`, remembered: `[${ctx.memory.id}]` });
+    expect(columns(ctx.db, done.messageId!)).toEqual({ recalled: JSON.stringify([shown(ctx.earlier)]), remembered: `[${ctx.memory.id}]` });
 
     const reply = () => stored(ctx.app, ctx.cookie, ctx.id).then((s) => s.messages.find((m) => m.id === done.messageId)!);
-    expect(await reply()).toMatchObject({ recalled: [ctx.earlier], remembered: [{ id: ctx.memory.id, content: 'Has a beagle mix called Waffles' }] });
+    expect(await reply()).toMatchObject({ recalled: [shown(ctx.earlier)], remembered: [{ id: ctx.memory.id, content: 'Has a beagle mix called Waffles' }] });
     // Edited since: the new wording. Deleted: gone from the line.
     updateMemory(ctx.db, userId(ctx.db, 'alice'), ctx.memory.id, { content: 'Has a nine-year-old beagle mix called Waffles' });
     expect((await reply()).remembered).toEqual([{ id: ctx.memory.id, content: 'Has a nine-year-old beagle mix called Waffles' }]);
     deleteMemory(ctx.db, userId(ctx.db, 'alice'), ctx.memory.id);
     expect((await reply()).remembered).toEqual([]);
-    expect((await reply()).recalled).toEqual([ctx.earlier]);
+    expect((await reply()).recalled).toEqual([shown(ctx.earlier)]);
+    // A reply from before excerpts were kept holds a bare id: it still reads, with nothing to show.
+    ctx.db.prepare('UPDATE messages SET recalled = ? WHERE id = ?').run(`[${ctx.earlier}]`, done.messageId);
+    expect((await reply()).recalled).toEqual([{ start: ctx.earlier, best: ctx.earlier, said: [] }]);
   });
 
   it('sends and keeps nothing when the reply drew on nothing', async () => {
@@ -83,7 +89,7 @@ describe('what a reply drew on', () => {
 
   it('a reply that waited on a search card keeps its lines, across a restart too', async () => {
     const ctx = await setup({ webSearch: true });
-    ctx.model.lookedBack = { text: '[Earlier: the vet.]', recalled: [ctx.earlier] };
+    ctx.model.lookedBack = { text: '[Earlier: the vet.]', recalled: [shown(ctx.earlier)] };
     ctx.model.remembered = [{ id: ctx.memory.id, content: ctx.memory.content }];
     ctx.model.asks.push('vet opening hours');
     const asked = await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'Is the vet open late?' });
@@ -92,9 +98,9 @@ describe('what a reply drew on', () => {
     // Same database, empty server memory.
     const after = setupApp({ webSearch: true, db: ctx.db });
     const events = await post(after.app, ctx.cookie, `/conversations/${ctx.id}/search`, { approve: true });
-    expect(events.find((e) => e.type === 'recall')).toMatchObject({ recalled: [ctx.earlier], remembered: [{ id: ctx.memory.id }] });
+    expect(events.find((e) => e.type === 'recall')).toMatchObject({ recalled: [shown(ctx.earlier)], remembered: [{ id: ctx.memory.id }] });
     const done = events.find((e) => e.type === 'done')!;
-    expect(columns(ctx.db, done.messageId!)).toEqual({ recalled: `[${ctx.earlier}]`, remembered: `[${ctx.memory.id}]` });
+    expect(columns(ctx.db, done.messageId!)).toEqual({ recalled: JSON.stringify([shown(ctx.earlier)]), remembered: `[${ctx.memory.id}]` });
   });
 
   it('so does one answered without the search it asked for, and one stopped part-way', async () => {

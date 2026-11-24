@@ -585,7 +585,9 @@ point (100% = fold; hover or tap it for "N% until auto-compact" and the estimate
 counts, so it can read past 100% until the summary is written, and drops to around half after a fold. Each fold
 also leaves a line in the chat where it happened ("This chat is going strong! I folded the earliest
 messages into my notes…", a different wording each time; hover for how many messages it took in).
-The folded messages stay on screen; only the model sees the summary in their place. Folds are
+The folded messages stay on screen; only the model sees the summary in their place. Once the view is
+more than a screen above the newest message, **↓ Latest** takes it back down; a chat opens at its newest
+message and stays there while it renders. Folds are
 recorded in `summary_folds` (since migration 010), so folds from before it have no line.
 
 **Looking back.** The summary keeps a short note and a topic line, so a detail from a couple of
@@ -598,12 +600,19 @@ attaches the best-matching earlier exchanges to the newest message, the way reca
 on it: at most 3 exchanges and 2,400 characters, each with when it was said, the user's side and
 the reply's matching pieces ("…" for what's left out). Nothing is attached when nothing scores at
 least 0.45 (cosine, with EmbeddingGemma's task prompts: pieces embedded as documents, the message as
-a search query), and it is never stored. When something is attached, the first word comes ~0.6 s
+a search query), and it is never stored. The assistant's name (the user's own, from About <name>, else
+`HEARTH_ASSISTANT_NAME`) is left out of the message before it's searched: in a short message the name
+outweighs the rest, so a question that named the assistant matched every short message that named it
+too. The excerpts come with instructions to answer from them when the question is about something
+in them, else to reply as usual, and never to comment on them or on how its memory works. When something is attached, the first word comes ~0.6 s
 later (the extra ~370 tokens to read); otherwise it costs one ~17 ms embedding. A deploy indexes the folds of existing
 chats in the background, the most recently active chat first. Private chats are never folded, so they
 have no look-back. A reply that looked back says so above it: **Recalled from earlier in this chat ·
-Sat 3:10 PM · 4:05 PM**, each time a link that scrolls to where that exchange began (folded messages
-stay on the page) and highlights it; the reply keeps those message ids (`messages.recalled`). It
+Sat 3:10 PM · 4:05 PM**. Tapping a time opens exactly what the model was shown of that exchange ("…"
+for what was left out), and **Show in chat** scrolls to it (folded messages stay on the page) at the
+part that matched, with the whole exchange highlighted. The reply keeps those excerpts in
+`messages.recalled`: copies of the chat's own words, deleted with it. Replies from before 2026-11-24
+kept only the ids, so their times jump straight to the exchange. It
 shows while the reply streams (the `recall` event, sent before the first word with the Remembered
 list) and after a reload, and a reply that waited on a search card or was stopped part-way keeps it.
 "Recalled" is for this chat's own past, "Remembered" for memories. `hearth_lookback_total{outcome}` counts replies with something attached, with

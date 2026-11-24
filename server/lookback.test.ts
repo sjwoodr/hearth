@@ -7,10 +7,12 @@ import {
   DOC_PREFIX,
   indexFolded,
   lookBack as lookBackFull,
+  LOOKBACK_HEADER,
   lookBackForPrompt,
   PIECE_CHARS,
   pieces,
   QUERY_PREFIX,
+  withoutName,
 } from './lookback.ts';
 import { lookBacks } from './metrics.ts';
 import type { EmbedFn } from './ollama.ts';
@@ -73,6 +75,19 @@ const TRIP = 'Lisbon plan: day 1 Alfama, day 2 Sintra, day 3 Belém.';
 const TRIP_REPLY = 'Sintra on day 2 works well by train from Rossio.';
 const PAINT = 'We picked Studio Green paint for the den.';
 const PAINT_REPLY = 'A dark green paint looks great with warm light.';
+
+describe('withoutName', () => {
+  it('drops the name as a word, any case, with its punctuation; keeps longer words that contain it', () => {
+    expect(withoutName('Ok Gemma, what was on the menu?', 'Gemma')).toBe('Ok what was on the menu?');
+    expect(withoutName('Thanks gemma', 'Gemma')).toBe('Thanks');
+    expect(withoutName('Gemmas and Gemma.', 'Gemma')).toBe('Gemmas and');
+    expect(withoutName('Nova read Casanova', 'Nova')).toBe('read Casanova');
+    expect(withoutName('Hey Lady Nova! hi', 'Lady Nova')).toBe('Hey hi');
+    expect(withoutName('Élodie, ça va ?', 'Élodie')).toBe('ça va ?');
+    expect(withoutName('  no name here ', '')).toBe('no name here');
+    expect(withoutName('a (b) c', '(b)')).toBe('a c'); // a name with regex characters
+  });
+});
 
 describe('pieces', () => {
   it('keeps a short text whole', () => {
@@ -303,13 +318,50 @@ describe('lookBack', () => {
     expect(tight).toContain('Priya');
   });
 
-  it('names the first message of each exchange it used, in chat order, for the "Recalled" line', async () => {
+  it('names each exchange it used, in chat order, where it matched best, and what the model was shown', async () => {
     const { db, alice, id } = await longChat();
-    const [washer, , dog, , trip] = messageIds(db, id);
+    const [washer, , dog, , trip, tripReply] = messageIds(db, id);
     const found = await lookBackFull(db, alice, id, 'lisbon sintra priya', fakeEmbed(), { minScore: 0.1, maxExchanges: 2, maxChars: 10_000 });
-    expect(found.recalled).toEqual([washer, trip]);
-    expect((await lookBackFull(db, alice, id, 'waffles', fakeEmbed())).recalled).toEqual([dog]);
+    expect(found.recalled.map((r) => r.start)).toEqual([washer, trip]);
+    expect(found.recalled[1]!.said).toEqual([
+      { role: 'user', text: TRIP },
+      { role: 'assistant', text: TRIP_REPLY },
+    ]);
+    // "sintra" alone matches the reply (only Sintra) better than the question (Lisbon and Sintra).
+    expect((await lookBackFull(db, alice, id, 'sintra', fakeEmbed())).recalled).toEqual([
+      { start: trip, best: tripReply, said: [{ role: 'user', text: TRIP }, { role: 'assistant', text: TRIP_REPLY }] },
+    ]);
+    expect((await lookBackFull(db, alice, id, 'waffles', fakeEmbed())).recalled.map((r) => r.start)).toEqual([dog]);
     expect((await lookBackFull(db, alice, id, 'tides', fakeEmbed())).recalled).toEqual([]);
+  });
+
+  it("leaves the assistant's name out of the search, and searches nothing if that's all there was", async () => {
+    const { db, alice, id } = await longChat();
+    const log: string[][] = [];
+    await lookBackFull(db, { ...alice, assistant: 'Nova' }, id, 'Ok Nova, the washer?', fakeEmbed(log));
+    expect(log).toEqual([[QUERY_PREFIX + 'Ok the washer?']]);
+    expect(await lookBackFull(db, { ...alice, assistant: 'Nova' }, id, 'Nova!', fakeEmbed(log))).toEqual({ text: '', recalled: [] });
+    expect(log).toHaveLength(1);
+  });
+
+  it('for a prompt, the name is the one this user gave the assistant, else the default', async () => {
+    const { db, alice, id } = await longChat();
+    const log: string[][] = [];
+    await lookBackForPrompt(db, alice, id, 'hearth, the washer', fakeEmbed(log), 'hearth');
+    db.prepare("INSERT INTO personas (user_id, name) VALUES (?, 'Nova')").run(alice.id);
+    await lookBackForPrompt(db, alice, id, 'Nova, the washer', fakeEmbed(log), 'hearth');
+    expect(log).toEqual([[QUERY_PREFIX + 'the washer'], [QUERY_PREFIX + 'the washer']]);
+  });
+
+  it('opens with instructions to answer from it, and never to talk about it', async () => {
+    const { db, alice, id } = await longChat();
+    const block = await lookBack(db, alice, id, 'the washer', fakeEmbed());
+    expect(block.startsWith(LOOKBACK_HEADER(alice.name))).toBe(true);
+    // Options without instructions get the same ones.
+    const own = await lookBack(db, alice, id, 'the washer', fakeEmbed(), { minScore: 0.45, maxExchanges: 3, maxChars: 2400 });
+    expect(own.startsWith(LOOKBACK_HEADER(alice.name))).toBe(true);
+    expect(LOOKBACK_HEADER('Sam')).toContain('answer from it');
+    expect(LOOKBACK_HEADER('Sam')).toContain('Never comment on these excerpts or on how your memory works');
   });
 
   it("shows a long reply's matching pieces, marking what's left out", async () => {
@@ -377,7 +429,7 @@ describe('in the prompt', () => {
     await say(ctx.app, cookie, id, 'second');
     const [firstId] = messageIds(ctx.db, id);
     ctx.db.prepare("UPDATE conversations SET summary = 'Earlier notes.', summary_through_message_id = ? WHERE id = ?").run(firstId, id);
-    ctx.model.lookedBack = { text: '[Earlier in this chat: Priya lent the washer.]', recalled: [firstId!] };
+    ctx.model.lookedBack = { text: '[Earlier in this chat: Priya lent the washer.]', recalled: [{ start: firstId!, best: firstId!, said: [] }] };
     await say(ctx.app, cookie, id, 'the washer broke');
     const prompt = ctx.model.calls.at(-1)!;
     expect(prompt[0]!.content).not.toContain('Priya');

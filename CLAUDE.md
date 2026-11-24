@@ -375,15 +375,40 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   years old" for "how old is he?", 0.33) isn't found; both arms then said it was never mentioned, and
   neither invented an age.
   **The reply says what it drew on** (owner's request, same night): "Recalled from earlier in this chat ·
-  10:18 PM · 10:22 PM" (look-back; each time jumps to and highlights that exchange's first message) and
-  "Remembered N things" (the facts memory recall attached; tap for the list; never the always-remembered
-  ones, which ride on every reply). Owner's words: **"recalled" means this chat's own past, "remembered"
-  means memories**; keep them apart in UI and docs. One `recall` event before the first word
-  (`DrewOn`, from `assemble` with the prompt), saved as ids only (`messages.recalled`, `remembered`,
-  migration 019), memories read back with their current wording and only from the user's own (a forged
-  id of another user's memory shows nothing). It rides a waiting search card's state, so the reply after
-  the card (and after a restart) keeps it, as does a stopped one. Mutation-checked, 22 sabotages, all
-  caught; checked in a headless browser at phone width on the synthetic chat with the real model.
+  10:18 PM · 10:22 PM" (look-back) and "Remembered N things" (the facts memory recall attached; tap for the
+  list; never the always-remembered ones, which ride on every reply). Owner's words: **"recalled" means
+  this chat's own past, "remembered" means memories**; keep them apart in UI and docs. One `recall` event
+  before the first word (`DrewOn`, from `assemble` with the prompt). Memories are saved as ids
+  (`messages.remembered`, migration 019) and read back with their current wording, only from the user's
+  own (a forged id of another user's memory shows nothing). It rides a waiting search card's state, so the
+  reply after the card (and after a restart) keeps it, as does a stopped one.
+  **Chat 71 (owner-approved look, 2026-11-24; its words stay out of this repo): the assistant's name
+  decided the match.** A question about something earlier that evening, addressed to the assistant by
+  name, recalled three short messages that also named it (0.562, 0.536, 0.519), while the message that
+  answered it scored 0.472 and came 4th. With the name left out of the question it came first (0.536,
+  next 0.458) and none of the three made the top six; leaving it out of the pieces too changed nothing, so
+  only the query is cleaned (`withoutName`, the user's own name for the assistant). One recalled excerpt
+  was the assistant's own apology for forgetting, which named part of the answer; instead of answering
+  from it, the model made a speech about being tested on its recall, so the instructions now say to answer
+  from the excerpts when asked about them and never to comment on them or on how its memory works
+  (`LOOKBACK_HEADER`). Trap probe on the synthetic chat (assistant named Nova,
+  short "Nova" messages, a "you don't remember the band??" apology, 3 runs per arm): as shipped every
+  question recalled the three "Nova" exchanges, and "Nova, how do tides work?" got them attached 3/3;
+  without the name the right exchange came back and tides got nothing. The meta speech didn't reproduce in
+  any arm (0 of 36 back-references), so the new instructions are unmeasured. Answers were level (the topic
+  list held the band); a song known only from hearth's suggestion before "Haha done, they're playing it
+  now" was missed in every arm, and with the name left out the model said it didn't know rather than
+  guess. Adding the message before a short opener never triggered there, so it was dropped.
+  **Tapping a time shows what the model was shown** (owner: the jumps landed on messages that looked
+  unrelated, because the match was often in hearth's reply below the user's message). `messages.recalled`
+  now keeps, per exchange, its first message, the message that matched best and the excerpt lines
+  (copies of the chat's own words; replies from before 2026-11-24 hold bare ids and jump straight there).
+  "Show in chat" highlights the whole exchange, scrolled to the part that matched. **"↓ Latest"** shows once
+  the view is a screen above the newest message. **Chats opened ~2,800 px above the bottom** (250 messages,
+  headless Chromium at phone width, main too): the page scrolled down when the messages rendered and the
+  web font's re-wrap grew it afterwards with no scroll event; a ResizeObserver on the thread keeps the view
+  at the bottom while it was there. Mutation-checked (63 sabotages across look-back, the lines and these
+  fixes, all caught); checked in a headless browser at phone width, light and dark.
 - **The model can be switched by an admin, for everyone** (`server/active-model.ts`,
   `model-routes.ts`; owner's call, 2026-10-11, "just for fun"). One model fits in memory, so the switch
   is server-wide, stored in `settings` (api and worker share the DB; 2 s read cache), and every model

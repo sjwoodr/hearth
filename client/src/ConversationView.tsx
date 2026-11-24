@@ -5,6 +5,7 @@ import {
   type ContextUse,
   type Message,
   type PrivateMessage,
+  type Recalled,
   type Remembered,
   type Source,
   type StreamEvent,
@@ -173,7 +174,8 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
   const [attachments, setAttachments] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
-  const [highlight, setHighlight] = useState<number | undefined>(undefined);
+  // Messages to highlight for a moment, and the one to scroll to: a search hit, or an exchange a reply recalled.
+  const [highlight, setHighlight] = useState<{ focus: number; ids: number[] } | undefined>(undefined);
   // When each message on the page was said, for the "Recalled" line's links. Rebuilt only when the
   // messages change, so typing doesn't re-render the replies that carry the line.
   const saidAtById = useMemo(() => new Map(messages.map((m) => [m.id, m.created_at])), [messages]);
@@ -184,13 +186,24 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     },
     [saidAtById],
   );
+  // "Show in chat" on a recalled exchange: the whole exchange lights up, scrolled to the part that matched.
+  const jumpTo = useCallback(
+    (r: Recalled) => {
+      const i = messages.findIndex((m) => m.id === r.start);
+      if (i === -1) return;
+      const ids = [r.start];
+      for (let j = i + 1; j < messages.length && messages[j]!.role === 'assistant'; j++) ids.push(messages[j]!.id);
+      setHighlight({ focus: ids.includes(r.best) ? r.best : r.start, ids });
+    },
+    [messages],
+  );
   // A web search the model asked for, waiting on the user's answer; and the one running now.
   const [searchRequest, setSearchRequest] = useState<string | null>(null);
   const [searchingFor, setSearchingFor] = useState<string | null>(null);
   // The reply being written saved the model's private notes (only that it did, never what they say).
   const [notesSaved, setNotesSaved] = useState(false);
   // What the reply being written drew on: earlier exchanges of this chat, and memories.
-  const [drewOn, setDrewOn] = useState<{ recalled: number[]; remembered: Remembered[] } | null>(null);
+  const [drewOn, setDrewOn] = useState<{ recalled: Recalled[]; remembered: Remembered[] } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set while the page waits for a reply the server kept writing after the stream dropped.
   const [catchingUp, setCatchingUp] = useState(false);
@@ -203,6 +216,15 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
   const createdRef = useRef<number | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // More than a screen above the newest message (scrolled up, or jumped to a recalled exchange): show "↓ Latest".
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const toLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottom.current = true;
+    el.scrollTop = el.scrollHeight;
+    setAwayFromBottom(false);
+  };
 
   useEffect(() => {
     if (id !== undefined && id === createdRef.current) return;
@@ -225,7 +247,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
       setSearchRequest(r.pendingSearch?.query ?? null);
       onContext(r.context);
       setFolds(r.folds);
-      if (focusMessageId !== undefined) setHighlight(focusMessageId);
+      if (focusMessageId !== undefined) setHighlight({ focus: focusMessageId, ids: [focusMessageId] });
       // Opened (or reloaded) while a reply is still being written: wait for it.
       if (r.replying) void catchUp(id);
     }, onError);
@@ -272,10 +294,24 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages, streamText]);
 
-  // A message opened from search: bring it into view, and let the highlight fade.
+  // While the view is at the bottom, it stays there when the chat changes size after rendering. A chat
+  // opened at the bottom ended ~2,800 px above it once the web font loaded and every message re-wrapped
+  // (250 messages, headless Chromium at phone width); code highlighting and images move it the same way.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const thread = el?.firstElementChild;
+    if (!el || !thread) return;
+    const follow = new ResizeObserver(() => {
+      if (stickToBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    follow.observe(thread);
+    return () => follow.disconnect();
+  }, []);
+
+  // A message opened from search, or an exchange a reply recalled: bring it into view, and let the highlight fade.
   useEffect(() => {
     if (highlight === undefined) return;
-    document.getElementById(`message-${highlight}`)?.scrollIntoView({ block: 'center' });
+    document.getElementById(`message-${highlight.focus}`)?.scrollIntoView({ block: 'center' });
     const timer = setTimeout(() => setHighlight(undefined), 2500);
     return () => clearTimeout(timer);
   }, [highlight]);
@@ -360,7 +396,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     let reason: string | undefined;
     let thoughtEffort: Effort | undefined;
     let noted = false;
-    let drew: { recalled: number[]; remembered: Remembered[] } | undefined;
+    let drew: { recalled: Recalled[]; remembered: Remembered[] } | undefined;
     let kept = false;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
@@ -611,7 +647,9 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         ref={scrollRef}
         onScroll={(e) => {
           const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          const below = el.scrollHeight - el.scrollTop - el.clientHeight;
+          stickToBottom.current = below < 80;
+          setAwayFromBottom(below > el.clientHeight);
         }}
         aria-live="polite"
         aria-busy={busy}
@@ -638,8 +676,8 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
               )}
               <MessageBubble
                 message={m}
-                highlight={m.id === highlight}
-                {...(m.recalled?.length ? { timeOf, onJump: setHighlight } : {})}
+                highlight={!!highlight?.ids.includes(m.id)}
+                {...(m.recalled?.length ? { timeOf, onJump: jumpTo, assistant } : {})}
               />
               {foldsHere.map(foldNote)}
             </Fragment>
@@ -657,7 +695,8 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
                   remembered: drewOn?.remembered,
                 }}
                 timeOf={timeOf}
-                onJump={setHighlight}
+                onJump={jumpTo}
+                assistant={assistant}
                 streaming
               />
               <p className="reply-note" aria-hidden="true">
@@ -746,6 +785,13 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         )}
         {messages.length > 0 && foldsAfter(messages.length - 1).map(foldNote)}
         </div>
+        {awayFromBottom && (
+          <div className="to-latest">
+            <button type="button" onClick={toLatest} aria-label="Go to the newest message">
+              ↓ Latest
+            </button>
+          </div>
+        )}
       </div>
       <WordLookup scroller={scrollRef} />
 
@@ -853,9 +899,10 @@ type BubbleProps = {
   highlight?: boolean;
   /** The reply still arriving: no Raw button yet. */
   streaming?: boolean;
-  /** For the "Recalled" line: when a message of this chat was said (none if it isn't on the page), and a jump to it. */
+  /** For the "Recalled" line: when a message of this chat was said (none if it isn't on the page), a jump to an exchange, and the assistant's name. */
   timeOf?: (id: number) => string | undefined;
-  onJump?: (id: number) => void;
+  onJump?: (r: Recalled) => void;
+  assistant?: string;
 };
 
 // Memoized: every keystroke in the composer re-renders this view, and re-parsing every message's
@@ -864,7 +911,7 @@ type BubbleProps = {
 /** A fenced code block (``` or ~~~) anywhere in the text: the only replies that get Show raw. */
 const hasCodeFence = (text: string) => /^ {0,3}(`{3,}|~{3,})/m.test(text);
 
-const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false, timeOf, onJump }: BubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, highlight, streaming = false, timeOf, onJump, assistant }: BubbleProps) {
   const { id, role, content } = message;
   // Raw: a reply's text exactly as stored, Markdown and all, to read or copy as sent.
   const [raw, setRaw] = useState(false);
@@ -886,7 +933,7 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {role === 'user' && <MessageImages message={message} />}
         {/* That the model saved its private notes here; what they say is never sent to the app. */}
         {role === 'assistant' && message.notes_saved && <p className="notes-saved">Updated its private notes</p>}
-        {role === 'assistant' && message.recalled?.length ? <RecalledLine ids={message.recalled} timeOf={timeOf} onJump={onJump} /> : null}
+        {role === 'assistant' && message.recalled?.length ? <RecalledLine recalled={message.recalled} timeOf={timeOf} onJump={onJump} assistant={assistant} /> : null}
         {role === 'assistant' && message.remembered?.length ? <RememberedLine items={message.remembered} /> : null}
         {message.no_extraction && (
           <p className="not-remembered" title={NO_EXTRACTION_HELP}>
@@ -934,26 +981,60 @@ const site = (url: string) => {
 /** The pages a reply drew on, one pill per site (its first page). */
 /**
  * "Recalled from earlier in this chat · Sat 3:10 PM · 4:05 PM": the earlier exchanges the reply looked
- * back on (lookback.ts), each time a jump to that message, which is still on the page. Hidden if none is.
+ * back on (lookback.ts). A time opens what the model was shown of that exchange, with "Show in chat",
+ * which lights up the exchange (still on the page) at the part that matched. Replies from before that
+ * was kept have nothing to show: their time jumps straight there. Hidden if none is on the page.
  */
-function RecalledLine({ ids, timeOf, onJump }: { ids: number[]; timeOf?: (id: number) => string | undefined; onJump?: (id: number) => void }) {
-  const said = ids.flatMap((id) => {
-    const at = timeOf?.(id);
-    return at ? [{ id, at }] : [];
+function RecalledLine({
+  recalled,
+  timeOf,
+  onJump,
+  assistant = 'hearth',
+}: {
+  recalled: Recalled[];
+  timeOf?: (id: number) => string | undefined;
+  onJump?: (r: Recalled) => void;
+  assistant?: string;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  const said = recalled.flatMap((r) => {
+    const at = timeOf?.(r.start);
+    return at ? [{ r, at }] : [];
   });
   if (said.length === 0) return null;
+  const shown = said.find(({ r }) => r.start === open);
   return (
-    <p className="recalled">
-      Recalled from earlier in this chat
-      {said.map(({ id, at }) => (
-        <Fragment key={id}>
-          {' · '}
-          <button type="button" className="link" onClick={() => onJump?.(id)} title="Show where this was said">
-            {at}
+    <div className="recalled">
+      <p>
+        Recalled from earlier in this chat
+        {said.map(({ r, at }) => (
+          <Fragment key={r.start}>
+            {' · '}
+            <button
+              type="button"
+              className="link"
+              aria-expanded={r.said.length ? open === r.start : undefined}
+              onClick={() => (r.said.length ? setOpen(open === r.start ? null : r.start) : onJump?.(r))}
+              title={r.said.length ? 'What it was shown' : 'Show where this was said'}
+            >
+              {at}
+            </button>
+          </Fragment>
+        ))}
+      </p>
+      {shown && (
+        <div className="recalled-excerpt">
+          {shown.r.said.map((line, i) => (
+            <p key={i}>
+              <strong>{line.role === 'user' ? 'You' : assistant}:</strong> {line.text}
+            </p>
+          ))}
+          <button type="button" className="link" onClick={() => onJump?.(shown.r)}>
+            Show in chat
           </button>
-        </Fragment>
-      ))}
-    </p>
+        </div>
+      )}
+    </div>
   );
 }
 

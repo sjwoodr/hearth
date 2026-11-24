@@ -90,14 +90,19 @@ export type Message = {
   notes_saved?: boolean;
   /** Sent with "[no extraction]", or the reply to one: kept out of memories, summary, titles and search. */
   no_extraction?: boolean;
-  /** A reply's "Recalled" line: the first message of each earlier exchange of the chat it looked back on. */
-  recalled?: number[];
+  /** A reply's "Recalled" line: each earlier exchange of the chat it looked back on, and what it was shown of it. */
+  recalled?: Recalled[];
   /** A reply's "Remembered" line: the memories recalled for it, as they read now. */
   remembered?: Remembered[];
   created_at: string;
 };
 
 export type Remembered = { id: number; content: string };
+/**
+ * An earlier exchange a reply looked back on: its first message, the message that matched best, and
+ * what the model was shown of it (empty for replies from before that was kept).
+ */
+export type Recalled = { start: number; best: number; said: { role: 'user' | 'assistant'; text: string }[] };
 
 /** A private chat's message as sent back with each new one. */
 export type PrivateMessage = { role: 'user' | 'assistant'; content: string; imageCount?: number; sources?: Source[] | null };
@@ -159,7 +164,7 @@ export type StreamEvent =
   /** The model saved its private notes for this chat; carries nothing else, by design. */
   | { type: 'notes' }
   /** What the reply drew on: earlier exchanges of this chat it looked back on, and memories recalled for it. */
-  | { type: 'recall'; recalled: number[]; remembered: Remembered[] }
+  | { type: 'recall'; recalled: Recalled[]; remembered: Remembered[] }
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
   /** No `messageId` in a private chat: nothing was saved. */

@@ -2,6 +2,7 @@
 // waits here until the user taps Search on the card it puts in the chat, and only that route
 // (POST /conversations/:id/search) ever calls the search engine. Results go to the model on that
 // turn only; a reply keeps just the links it drew on.
+import type { Recalled } from './lookback.ts';
 import type { DB } from './db.ts';
 import { searches } from './metrics.ts';
 import type { ChatMessage, ToolCall } from './ollama.ts';
@@ -117,10 +118,11 @@ const searchFailed = (why: string) =>
 
 /** What a reply is generated from, and the pages found by searches made for it so far. */
 /**
- * What a reply drew on, for the lines under it: the earlier exchanges of the chat it looked back on
- * (lookback.ts; the id of each one's first message) and the memories recalled for it.
+ * What a reply drew on, for the lines above it: the earlier exchanges of the chat it looked back on
+ * (lookback.ts: where each starts, where it matched, what the model was shown) and the memories
+ * recalled for it.
  */
-export type DrewOn = { recalled: number[]; remembered: { id: number; content: string }[] };
+export type DrewOn = { recalled: Recalled[]; remembered: { id: number; content: string }[] };
 export const DREW_ON_NOTHING: DrewOn = { recalled: [], remembered: [] };
 
 export type Turn = { prompt: ChatMessage[]; sources?: Source[]; drewOn?: DrewOn };

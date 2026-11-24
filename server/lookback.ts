@@ -10,6 +10,7 @@ import { withImageText } from './images.ts';
 import { cosine, fromBlob, toBlob } from './memories.ts';
 import { job, lookBacks } from './metrics.ts';
 import type { EmbedFn } from './ollama.ts';
+import { assistantNameFor } from './persona.ts';
 
 /** The most characters in one embedded piece: a short paragraph, so one subject per vector. */
 export const PIECE_CHARS = 500;
@@ -153,18 +154,50 @@ export type LookBackOptions = {
   maxExchanges: number;
   /** And at most this many characters of excerpts in all. */
   maxChars: number;
+  /** The instructions above the excerpts. */
+  header?: (name: string) => string;
 };
+
+/**
+ * Above the excerpts. "Use it only if it helps" wasn't enough: given its own apology for forgetting
+ * (chat 71), the model made a speech about its memory instead of answering from the excerpt in front of it.
+ */
+export const LOOKBACK_HEADER = (name: string) =>
+  `[Earlier in this chat, from messages too old to show in full; they may hold what ${name} is asking about. ` +
+  `If ${name} is asking about something from earlier and it's here, answer from it as something you remember. ` +
+  'Otherwise reply as usual. Never comment on these excerpts or on how your memory works.]';
+
 // 0.45: above every new-subject message in the probe (best 0.40), below every back-reference (0.46+).
-export const DEFAULT_LOOKBACK: LookBackOptions = { minScore: 0.45, maxExchanges: 3, maxChars: 2400 };
+export const DEFAULT_LOOKBACK: LookBackOptions = { minScore: 0.45, maxExchanges: 3, maxChars: 2400, header: LOOKBACK_HEADER };
 // Per exchange: the user's side, then the reply's best-matching pieces.
 const USER_CHARS = 500;
 const REPLY_CHARS = 1000;
 
 type Piece = { messageId: number; text: string; score: number; index: number; of: number };
-/** The block for the newest message, and the first message of each exchange in it (for the "Recalled" line). */
-export type LookedBack = { text: string; recalled: number[] };
+/** One line of what the model was shown of an exchange. */
+export type Said = { role: 'user' | 'assistant'; text: string };
+/**
+ * One earlier exchange a reply drew on: its first message (where it starts, and its time), the message
+ * holding the best-matching piece (where the "Recalled" line jumps), and what the model was shown of it.
+ */
+export type Recalled = { start: number; best: number; said: Said[] };
+/** The block for the newest message, and the exchanges in it (for the "Recalled" line). */
+export type LookedBack = { text: string; recalled: Recalled[] };
 export const LOOKED_BACK_NOTHING: LookedBack = { text: '', recalled: [] };
-type Line = { role: 'user' | 'assistant'; created_at: string; pieces: Piece[] };
+type Line = { id: number; role: 'user' | 'assistant'; created_at: string; pieces: Piece[]; exchange: number };
+
+/**
+ * The message without the assistant's name. In a short message the name outweighs the rest: in one real
+ * chat a question that named the assistant recalled three short messages that also named it (0.52-0.56),
+ * and the message that answered it scored 0.47 and was left out. Without the name it came first (0.54)
+ * and none of the three made the top six.
+ */
+export function withoutName(text: string, name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (words.length === 0) return text.trim();
+  const named = new RegExp(`(?<![\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])[,.!?]*`, 'giu');
+  return text.replace(named, ' ').replace(/\s+/g, ' ').trim();
+}
 
 /**
  * One message's best piece, plus its other pieces that match too, as many as fit in `cap`, in their
@@ -201,20 +234,21 @@ const when = (sqliteUtc: string, timeZone?: string) =>
 
 /**
  * The earlier exchanges of this chat, out of what the prompt still shows, that match `query` (the
- * newest message), as a block for the newest message, with each exchange's first message id; nothing
- * when the chat has none indexed or none match. Scoped to the user's own chat. Throws if embedding
- * fails; `lookBackForPrompt` turns that into nothing.
+ * newest message, less the assistant's name), as a block for the newest message, with what the model
+ * was shown of each; nothing when the chat has none indexed or none match. Scoped to the user's own
+ * chat. Throws if embedding fails; `lookBackForPrompt` turns that into nothing.
  */
 export async function lookBack(
   db: DB,
-  user: { id: number; name: string },
+  user: { id: number; name: string; assistant?: string },
   conversationId: number,
   query: string,
   embed: EmbedFn,
   opts: LookBackOptions = DEFAULT_LOOKBACK,
   timeZone?: string,
 ): Promise<LookedBack> {
-  if (!query.trim()) return LOOKED_BACK_NOTHING;
+  const asked = withoutName(query, user.assistant ?? '');
+  if (!asked) return LOOKED_BACK_NOTHING;
   const chat = db.prepare('SELECT summary_through_message_id AS through FROM conversations WHERE id = ? AND user_id = ?').get(conversationId, user.id) as
     | { through: number }
     | undefined;
@@ -223,55 +257,54 @@ export async function lookBack(
     .prepare('SELECT message_id AS messageId, text, embedding FROM message_pieces WHERE conversation_id = ? ORDER BY id')
     .all(conversationId) as { messageId: number; text: string; embedding: Buffer }[];
   if (rows.length === 0) return LOOKED_BACK_NOTHING;
-  const [q] = await embed([QUERY_PREFIX + query]);
+  const [q] = await embed([QUERY_PREFIX + asked]);
 
   // The folded messages, each with the exchange it belongs to: the user message that opened it. Only
   // their pieces count: the newer ones are in the prompt already.
   const messages = db
     .prepare('SELECT id, role, created_at FROM messages WHERE conversation_id = ? AND id <= ? ORDER BY id')
     .all(conversationId, chat.through) as { id: number; role: 'user' | 'assistant'; created_at: string }[];
-  const lines = new Map<number, Line & { exchange: number }>();
+  const lines = new Map<number, Line>();
   let opened = 0;
   for (const m of messages) {
     if (m.role === 'user' || !opened) opened = m.id;
-    lines.set(m.id, { role: m.role, created_at: m.created_at, pieces: [], exchange: opened });
+    lines.set(m.id, { id: m.id, role: m.role, created_at: m.created_at, pieces: [], exchange: opened });
   }
   for (const row of rows) {
     const line = lines.get(row.messageId);
     if (!line) continue;
     line.pieces.push({ messageId: row.messageId, text: row.text, score: cosine(q!, fromBlob(row.embedding)), index: line.pieces.length, of: 0 });
   }
-  const exchanges = new Map<number, { score: number; lines: Line[] }>();
+  const exchanges = new Map<number, { score: number; best: number; lines: Line[] }>();
   for (const line of lines.values()) {
     if (line.pieces.length === 0) continue;
     for (const p of line.pieces) p.of = line.pieces.length;
-    const exchange = exchanges.get(line.exchange) ?? { score: -1, lines: [] };
+    const exchange = exchanges.get(line.exchange) ?? { score: -1, best: line.id, lines: [] };
     exchange.lines.push(line);
-    exchange.score = Math.max(exchange.score, ...line.pieces.map((p) => p.score));
+    for (const p of line.pieces) {
+      if (p.score > exchange.score) {
+        exchange.score = p.score;
+        exchange.best = line.id;
+      }
+    }
     exchanges.set(line.exchange, exchange);
   }
 
-  const picked: { start: number; text: string }[] = [];
+  const picked: (Recalled & { text: string })[] = [];
   let used = 0;
   const ranked = [...exchanges.entries()].filter(([, x]) => x.score >= opts.minScore).sort((a, b) => b[1].score - a[1].score);
   for (const [start, x] of ranked) {
     if (picked.length >= opts.maxExchanges) break;
-    const said = x.lines.map(
-      (l) => `${l.role === 'user' ? user.name : 'You'}: ${excerpt(l.pieces, l.role === 'user' ? USER_CHARS : REPLY_CHARS, opts.minScore)}`,
-    );
-    const text = `(${when(x.lines[0]!.created_at, timeZone)})\n${said.join('\n')}`;
+    const said: Said[] = x.lines.map((l) => ({ role: l.role, text: excerpt(l.pieces, l.role === 'user' ? USER_CHARS : REPLY_CHARS, opts.minScore) }));
+    const text = `(${when(x.lines[0]!.created_at, timeZone)})\n${said.map((s) => `${s.role === 'user' ? user.name : 'You'}: ${s.text}`).join('\n')}`;
     if (picked.length && used + text.length > opts.maxChars) continue;
-    picked.push({ start, text });
+    picked.push({ start, best: x.best, said, text });
     used += text.length;
   }
   if (picked.length === 0) return LOOKED_BACK_NOTHING;
   picked.sort((a, b) => a.start - b.start);
-  const text = [
-    `[Earlier in this chat, from messages too old to show in full, possibly relevant to ${user.name}'s newest message. ` +
-      'This is your memory of the conversation: use it only if it helps.]',
-    ...picked.map((p) => p.text),
-  ].join('\n\n');
-  return { text, recalled: picked.map((p) => p.start) };
+  const text = [(opts.header ?? LOOKBACK_HEADER)(user.name), ...picked.map((p) => p.text)].join('\n\n');
+  return { text, recalled: picked.map(({ start, best, said }) => ({ start, best, said })) };
 }
 
 /** `lookBack` for a reply's prompt: counted, and nothing if it fails (a nicety, like memory recall). */
@@ -281,9 +314,12 @@ export async function lookBackForPrompt(
   conversationId: number,
   query: string,
   embed: EmbedFn,
+  defaultAssistant = 'hearth',
 ): Promise<LookedBack> {
   try {
-    const found = await lookBack(db, user, conversationId, query, embed);
+    // Whatever this user calls their assistant (persona.ts) is left out of the search.
+    const assistant = assistantNameFor(db, user.id, defaultAssistant);
+    const found = await lookBack(db, { ...user, assistant }, conversationId, query, embed);
     // Chats with nothing folded yet aren't counted: the counter is about long chats.
     if (found.text) lookBacks.inc({ outcome: 'attached' });
     else if (hasPieces(db, conversationId)) lookBacks.inc({ outcome: 'none' });

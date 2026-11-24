@@ -71,7 +71,7 @@ const app = createApp({
   // Up to ~800 tokens of memories per message, out of the context window (shared with the Memories page).
   memoryContext: (user, message) => memoryContext(db, user, message, embed, MEMORY_BUDGET_TOKENS),
   // A long chat's earlier exchanges that match the message, from the part folded into its summary.
-  lookBack: (user, conversationId, message) => lookBackForPrompt(db, user, conversationId, message, embed),
+  lookBack: (user, conversationId, message) => lookBackForPrompt(db, user, conversationId, message, embed, config.assistantName),
   // Each Think effort's reasoning cap; the reply asks for one per request.
   thinkingBudgets: config.thinkingBudgets,
   titleFor: makeTitler(json),

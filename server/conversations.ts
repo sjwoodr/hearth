@@ -1,6 +1,7 @@
 // Conversation and message queries for the web app. Every function takes the signed-in
 // user's id and matches on it, so one user can never read or change another's chats.
 import type { DB } from './db.ts';
+import type { Recalled } from './lookback.ts';
 import type { DrewOn, Source } from './web-search.ts';
 
 export type Conversation = { id: number; title: string | null; created_at: string; updated_at: string };
@@ -19,8 +20,8 @@ export type Message = {
   notes_saved: boolean;
   /** Started with "[no extraction]", or the reply to one: kept out of memories, summary, titles and search. */
   no_extraction: boolean;
-  /** A reply's "Recalled" line: the first message of each earlier exchange it looked back on (lookback.ts). */
-  recalled: number[];
+  /** A reply's "Recalled" line: each earlier exchange it looked back on, and what the model was shown of it (lookback.ts). */
+  recalled: Recalled[];
   /** A reply's "Remembered" line: the memories recalled for it, as they read now (deleted ones left out). */
   remembered: DrewOn['remembered'];
   created_at: string;
@@ -99,6 +100,9 @@ export function listMessages(db: DB, userId: number, conversationId: number): Me
     remembered: string | null;
   })[];
   const ids = (json: string | null) => (json ? (JSON.parse(json) as number[]) : []);
+  // Replies from before the excerpts were kept (2026-11-24) hold bare ids: a jump, and nothing to show.
+  const recalledOf = (json: string | null) =>
+    json ? (JSON.parse(json) as (number | Recalled)[]).map((r) => (typeof r === 'number' ? { start: r, best: r, said: [] } : r)) : [];
   // The memories behind the "Remembered" lines, read now and only from this user's own.
   const wanted = [...new Set(rows.flatMap((m) => ids(m.remembered)))];
   const memories = new Map(
@@ -115,7 +119,7 @@ export function listMessages(db: DB, userId: number, conversationId: number): Me
     sources: m.sources ? (JSON.parse(m.sources) as Source[]) : null,
     notes_saved: m.notes_saved === 1,
     no_extraction: m.no_extraction === 1,
-    recalled: ids(m.recalled),
+    recalled: recalledOf(m.recalled),
     remembered: ids(m.remembered).flatMap((id) => (memories.has(id) ? [{ id, content: memories.get(id)! }] : [])),
   }));
 }
@@ -129,6 +133,7 @@ export function addMessage(
   extra: { imageCount?: number; sources?: Source[]; notesSaved?: boolean; noExtraction?: boolean; drewOn?: DrewOn } = {},
 ): number {
   const sources = extra.sources?.length ? JSON.stringify(extra.sources) : null;
+  // What the model was shown of each exchange, so the line can show it: copies of this chat's own text.
   const recalled = extra.drewOn?.recalled.length ? JSON.stringify(extra.drewOn.recalled) : null;
   const remembered = extra.drewOn?.remembered.length ? JSON.stringify(extra.drewOn.remembered.map((m) => m.id)) : null;
   return db.transaction(() => {
