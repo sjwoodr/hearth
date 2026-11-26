@@ -321,7 +321,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   chat reread it all), at most 5, after the always-remembered ones in the budget, not on the "Remembered" line.
   The day after, the memory sweep rewrites it once in the past tense with its month and clears `until`; an
   answer that isn't one sentence, or a failure, keeps the words (owner's calls: rewrite, a week when no end is
-  given, "For now" on the page). Each guard came from the probe (made-up chats, live UD model, x3 per case; ad
+  given, "For now" on the page). It then waits under **Ended** on the Memories page (`ended_on`, migration 022;
+  owner's idea, same night) for Keep for good, Edit or Forget, recalled when relevant meanwhile (owner's
+  choices: rewrite first, then review; used while it waits). Each guard came from the probe (made-up chats, live UD model, x3 per case; ad
   hoc, scratchpad): the prompt alone gave "learning ukulele since the summer" an end date 3/3 and a dog 1/3, so
   `isTemporary` (yes/no on the memory alone) turns a no, or a failed check, back into a lasting memory; "dentist
   appointment tomorrow" became for-now until tomorrow 3/3 despite "anything over by tomorrow" in the prompt, so
@@ -337,8 +339,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   the cruise 3/3 with it for now and 0/3 with the same memory as an ordinary fact; "what should I do tonight?"
   suggested the piano bar 3/3 vs 0/3. Leftovers: details from a trip's first day are saved beside it as
   lasting memories, not inside it, and an update that merges one can add a lasting copy too; a rewrite dates a
-  trip by the month it ended. Mutation-checked (37 sabotages, all caught, after three tests were made
-  stricter); the page checked at phone width, light and dark.
+  trip by the month it ended. Mutation-checked (37 sabotages, then 8 for Ended, all caught, after three
+  tests were made stricter); the page checked at phone width, light and dark.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
 - **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands

@@ -94,6 +94,11 @@ export function registerMemoryRoutes(
       if (typeof content !== 'string') return c.json(content, 400);
       change.content = content;
     }
+    // Kept from under "Ended": the only value it takes is null (for-now.ts sets it).
+    if (body?.ended_on !== undefined) {
+      if (body.ended_on !== null) return c.json({ error: '"ended_on" can only be cleared (null).' }, 400);
+      change.ended_on = null;
+    }
     // Promoting to always-remembered or filing under the assistant ends "for now" (updateMemory).
     if (body?.until !== undefined) {
       const until = cleanUntil(body.until, localDay());

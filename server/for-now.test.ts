@@ -284,6 +284,15 @@ describe('for-now memories in replies', () => {
     expect(related.remembered.map((m) => m.content)).toEqual(['Alice was on a cruise.']);
   });
 
+  it('once ended and waiting for review, are recalled like any memory', async () => {
+    const { db, alice } = await seed();
+    const m = addMemory(db, alice.id, 'fact', 'Alice went on a cruise in November 2026.');
+    db.prepare("UPDATE memories SET ended_on = '2026-11-24' WHERE id = ?").run(m.id);
+    expect((await memoryContext(db, alice, 'good evening!', fakeEmbed, 800, undefined, TODAY)).recalled).toBe('');
+    const related = await memoryContext(db, alice, 'remember that cruise?', fakeEmbed, 800, undefined, TODAY);
+    expect(related.remembered.map((r) => r.content)).toEqual(['Alice went on a cruise in November 2026.']);
+  });
+
   it('are listed once, as for now, even when the message is about them', async () => {
     const { db, alice } = await seed();
     addMemory(db, alice.id, 'fact', 'Alice is on a cruise this week.', null, 'user', '2026-11-29');
@@ -350,9 +359,10 @@ describe('when a for-now memory ends', () => {
     return { db, alice, bob, trip, visit, bees, json, prompts };
   }
   const memory = (db: DB, id: number) =>
-    db.prepare('SELECT content, until, embedding, updated_at FROM memories WHERE id = ?').get(id) as {
+    db.prepare('SELECT content, until, ended_on, embedding, updated_at FROM memories WHERE id = ?').get(id) as {
       content: string;
       until: string | null;
+      ended_on: string | null;
       embedding: Buffer | null;
       updated_at: string;
     };
@@ -361,7 +371,13 @@ describe('when a for-now memory ends', () => {
     const { db, trip, visit, bees, json, prompts } = await ended(() => 'Alice went on a cruise in November 2026; her favourite spot aboard was the piano bar.');
     expect(await rewriteEnded(db, json, TODAY)).toBe(1);
     const after = memory(db, trip.id);
-    expect(after).toMatchObject({ content: 'Alice went on a cruise in November 2026; her favourite spot aboard was the piano bar.', until: null, embedding: null });
+    // It waits under "Ended" (ended_on) for the user to keep, edit or forget.
+    expect(after).toMatchObject({
+      content: 'Alice went on a cruise in November 2026; her favourite spot aboard was the piano bar.',
+      until: null,
+      ended_on: '2026-11-24',
+      embedding: null,
+    });
     expect(after.updated_at > '2026-11-20 10:00:00').toBe(true);
     expect(prompts).toHaveLength(1);
     expect(prompts[0]![0]!.content).toContain('a chat companion keeps about Alice');
@@ -369,7 +385,7 @@ describe('when a for-now memory ends', () => {
     expect(prompts[0]![0]!.content).toContain('"in November 2026"');
     expect(prompts[0]![1]!.content).toBe('MEMORY: Alice is on a cruise; her favourite spot aboard is the piano bar.');
     // Still running through today, and lasting memories, are left alone.
-    expect(memory(db, visit.id).until).toBe(TODAY);
+    expect(memory(db, visit.id)).toMatchObject({ until: TODAY, ended_on: null });
     expect(memory(db, bees.id).content).toBe('Alice keeps bees.');
     expect(await rewriteEnded(db, json, TODAY)).toBe(0);
     expect(prompts).toHaveLength(1);
@@ -385,7 +401,7 @@ describe('when a for-now memory ends', () => {
     it(`stays as written, no longer for now, after ${what}`, async () => {
       const { db, trip, json } = await ended(answer);
       expect(await rewriteEnded(db, json, TODAY)).toBe(0);
-      expect(memory(db, trip.id)).toMatchObject({ content: 'Alice is on a cruise; her favourite spot aboard is the piano bar.', until: null });
+      expect(memory(db, trip.id)).toMatchObject({ content: 'Alice is on a cruise; her favourite spot aboard is the piano bar.', until: null, ended_on: '2026-11-24' });
       expect(memory(db, trip.id).updated_at).toBe('2026-11-20 10:00:00');
     });
   }
@@ -399,7 +415,7 @@ describe('when a for-now memory ends', () => {
   it('writes nothing when a reply preempts it, so it is tried again', async () => {
     const { db, trip, json } = await ended(() => Promise.reject(new PreemptedError()));
     await expect(rewriteEnded(db, json, TODAY)).rejects.toBeInstanceOf(PreemptedError);
-    expect(memory(db, trip.id).until).toBe('2026-11-24');
+    expect(memory(db, trip.id)).toMatchObject({ until: '2026-11-24', ended_on: null });
   });
 
   it("leaves it alone if the user moved its end date while it was being rewritten", async () => {
@@ -412,7 +428,7 @@ describe('when a for-now memory ends', () => {
     db = ctx.db;
     id = ctx.trip.id;
     expect(await rewriteEnded(db, ctx.json, TODAY)).toBe(0);
-    expect(memory(db, id)).toMatchObject({ content: 'Alice is on a cruise; her favourite spot aboard is the piano bar.', until: '2026-12-01' });
+    expect(memory(db, id)).toMatchObject({ content: 'Alice is on a cruise; her favourite spot aboard is the piano bar.', until: '2026-12-01', ended_on: null });
   });
 
   it("rewrites every user's, a few per pass", async () => {
@@ -513,9 +529,48 @@ describe('for-now memories over the API', () => {
   it('ends when promoted from the admin console too', async () => {
     const { db, alice } = await seed();
     const m = addMemory(db, alice.id, 'fact', 'On a cruise.', null, 'user', '2026-11-29');
+    const ended = addMemory(db, alice.id, 'fact', 'Was on a cruise.');
+    db.prepare("UPDATE memories SET ended_on = '2026-11-20' WHERE id = ?").run(ended.id);
+    const endedOn = () => (db.prepare('SELECT ended_on FROM memories WHERE id = ?').get(ended.id) as { ended_on: string | null }).ended_on;
     updateMemoryKind(db, m.id, 'fact');
+    updateMemoryKind(db, ended.id, 'fact');
     expect(rows(db, alice.id)[0]!.until).toBe('2026-11-29');
+    expect(endedOn()).toBe('2026-11-20');
     updateMemoryKind(db, m.id, 'profile');
+    updateMemoryKind(db, ended.id, 'profile');
     expect(rows(db, alice.id)[0]!.until).toBeNull();
+    expect(endedOn()).toBeNull();
+  });
+
+  it('keeps an ended one for good, or ends its wait by editing it back to for now, promoting or moving it', async () => {
+    const ctx = await signedIn();
+    const create = async () => {
+      const { id } = (await (await call(ctx.app, ctx.alice, 'POST', '/memories', { kind: 'fact', content: 'Was on a cruise.' })).json()) as { id: number };
+      ctx.db.prepare("UPDATE memories SET ended_on = '2026-11-20' WHERE id = ?").run(id);
+      return id;
+    };
+    const patch = (id: number, body: object, who = ctx.alice) => call(ctx.app, who, 'PATCH', `/memories/${id}`, body);
+    const listed = async (id: number) =>
+      ((await (await call(ctx.app, ctx.alice, 'GET', '/memories')).json()) as { id: number; ended_on: string | null; until: string | null }[]).find(
+        (m) => m.id === id,
+      )!;
+
+    const kept = await create();
+    expect((await listed(kept)).ended_on).toBe('2026-11-20');
+    // Bob can't, and the date can only be cleared.
+    expect((await patch(kept, { ended_on: null }, ctx.bob)).status).toBe(404);
+    expect((await patch(kept, { ended_on: '2026-11-21' })).status).toBe(400);
+    // A change of words alone doesn't (the page sends ended_on: null with an edit it saves).
+    expect(await (await patch(kept, { content: 'Was on a long cruise.' })).json()).toMatchObject({ ended_on: '2026-11-20' });
+    expect(await (await patch(kept, { content: 'Was on a cruise to Nassau.', ended_on: null })).json()).toMatchObject({ ended_on: null });
+
+    const again = await create();
+    expect(await (await patch(again, { until: addDays(today, 3) })).json()).toMatchObject({ until: addDays(today, 3), ended_on: null });
+    const promoted = await create();
+    expect(await (await patch(promoted, { kind: 'profile' })).json()).toMatchObject({ kind: 'profile', ended_on: null });
+    const moved = await create();
+    expect(await (await patch(moved, { subject: 'assistant' })).json()).toMatchObject({ subject: 'assistant', ended_on: null });
+    // Forgetting it is the ordinary delete.
+    expect((await call(ctx.app, ctx.alice, 'DELETE', `/memories/${await create()}`)).status).toBe(200);
   });
 });

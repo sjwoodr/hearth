@@ -346,7 +346,11 @@ Oct 27"):
   "Remembered". The day after it ends, the memory sweep rewrites it once in the
   past tense ("went on a cruise in November 2026 and liked the piano bar") and it
   becomes an ordinary recalled memory; if the rewrite fails it stays as written.
-  On the Memories page these have their own section with "until Nov 29"; Edit
+  Either way it's listed under **Ended** ("ended Nov 29") until you look at it:
+  **Keep for good** moves it to the ordinary memories, Edit fixes the wording (or
+  makes it "for now" again, if the trip was extended), Forget deletes it. It's
+  recalled when relevant meanwhile, so reviewing is optional (`memories.ended_on`,
+  migration 022). On the Memories page these have their own section with "until Nov 29"; Edit
   changes or clears the date (cleared, it's kept for good), and the add box has
   "For now (a week)". Promoting one to always-remembered, or moving it to About
   <name>, ends it.

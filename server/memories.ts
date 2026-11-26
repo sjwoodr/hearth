@@ -28,9 +28,15 @@ export type Memory = {
    * have one: promoting a memory to always-remembered, or filing it under the assistant, clears it.
    */
   until: string | null;
+  /**
+   * The last day of a "for now" memory that has ended and not been reviewed yet (for-now.ts): the
+   * Memories page lists it under "Ended" until the user keeps, edits or forgets it. Meanwhile it's an
+   * ordinary memory. Cleared by `ended_on: null`, a new `until`, promotion or a move to the assistant.
+   */
+  ended_on: string | null;
 };
 
-const COLUMNS = 'id, kind, subject, content, source_conversation_id, created_at, updated_at, until';
+const COLUMNS = 'id, kind, subject, content, source_conversation_id, created_at, updated_at, until, ended_on';
 
 export const isMemoryKind = (value: unknown): value is MemoryKind =>
   typeof value === 'string' && (MEMORY_KINDS as readonly string[]).includes(value);
@@ -70,19 +76,22 @@ export function updateMemory(
   db: DB,
   userId: number,
   id: number,
-  change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null },
+  change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null; ended_on?: null },
 ): boolean {
   const current = getMemory(db, userId, id);
   if (!current) return false;
   const content = change.content ?? current.content;
   const kind = change.kind ?? current.kind;
   const subject = change.subject ?? current.subject;
-  const until = kind === 'fact' && subject === 'user' ? (change.until !== undefined ? change.until : current.until) : null;
+  const ownFact = kind === 'fact' && subject === 'user';
+  const until = ownFact ? (change.until !== undefined ? change.until : current.until) : null;
+  // Reviewed (kept), for now again, promoted or moved: no longer waiting under "Ended".
+  const endedOn = ownFact && change.ended_on !== null && !until ? current.ended_on : null;
   db.prepare(
-    `UPDATE memories SET kind = ?, subject = ?, content = ?, until = ?, updated_at = datetime('now'),
+    `UPDATE memories SET kind = ?, subject = ?, content = ?, until = ?, ended_on = ?, updated_at = datetime('now'),
        embedding = CASE WHEN content = ? THEN embedding ELSE NULL END
      WHERE id = ? AND user_id = ?`,
-  ).run(kind, subject, content, until, content, id, userId);
+  ).run(kind, subject, content, until, endedOn, content, id, userId);
   return true;
 }
 

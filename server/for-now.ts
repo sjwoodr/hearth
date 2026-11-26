@@ -2,7 +2,9 @@
 // visit is over, its memory is rewritten once in the past tense ("Sam was on a cruise in December 2026
 // and loved the piano player at the lounge"), its end date cleared, and from then on it's an ordinary memory,
 // recalled when relevant (owner's call, 2026-11-25). If the rewrite fails it stays as written: the date
-// it was learned, shown when it's recalled, still says when it was.
+// it was learned, shown when it's recalled, still says when it was. Either way it keeps `ended_on`, so
+// the Memories page lists it under "Ended" for the user to keep, edit or forget (owner's idea, same night);
+// meanwhile it's recalled when relevant like any memory.
 import { isPreempted } from './busy.ts';
 import type { DB } from './db.ts';
 import { job } from './metrics.ts';
@@ -68,14 +70,16 @@ export async function rewriteEnded(db: DB, json: JsonFn, today: string = localDa
     }
     if (past) {
       const { changes } = db
-        .prepare("UPDATE memories SET content = ?, until = NULL, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND until = ?")
+        .prepare(
+          "UPDATE memories SET content = ?, until = NULL, ended_on = until, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND until = ?",
+        )
         .run(past, m.id, m.until);
       if (changes) {
         rewritten++;
         job('for-now', 'ok');
       }
     } else {
-      db.prepare('UPDATE memories SET until = NULL WHERE id = ? AND until = ?').run(m.id, m.until);
+      db.prepare('UPDATE memories SET until = NULL, ended_on = until WHERE id = ? AND until = ?').run(m.id, m.until);
       job('for-now', 'failed');
     }
   }

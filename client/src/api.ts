@@ -130,6 +130,8 @@ export type Memory = {
   updated_at: string;
   /** A "for now" memory's last day (YYYY-MM-DD; shared/for-now.ts), or null for a lasting one. */
   until: string | null;
+  /** The last day of an ended "for now" memory waiting under "Ended" (keep, edit or forget), or null. */
+  ended_on: string | null;
 };
 
 /** Who the user's assistant is: the name it answers to ('' for the server's `defaultName`) and their description of it. */
@@ -255,7 +257,10 @@ export const api = {
   memories: () => request<Memory[]>('GET', '/api/memories'),
   addMemory: (kind: MemoryKind, content: string, subject: MemorySubject = 'user', until: string | null = null) =>
     request<Memory>('POST', '/api/memories', { kind, content, subject, until }),
-  updateMemory: (id: number, change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null }) =>
+  updateMemory: (
+    id: number,
+    change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null; ended_on?: null },
+  ) =>
     request<Memory>('PATCH', `/api/memories/${id}`, change),
   persona: () => request<Persona>('GET', '/api/persona'),
   savePersona: (name: string, about: string) => request<Persona>('PUT', '/api/persona', { name, about }),

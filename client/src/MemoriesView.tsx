@@ -11,24 +11,35 @@ const MAX_CHARS = 400;
 const MAX_NAME_CHARS = 40;
 const MAX_ABOUT_CHARS = 2000;
 
-/** `forNow`: the facts with an end date still ahead (shared/for-now.ts); the plain fact section leaves those out. */
-type Section = { kind: MemoryKind; forNow?: boolean; title: string; blurb: string };
+/**
+ * Which section a memory is listed in: "for-now" (an end date still ahead, shared/for-now.ts), "ended"
+ * (a for-now memory that ended and hasn't been kept, edited or forgotten yet), else its kind.
+ */
+type Bucket = MemoryKind | 'for-now' | 'ended';
+const bucketOf = (m: Memory, today: string): Bucket =>
+  m.kind === 'fact' && isForNow(m.until, today) ? 'for-now' : m.kind === 'fact' && m.ended_on ? 'ended' : m.kind;
+type Section = { bucket: Bucket; title: string; blurb: string };
 
 const SECTIONS: Section[] = [
   {
-    kind: 'profile',
+    bucket: 'profile',
     title: 'Always remembered',
     blurb: 'Included in every chat. hearth never adds these itself: promote a memory with "Always remember". Keep these few.',
   },
   {
-    kind: 'fact',
-    forNow: true,
+    bucket: 'for-now',
     title: 'For now',
     blurb:
       "A trip, a visit, a busy week: included in every chat until its date. After that it's kept as something that happened, recalled when relevant.",
   },
   {
-    kind: 'fact',
+    bucket: 'ended',
+    title: 'Ended',
+    blurb:
+      'Trips and visits that are over, rewritten as something that happened. Already recalled when relevant: keep one for good, fix it, or forget it.',
+  },
+  {
+    bucket: 'fact',
     title: 'Recalled when relevant',
     blurb: 'Learned from your chats, and brought in when a message is about the same thing.',
   },
@@ -37,12 +48,12 @@ const SECTIONS: Section[] = [
 // The same two kinds for what the assistant knows about itself.
 const SELF_SECTIONS = (name: string): Section[] => [
   {
-    kind: 'profile',
+    bucket: 'profile',
     title: `Always part of who ${name} is`,
     blurb: 'Included in every chat, with the description above. Promote one with "Always remember".',
   },
   {
-    kind: 'fact',
+    bucket: 'fact',
     title: 'Recalled when relevant',
     blurb: `What you settled about ${name} in your chats (hearth keeps only what you said or agreed to, never what ${name} made up), brought in when it comes up.`,
   },
@@ -266,18 +277,18 @@ function MemorySections({
   const today = localDay();
   return (
     <>
-      {sections.map(({ kind, forNow = false, title, blurb }) => {
-        const items = memories.filter((m) => m.subject === subject && m.kind === kind && isForNow(m.until, today) === forNow);
-        // An empty "For now" says nothing worth a heading: it shows once there's a trip or a visit.
-        if (forNow && items.length === 0) return null;
-        const id = `memories-${subject}-${forNow ? 'for-now' : kind}`;
+      {sections.map(({ bucket, title, blurb }) => {
+        const items = memories.filter((m) => m.subject === subject && bucketOf(m, today) === bucket);
+        // An empty "For now" or "Ended" says nothing worth a heading: each shows once there's one.
+        if ((bucket === 'for-now' || bucket === 'ended') && items.length === 0) return null;
+        const id = `memories-${subject}-${bucket}`;
         return (
           <section key={id} aria-labelledby={id}>
             <h3 id={id}>
               {title} <span className="count">{items.length}</span>
             </h3>
             <p className="muted small">{blurb}</p>
-            {kind === 'profile' && <AlwaysBudget memories={memories} other={other === 'user' ? 'About you' : `About ${assistant}`} />}
+            {bucket === 'profile' && <AlwaysBudget memories={memories} other={other === 'user' ? 'About you' : `About ${assistant}`} />}
             {items.length === 0 ? (
               <p className="muted small">None.</p>
             ) : (
@@ -290,7 +301,8 @@ function MemorySections({
                     onOpenChat={onOpenChat}
                     today={today}
                     onSave={(change) => run(() => api.updateMemory(m.id, change))}
-                    onMove={() => run(() => api.updateMemory(m.id, { kind: kind === 'fact' ? 'profile' : 'fact' }))}
+                    onMove={() => run(() => api.updateMemory(m.id, { kind: m.kind === 'fact' ? 'profile' : 'fact' }))}
+                    onKeep={() => void run(() => api.updateMemory(m.id, { ended_on: null }))}
                     onMoveSubject={() =>
                       void run(() => api.updateMemory(m.id, { subject: other })).then((ok) => ok && onMoved(m.content, other))
                     }
@@ -550,20 +562,23 @@ type ItemProps = {
   assistant: string;
   today: string;
   onOpenChat: (id: number) => void;
-  /** Only what changed: `until` is sent only when the "For now" date was changed. */
-  onSave: (change: { content?: string; until?: string | null }) => Promise<boolean>;
+  /** Only what changed: `until` is sent only when the "For now" date was changed. Saving an ended one keeps it. */
+  onSave: (change: { content?: string; until?: string | null; ended_on?: null }) => Promise<boolean>;
+  /** An ended memory, kept for good: it moves from "Ended" to the ordinary memories. */
+  onKeep: () => void;
   onMove: () => void;
   /** Between "About you" and "About <assistant>", for a memory filed under the wrong one. */
   onMoveSubject: () => void;
   onDelete: () => void;
 };
 
-function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMoveSubject, onDelete }: ItemProps) {
+function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMoveSubject, onDelete, onKeep }: ItemProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(memory.content);
   // "For now" can be set, moved or cleared only on the user's own facts (memories.ts).
   const canBeForNow = memory.kind === 'fact' && memory.subject === 'user';
   const forNow = isForNow(memory.until, today);
+  const ended = !forNow && canBeForNow && !!memory.ended_on;
   const [until, setUntil] = useState<string | null>(forNow ? memory.until : null);
 
   function startEditing() {
@@ -574,9 +589,11 @@ function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMo
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    const change: { content?: string; until?: string | null } = {};
+    const change: { content?: string; until?: string | null; ended_on?: null } = {};
     if (draft.trim() !== memory.content) change.content = draft.trim();
     if (canBeForNow && until !== (forNow ? memory.until : null)) change.until = until;
+    // Looked at and saved: an ended one is kept, whatever changed.
+    if (ended) change.ended_on = null;
     if (Object.keys(change).length === 0 || (await onSave(change))) setEditing(false);
   }
 
@@ -648,6 +665,11 @@ function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMo
             until {dayLabel(memory.until!, today)}
           </span>
         )}
+        {ended && (
+          <span className="memory-until" title="Its last day as a for-now memory">
+            ended {dayLabel(memory.ended_on!, today)}
+          </span>
+        )}
         {memory.source_conversation_id !== null ? (
           <a
             href={`#/c/${memory.source_conversation_id}`}
@@ -668,12 +690,20 @@ function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMo
         >
           Edit
         </button>
-        <button type="button" className="link" onClick={onMove}>
-          {memory.kind === 'fact' ? 'Always remember' : 'Only when relevant'}
-        </button>
-        <button type="button" className="link" onClick={onMoveSubject} title="File it under the other heading">
-          {memory.subject === 'user' ? `Move to About ${assistant}` : 'Move to About you'}
-        </button>
+        {ended ? (
+          <button type="button" className="link" onClick={onKeep} title="Keep it as a memory, recalled when relevant">
+            Keep for good
+          </button>
+        ) : (
+          <>
+            <button type="button" className="link" onClick={onMove}>
+              {memory.kind === 'fact' ? 'Always remember' : 'Only when relevant'}
+            </button>
+            <button type="button" className="link" onClick={onMoveSubject} title="File it under the other heading">
+              {memory.subject === 'user' ? `Move to About ${assistant}` : 'Move to About you'}
+            </button>
+          </>
+        )}
         <button type="button" className="link" onClick={onDelete}>
           Forget
         </button>
