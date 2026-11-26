@@ -24,6 +24,8 @@ export type Message = {
   recalled: Recalled[];
   /** A reply's "Remembered" line: the memories recalled for it, as they read now (deleted ones left out). */
   remembered: DrewOn['remembered'];
+  /** The "For now" line on a chat's first reply: the for-now memories that rode on it, as they read now. */
+  for_now: DrewOn['remembered'];
   created_at: string;
 };
 
@@ -88,23 +90,24 @@ export function listMessages(db: DB, userId: number, conversationId: number): Me
   const rows = db
     .prepare(
       `SELECT m.id, m.role, m.content, m.image_count, m.image_note, m.sources, m.notes_saved, m.no_extraction,
-         m.recalled, m.remembered, m.created_at FROM messages m
+         m.recalled, m.remembered, m.for_now, m.created_at FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE m.conversation_id = ? AND c.user_id = ? ORDER BY m.id`,
     )
-    .all(conversationId, userId) as (Omit<Message, 'sources' | 'notes_saved' | 'no_extraction' | 'recalled' | 'remembered'> & {
+    .all(conversationId, userId) as (Omit<Message, 'sources' | 'notes_saved' | 'no_extraction' | 'recalled' | 'remembered' | 'for_now'> & {
     sources: string | null;
     notes_saved: number;
     no_extraction: number;
     recalled: string | null;
     remembered: string | null;
+    for_now: string | null;
   })[];
   const ids = (json: string | null) => (json ? (JSON.parse(json) as number[]) : []);
   // Replies from before the excerpts were kept (2026-11-24) hold bare ids: a jump, and nothing to show.
   const recalledOf = (json: string | null) =>
     json ? (JSON.parse(json) as (number | Recalled)[]).map((r) => (typeof r === 'number' ? { start: r, best: r, said: [] } : r)) : [];
-  // The memories behind the "Remembered" lines, read now and only from this user's own.
-  const wanted = [...new Set(rows.flatMap((m) => ids(m.remembered)))];
+  // The memories behind the "Remembered" and "For now" lines, read now and only from this user's own.
+  const wanted = [...new Set(rows.flatMap((m) => [...ids(m.remembered), ...ids(m.for_now)]))];
   const memories = new Map(
     wanted.length
       ? (
@@ -121,6 +124,7 @@ export function listMessages(db: DB, userId: number, conversationId: number): Me
     no_extraction: m.no_extraction === 1,
     recalled: recalledOf(m.recalled),
     remembered: ids(m.remembered).flatMap((id) => (memories.has(id) ? [{ id, content: memories.get(id)! }] : [])),
+    for_now: ids(m.for_now).flatMap((id) => (memories.has(id) ? [{ id, content: memories.get(id)! }] : [])),
   }));
 }
 
@@ -136,11 +140,12 @@ export function addMessage(
   // What the model was shown of each exchange, so the line can show it: copies of this chat's own text.
   const recalled = extra.drewOn?.recalled.length ? JSON.stringify(extra.drewOn.recalled) : null;
   const remembered = extra.drewOn?.remembered.length ? JSON.stringify(extra.drewOn.remembered.map((m) => m.id)) : null;
+  const forNow = extra.drewOn?.for_now?.length ? JSON.stringify(extra.drewOn.for_now.map((m) => m.id)) : null;
   return db.transaction(() => {
     const id = db
       .prepare(
-        `INSERT INTO messages (conversation_id, role, content, image_count, sources, notes_saved, no_extraction, recalled, remembered)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (conversation_id, role, content, image_count, sources, notes_saved, no_extraction, recalled, remembered, for_now)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         conversationId,
@@ -152,6 +157,7 @@ export function addMessage(
         extra.noExtraction ? 1 : 0,
         recalled,
         remembered,
+        forNow,
       ).lastInsertRowid;
     db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
     return Number(id);

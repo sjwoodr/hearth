@@ -158,3 +158,90 @@ describe('memoryContext reports what it recalled', () => {
     ]);
   });
 });
+
+describe('the For now line', () => {
+  /** A brand-new chat, and a "for now" memory riding on every reply (shared/for-now.ts). */
+  async function fresh(opts: { webSearch?: boolean } = {}) {
+    const ctx = setupApp(opts);
+    const cookie = await signIn(ctx, 'alice');
+    const id = await newChat(ctx.app, cookie);
+    const trip = addMemory(ctx.db, userId(ctx.db, 'alice'), 'fact', 'Is on a cruise this week', null, 'user', '2099-01-01');
+    ctx.model.forNow = [{ id: trip.id, content: trip.content }];
+    return { ...ctx, cookie, id, trip };
+  }
+  const forNowColumn = (db: DB, id: number) => (db.prepare('SELECT for_now FROM messages WHERE id = ?').get(id) as { for_now: string | null }).for_now;
+  type WithForNow = Event & { for_now?: { id: number; content: string }[] };
+
+  it("goes on a chat's first reply only, kept as ids and read back as the memory reads now", async () => {
+    const ctx = await fresh();
+    const first = (await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'Good evening!' })) as WithForNow[];
+    expect(first.find((e) => e.type === 'recall')).toEqual({ type: 'recall', recalled: [], remembered: [], for_now: [{ id: ctx.trip.id, content: 'Is on a cruise this week' }] });
+    const done = first.find((e) => e.type === 'done')!;
+    expect(forNowColumn(ctx.db, done.messageId!)).toBe(`[${ctx.trip.id}]`);
+
+    // The second reply knows it too, but says nothing: no line, and here nothing else to show either.
+    const second = await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'What should I do tonight?' });
+    expect(second.find((e) => e.type === 'recall')).toBeUndefined();
+    expect(forNowColumn(ctx.db, second.find((e) => e.type === 'done')!.messageId!)).toBeNull();
+
+    const reply = async () =>
+      ((await stored(ctx.app, ctx.cookie, ctx.id)) as unknown as { messages: { id: number; for_now: { id: number; content: string }[] }[] }).messages.find(
+        (m) => m.id === done.messageId,
+      )!;
+    updateMemory(ctx.db, userId(ctx.db, 'alice'), ctx.trip.id, { content: 'Is on a cruise until Sunday' });
+    expect((await reply()).for_now).toEqual([{ id: ctx.trip.id, content: 'Is on a cruise until Sunday' }]);
+    // Another user's id on the reply shows nothing.
+    const bob = await createUser(ctx.db, 'bob', 'a good password');
+    const theirs = addMemory(ctx.db, bob.id, 'fact', 'Bob is in Lisbon', null, 'user', '2099-01-01');
+    ctx.db.prepare('UPDATE messages SET for_now = ? WHERE id = ?').run(JSON.stringify([ctx.trip.id, theirs.id]), done.messageId);
+    expect((await reply()).for_now).toEqual([{ id: ctx.trip.id, content: 'Is on a cruise until Sunday' }]);
+    deleteMemory(ctx.db, userId(ctx.db, 'alice'), ctx.trip.id);
+    expect((await reply()).for_now).toEqual([]);
+  });
+
+  it('sends nothing when nothing rides along', async () => {
+    const ctx = await fresh();
+    ctx.model.forNow = [];
+    const events = await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'Good evening!' });
+    expect(events.find((e) => e.type === 'recall')).toBeUndefined();
+  });
+
+  it('a first reply that waited on a search card keeps it, across a restart too', async () => {
+    const ctx = await fresh({ webSearch: true });
+    ctx.model.asks.push('cruise port hours');
+    expect((await post(ctx.app, ctx.cookie, `/conversations/${ctx.id}/messages`, { content: 'When does the port open?' })).at(-1)?.type).toBe('search');
+    const after = setupApp({ webSearch: true, db: ctx.db });
+    const events = (await post(after.app, ctx.cookie, `/conversations/${ctx.id}/search`, { approve: true })) as WithForNow[];
+    expect(events.find((e) => e.type === 'recall')?.for_now).toEqual([{ id: ctx.trip.id, content: 'Is on a cruise this week' }]);
+    expect(forNowColumn(ctx.db, events.find((e) => e.type === 'done')!.messageId!)).toBe(`[${ctx.trip.id}]`);
+  });
+
+  it("a private chat's first reply gets it, and stores nothing", async () => {
+    const ctx = await fresh();
+    const before = ctx.db.prepare('SELECT count(*) AS n FROM messages').get();
+    const first = (await post(ctx.app, ctx.cookie, '/private/a1b2c3d4-private/messages', { messages: [{ role: 'user', content: 'hi!' }] })) as WithForNow[];
+    expect(first.find((e) => e.type === 'recall')?.for_now).toEqual([{ id: ctx.trip.id, content: 'Is on a cruise this week' }]);
+    const later = await post(ctx.app, ctx.cookie, '/private/a1b2c3d4-private/messages', {
+      messages: [
+        { role: 'user', content: 'hi!' },
+        { role: 'assistant', content: 'Hello!' },
+        { role: 'user', content: 'what now?' },
+      ],
+    });
+    expect(later.find((e) => e.type === 'recall')).toBeUndefined();
+    expect(ctx.db.prepare('SELECT count(*) AS n FROM messages').get()).toEqual(before);
+  });
+});
+
+describe('memoryContext reports what rides along for now', () => {
+  it('the for-now memories it attached, and only those', async () => {
+    const ctx = setupApp();
+    const alice = await createUser(ctx.db, 'alice', 'a good password');
+    const embed: EmbedFn = async (texts) => texts.map(() => [1, 0]);
+    const trip = addMemory(ctx.db, alice.id, 'fact', 'Alice is on a cruise.', null, 'user', '2026-11-29');
+    addMemory(ctx.db, alice.id, 'fact', 'Alice was in Rome.', null, 'user', '2026-11-20');
+    addMemory(ctx.db, alice.id, 'profile', 'Alice likes tea.');
+    const { forNow } = await memoryContext(ctx.db, { id: alice.id, name: nameOf(alice) }, 'hello', embed, 800, undefined, '2026-11-25');
+    expect(forNow).toEqual([{ id: trip.id, content: 'Alice is on a cruise.' }]);
+  });
+});

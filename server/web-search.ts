@@ -122,7 +122,12 @@ const searchFailed = (why: string) =>
  * (lookback.ts: where each starts, where it matched, what the model was shown) and the memories
  * recalled for it.
  */
-export type DrewOn = { recalled: Recalled[]; remembered: { id: number; content: string }[] };
+/**
+ * What a reply drew on, for the lines under it. `for_now`: the "for now" memories that rode on it, sent
+ * only on a chat's first reply (they ride on every one; owner's call, 2026-11-25), absent otherwise and
+ * on waiting searches saved before it existed.
+ */
+export type DrewOn = { recalled: Recalled[]; remembered: { id: number; content: string }[]; for_now?: { id: number; content: string }[] };
 export const DREW_ON_NOTHING: DrewOn = { recalled: [], remembered: [] };
 
 export type Turn = { prompt: ChatMessage[]; sources?: Source[]; drewOn?: DrewOn };

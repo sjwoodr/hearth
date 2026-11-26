@@ -341,7 +341,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     search: boolean,
     extra: { summary?: string | null; pause?: string; notesOn?: boolean; notes?: string; lookBack?: Promise<LookedBack> } = {},
   ): Promise<Turn> {
-    const [{ stable, recalled, remembered }, lookedBack] = await Promise.all([
+    const [{ stable, recalled, remembered, forNow }, lookedBack] = await Promise.all([
       memoryContext(user, latest),
       extra.lookBack ?? LOOKED_BACK_NOTHING,
     ]);
@@ -364,8 +364,10 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     const system = [systemPrompt(name), tool, extra.notesOn ? NOTES_INSTRUCTIONS : '', stable, earlier].filter(Boolean).join('\n\n');
     const budget = decision?.think ? budgetFor(decision) : undefined;
     const reserve = REPLY_RESERVE + (budget ? thinkingReserve(budget) : 0) + (search ? SEARCH_RESERVE : 0);
-    // What it drew on goes with the prompt, for the lines under the reply.
-    return { prompt: fitHistory(system, history, contextBudget - reserve), drewOn: { recalled: lookedBack.recalled, remembered } };
+    // What it drew on goes with the prompt, for the lines under the reply. The "for now" memories ride on
+    // every reply, so their line goes only on a chat's first, where a new chat's answer can come from them.
+    const drewOn: DrewOn = { recalled: lookedBack.recalled, remembered, ...(opening && forNow.length ? { for_now: forNow } : {}) };
+    return { prompt: fitHistory(system, history, contextBudget - reserve), drewOn };
   }
 
   // Where a reply ends up. A stored chat saves it and runs the work after it (title, image
@@ -502,7 +504,7 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
         if (opts.searching) await send({ type: 'searching', query: opts.searching });
         const { prompt, sources = [], drewOn = DREW_ON_NOTHING } = await turnReady;
         // What it drew on, for the lines under the reply: "Recalled" (earlier in this chat) and "Remembered".
-        if (drewOn.recalled.length || drewOn.remembered.length) await send({ type: 'recall', ...drewOn });
+        if (drewOn.recalled.length || drewOn.remembered.length || drewOn.for_now?.length) await send({ type: 'recall', ...drewOn });
         // That notes were saved, never what they say: the chat shows "Updated its private notes".
         let notesSaved = savedInTurn(prompt);
         if (notesSaved) await send({ type: 'notes' });

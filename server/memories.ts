@@ -201,12 +201,18 @@ export async function rankFacts(db: DB, userId: number, query: string, embed: Em
  *   changing system prompt every reply reread the whole ~7k-token chat, ~22 s; appended at the
  *   end, ~1 s.)
  * - `remembered`: those recalled facts' ids and text, for the "Remembered" line under the reply.
+ * - `forNow`: the "for now" memories that ride on this reply, for the "For now" line on a chat's first reply.
  * "For now" memories (a trip, a visit: `until` today or later) go in `recalled` too, on every reply,
  * since a new chat's "good evening" matches nothing about the trip it's sent from. The newest
  * message, not the system prompt: one added mid-chat would make the whole chat reread its prompt.
  * All are empty when the user has no memories.
  */
-export type MemorySections = { stable: string; recalled: string; remembered: { id: number; content: string }[] };
+export type MemorySections = {
+  stable: string;
+  recalled: string;
+  remembered: { id: number; content: string }[];
+  forNow: { id: number; content: string }[];
+};
 
 export async function memoryContext(
   db: DB,
@@ -219,7 +225,7 @@ export async function memoryContext(
 ): Promise<MemorySections> {
   const all = listMemories(db, user.id);
   const { about } = getPersona(db, user.id);
-  if (all.length === 0 && !about) return { stable: '', recalled: '', remembered: [] };
+  if (all.length === 0 && !about) return { stable: '', recalled: '', remembered: [], forNow: [] };
   const theirs = all.filter((m) => m.subject === 'user');
   const self = all.filter((m) => m.subject === 'assistant');
   // Newest-changed first (listMemories' order), so a trip that was just extended stays in.
@@ -300,5 +306,6 @@ export async function memoryContext(
   // The facts recalled for this message, for the "Remembered" line under the reply (never the
   // always-remembered or for-now ones, which ride on every reply).
   const remembered = [...keptFacts, ...keptSelfFacts].map(({ id, content }) => ({ id, content }));
-  return { stable: sections.join('\n\n'), recalled: blocks.join('\n\n'), remembered };
+  const forNowShown = keptForNow.map(({ id, content }) => ({ id, content }));
+  return { stable: sections.join('\n\n'), recalled: blocks.join('\n\n'), remembered, forNow: forNowShown };
 }

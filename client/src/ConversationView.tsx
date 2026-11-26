@@ -203,7 +203,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
   // The reply being written saved the model's private notes (only that it did, never what they say).
   const [notesSaved, setNotesSaved] = useState(false);
   // What the reply being written drew on: earlier exchanges of this chat, and memories.
-  const [drewOn, setDrewOn] = useState<{ recalled: Recalled[]; remembered: Remembered[] } | null>(null);
+  const [drewOn, setDrewOn] = useState<{ recalled: Recalled[]; remembered: Remembered[]; for_now?: Remembered[] } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set while the page waits for a reply the server kept writing after the stream dropped.
   const [catchingUp, setCatchingUp] = useState(false);
@@ -396,7 +396,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
     let reason: string | undefined;
     let thoughtEffort: Effort | undefined;
     let noted = false;
-    let drew: { recalled: Recalled[]; remembered: Remembered[] } | undefined;
+    let drew: { recalled: Recalled[]; remembered: Remembered[]; for_now?: Remembered[] } | undefined;
     let kept = false;
     const keepReply = (messageId?: number, note?: string, selfCorrected?: boolean, sources?: Source[]) => {
       const content = reply;
@@ -409,6 +409,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
         notes_saved: noted,
         recalled: drew?.recalled,
         remembered: drew?.remembered,
+        for_now: drew?.for_now,
         no_extraction: kept,
         selfCorrected,
         effort: thoughtEffort,
@@ -433,7 +434,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
           noted = true;
           setNotesSaved(true);
         } else if (event.type === 'recall') {
-          drew = { recalled: event.recalled, remembered: event.remembered };
+          drew = { recalled: event.recalled, remembered: event.remembered, for_now: event.for_now };
           setDrewOn(drew);
         }
         else if (event.type === 'search') {
@@ -693,6 +694,7 @@ export function ConversationView({ id: storedId, name, assistant, focusMessageId
                   notes_saved: notesSaved,
                   recalled: drewOn?.recalled,
                   remembered: drewOn?.remembered,
+                  for_now: drewOn?.for_now,
                 }}
                 timeOf={timeOf}
                 onJump={jumpTo}
@@ -935,6 +937,7 @@ const MessageBubble = memo(function MessageBubble({ message, highlight, streamin
         {role === 'assistant' && message.notes_saved && <p className="notes-saved">Updated its private notes</p>}
         {role === 'assistant' && message.recalled?.length ? <RecalledLine recalled={message.recalled} timeOf={timeOf} onJump={onJump} assistant={assistant} /> : null}
         {role === 'assistant' && message.remembered?.length ? <RememberedLine items={message.remembered} /> : null}
+        {role === 'assistant' && message.for_now?.length ? <ForNowLine items={message.for_now} /> : null}
         {message.no_extraction && (
           <p className="not-remembered" title={NO_EXTRACTION_HELP}>
             {NO_EXTRACTION_LABEL}
@@ -1043,6 +1046,23 @@ function RememberedLine({ items }: { items: Remembered[] }) {
   return (
     <details className="remembered">
       <summary>Remembered {items.length === 1 ? '1 thing' : `${items.length} things`}</summary>
+      <ul>
+        {items.map((m) => (
+          <li key={m.id}>{m.content}</li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/**
+ * "For now: 1" on a chat's first reply: the trip or visit (a "for now" memory) the reply knew about. They
+ * ride on every reply, so only the first says so, where a new chat's answer can come from them.
+ */
+function ForNowLine({ items }: { items: Remembered[] }) {
+  return (
+    <details className="remembered for-now">
+      <summary title="Going on for you right now: included in every chat until its date (Memories, For now)">For now: {items.length}</summary>
       <ul>
         {items.map((m) => (
           <li key={m.id}>{m.content}</li>

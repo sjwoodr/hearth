@@ -318,7 +318,9 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   week-long trip fails the next-month test, so the trip only showed up inside other memories, and recall
   attaches those only to a message about it (a made-up "Good evening!" got nothing). Now extraction can give a memory `until`, its last day; until then
   it rides on every reply, on the newest message (never the system prompt: one added mid-chat would make the
-  chat reread it all), at most 5, after the always-remembered ones in the budget, not on the "Remembered" line.
+  chat reread it all), at most 5, after the always-remembered ones in the budget, not on the "Remembered" line:
+  a chat's first reply gets its own "For now: N" line (`messages.for_now`, migration 023; owner's call after a
+  new chat named the ship from a hand-added one and nothing under the reply said where it came from).
   The day after, the memory sweep rewrites it once in the past tense with its month and clears `until`; an
   answer that isn't one sentence, or a failure, keeps the words (owner's calls: rewrite, a week when no end is
   given, "For now" on the page). It then waits under **Ended** on the Memories page (`ended_on`, migration 022;

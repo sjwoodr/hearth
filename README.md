@@ -342,8 +342,11 @@ Oct 27"):
   a busy stretch before a deadline. It goes with every reply through its last day,
   on the newest message like recalled facts (never the system prompt), so a new
   chat's "good evening" knows about the trip; at most 5 at a time, after the
-  always-remembered ones in the 800-token allowance, and not listed under
-  "Remembered". The day after it ends, the memory sweep rewrites it once in the
+  always-remembered ones in the 800-token allowance. They aren't listed under
+  "Remembered"; a chat's **first** reply gets its own **For now: N** line instead
+  (tap for the list; `messages.for_now`, migration 023), since a new chat's
+  answer is where one shows, and a line under every reply of a trip would be
+  clutter. The day after it ends, the memory sweep rewrites it once in the
   past tense ("went on a cruise in November 2026 and liked the piano bar") and it
   becomes an ordinary recalled memory; if the rewrite fails it stays as written.
   Either way it's listed under **Ended** ("ended Nov 29") until you look at it:

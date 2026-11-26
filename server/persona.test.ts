@@ -235,7 +235,7 @@ describe('what the model reads about itself', () => {
     const a = await memoryContext(ctx.db, { id: alice.id, name: 'alice' }, 'hi', fakeEmbed, 800);
     expect(a.stable).toContain('## Who you are\n\nSpeaks like a pirate.');
     expect(a.stable).not.toContain('What you remember about');
-    expect(await memoryContext(ctx.db, { id: bob.id, name: 'bob' }, 'hi', fakeEmbed, 800)).toEqual({ stable: '', recalled: '', remembered: [] });
+    expect(await memoryContext(ctx.db, { id: bob.id, name: 'bob' }, 'hi', fakeEmbed, 800)).toEqual({ stable: '', recalled: '', remembered: [], forNow: [] });
   });
 });
 

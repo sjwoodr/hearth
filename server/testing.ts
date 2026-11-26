@@ -27,6 +27,8 @@ export type FakeModel = {
   recallQueries: { userId: number; message: string }[];
   /** What memoryContext reports as recalled for the "Remembered" line. */
   remembered: { id: number; content: string }[];
+  /** What memoryContext reports as riding along "for now" (the line on a chat's first reply). */
+  forNow: { id: number; content: string }[];
   /** What look-back returns for a chat with a summary (lookback.ts), and every lookup made. */
   lookedBack: LookedBack;
   lookBackQueries: { userId: number; conversationId: number; message: string }[];
@@ -131,6 +133,7 @@ export function setupApp(
     recalled: '',
     recallQueries: [],
     remembered: [],
+    forNow: [],
     lookedBack: { text: '', recalled: [] },
     lookBackQueries: [],
     title: undefined,
@@ -194,7 +197,7 @@ export function setupApp(
     thinkingBudgets: opts.thinkingBudgets,
     memoryContext: async (user, message) => {
       model.recallQueries.push({ userId: user.id, message });
-      return { stable: model.memory, recalled: model.recalled, remembered: model.remembered };
+      return { stable: model.memory, recalled: model.recalled, remembered: model.remembered, forNow: model.forNow };
     },
     lookBack: async (user, conversationId, message) => {
       model.lookBackQueries.push({ userId: user.id, conversationId, message });

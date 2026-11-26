@@ -94,6 +94,8 @@ export type Message = {
   recalled?: Recalled[];
   /** A reply's "Remembered" line: the memories recalled for it, as they read now. */
   remembered?: Remembered[];
+  /** A chat's first reply: the "for now" memories that rode on it (they ride on every reply), as they read now. */
+  for_now?: Remembered[];
   created_at: string;
 };
 
@@ -168,7 +170,7 @@ export type StreamEvent =
   /** The model saved its private notes for this chat; carries nothing else, by design. */
   | { type: 'notes' }
   /** What the reply drew on: earlier exchanges of this chat it looked back on, and memories recalled for it. */
-  | { type: 'recall'; recalled: Recalled[]; remembered: Remembered[] }
+  | { type: 'recall'; recalled: Recalled[]; remembered: Remembered[]; for_now?: Remembered[] }
   /** The model asked to search for `query`; the reply waits for answerSearch. */
   | { type: 'search'; query: string }
   /** No `messageId` in a private chat: nothing was saved. */
