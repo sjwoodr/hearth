@@ -426,9 +426,11 @@ describe('when a for-now memory ends', () => {
   });
 
   it('happens in the memory sweep, before any chat is read, and a preemption ends the pass', async () => {
-    const { db, alice, trip } = await ended(() => '');
+    const { db, alice, trip, visit } = await ended(() => '');
     chatWith(db, alice.id, [['user', 'I keep bees.']]);
+    // The sweep goes by the real date (in CI's time zone too), so these are relative to it.
     db.prepare('UPDATE memories SET until = ? WHERE id = ?').run(addDays(localDay(), -1), trip.id);
+    db.prepare('UPDATE memories SET until = ? WHERE id = ?').run(addDays(localDay(), 3), visit.id);
     const calls: string[] = [];
     const preempting: JsonFn = async (messages) => {
       calls.push(messages[0]!.content.slice(0, 20));
