@@ -376,7 +376,7 @@ async function messageDelete(id: number, yes: boolean): Promise<boolean> {
 
 // ── memories ───────────────────────────────────────────────────────────────────
 const memoryLabel = (m: admin.MemoryRow) =>
-  `#${m.id}  ${m.username}  ·  ${m.kind.padEnd(7)}  ·  ${m.subject === 'assistant' ? 'about the assistant: ' : ''}${m.content}`;
+  `#${m.id}  ${m.username}  ·  ${m.kind.padEnd(7)}  ·  ${m.subject === 'assistant' ? 'about the assistant: ' : ''}${m.until ? `(until ${m.until}) ` : ''}${m.content}`;
 
 function memoriesTable(username?: string): string {
   if (username) requireUser(username);

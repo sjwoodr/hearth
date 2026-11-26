@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError, type Memory, type MemoryKind, type MemorySubject, type Persona } from './api.ts';
 import { memoryDate } from '../../shared/chat-span.ts';
 import { alwaysUse, MEMORY_BUDGET_CHARS } from '../../shared/memory-budget.ts';
+import { addDays, dayLabel, FOR_NOW_DEFAULT_DAYS, isForNow, localDay, MAX_FOR_NOW_DAYS_BY_HAND } from '../../shared/for-now.ts';
 import { sortVoices, voiceLabel, type SpeechLanguage } from '../../shared/speech.ts';
 import { SpeakButton, SpeakerIcon } from './SpeakButton.tsx';
 import { chooseVoice, loadVoices, useSpeech } from './speech.ts';
@@ -10,11 +11,21 @@ const MAX_CHARS = 400;
 const MAX_NAME_CHARS = 40;
 const MAX_ABOUT_CHARS = 2000;
 
-const SECTIONS: { kind: MemoryKind; title: string; blurb: string }[] = [
+/** `forNow`: the facts with an end date still ahead (shared/for-now.ts); the plain fact section leaves those out. */
+type Section = { kind: MemoryKind; forNow?: boolean; title: string; blurb: string };
+
+const SECTIONS: Section[] = [
   {
     kind: 'profile',
     title: 'Always remembered',
     blurb: 'Included in every chat. hearth never adds these itself: promote a memory with "Always remember". Keep these few.',
+  },
+  {
+    kind: 'fact',
+    forNow: true,
+    title: 'For now',
+    blurb:
+      "A trip, a visit, a busy week: included in every chat until its date. After that it's kept as something that happened, recalled when relevant.",
   },
   {
     kind: 'fact',
@@ -24,7 +35,7 @@ const SECTIONS: { kind: MemoryKind; title: string; blurb: string }[] = [
 ];
 
 // The same two kinds for what the assistant knows about itself.
-const SELF_SECTIONS = (name: string): typeof SECTIONS => [
+const SELF_SECTIONS = (name: string): Section[] => [
   {
     kind: 'profile',
     title: `Always part of who ${name} is`,
@@ -154,7 +165,12 @@ export function MemoriesView({
           aria-labelledby="memories-tab-user"
           hidden={tab !== 'user'}
         >
-          <AddMemory id="memory-new" placeholder="Tell hearth something to remember…" onAdd={(kind, content) => run(() => api.addMemory(kind, content))} />
+          <AddMemory
+            id="memory-new"
+            placeholder="Tell hearth something to remember…"
+            forNow
+            onAdd={(kind, content, until) => run(() => api.addMemory(kind, content, 'user', until))}
+          />
           {memories === null ? null : count('user') === 0 ? (
             <p className="muted">Nothing yet. hearth reads a chat a few minutes after it goes quiet.</p>
           ) : (
@@ -240,20 +256,23 @@ function MemorySections({
 }: {
   memories: Memory[];
   subject: MemorySubject;
-  sections: typeof SECTIONS;
+  sections: Section[];
   assistant: string;
   onOpenChat: (id: number) => void;
   run: (action: () => Promise<unknown>) => Promise<boolean>;
   onMoved: (content: string, to: MemorySubject) => void;
 }) {
   const other: MemorySubject = subject === 'user' ? 'assistant' : 'user';
+  const today = localDay();
   return (
     <>
-      {sections.map(({ kind, title, blurb }) => {
-        const items = memories.filter((m) => m.subject === subject && m.kind === kind);
-        const id = `memories-${subject}-${kind}`;
+      {sections.map(({ kind, forNow = false, title, blurb }) => {
+        const items = memories.filter((m) => m.subject === subject && m.kind === kind && isForNow(m.until, today) === forNow);
+        // An empty "For now" says nothing worth a heading: it shows once there's a trip or a visit.
+        if (forNow && items.length === 0) return null;
+        const id = `memories-${subject}-${forNow ? 'for-now' : kind}`;
         return (
-          <section key={kind} aria-labelledby={id}>
+          <section key={id} aria-labelledby={id}>
             <h3 id={id}>
               {title} <span className="count">{items.length}</span>
             </h3>
@@ -269,7 +288,8 @@ function MemorySections({
                     memory={m}
                     assistant={assistant}
                     onOpenChat={onOpenChat}
-                    onSave={(content) => run(() => api.updateMemory(m.id, { content }))}
+                    today={today}
+                    onSave={(change) => run(() => api.updateMemory(m.id, change))}
                     onMove={() => run(() => api.updateMemory(m.id, { kind: kind === 'fact' ? 'profile' : 'fact' }))}
                     onMoveSubject={() =>
                       void run(() => api.updateMemory(m.id, { subject: other })).then((ok) => ok && onMoved(m.content, other))
@@ -479,20 +499,24 @@ function PersonaEditor({
   );
 }
 
+/** `forNow` offers "For now" (a week from today; the date can be changed with Edit). */
 function AddMemory({
   id,
   onAdd,
   placeholder,
+  forNow = false,
 }: {
   id: string;
-  onAdd: (kind: MemoryKind, content: string) => Promise<boolean>;
+  onAdd: (kind: MemoryKind, content: string, until: string | null) => Promise<boolean>;
   placeholder: string;
+  forNow?: boolean;
 }) {
   const [content, setContent] = useState('');
-  const [kind, setKind] = useState<MemoryKind>('fact');
+  const [kind, setKind] = useState<MemoryKind | 'for-now'>('fact');
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (content.trim() && (await onAdd(kind, content.trim()))) setContent('');
+    const until = kind === 'for-now' ? addDays(localDay(), FOR_NOW_DEFAULT_DAYS) : null;
+    if (content.trim() && (await onAdd(kind === 'for-now' ? 'fact' : kind, content.trim(), until))) setContent('');
   }
   return (
     <form className="memory-add" onSubmit={submit}>
@@ -509,8 +533,9 @@ function AddMemory({
       <label className="visually-hidden" htmlFor={`${id}-kind`}>
         Kind
       </label>
-      <select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value as MemoryKind)}>
+      <select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value as MemoryKind | 'for-now')}>
         <option value="fact">When relevant</option>
+        {forNow && <option value="for-now">For now (a week)</option>}
         <option value="profile">Always</option>
       </select>
       <button type="submit" disabled={!content.trim()}>
@@ -523,21 +548,36 @@ function AddMemory({
 type ItemProps = {
   memory: Memory;
   assistant: string;
+  today: string;
   onOpenChat: (id: number) => void;
-  onSave: (content: string) => Promise<boolean>;
+  /** Only what changed: `until` is sent only when the "For now" date was changed. */
+  onSave: (change: { content?: string; until?: string | null }) => Promise<boolean>;
   onMove: () => void;
   /** Between "About you" and "About <assistant>", for a memory filed under the wrong one. */
   onMoveSubject: () => void;
   onDelete: () => void;
 };
 
-function MemoryItem({ memory, assistant, onOpenChat, onSave, onMove, onMoveSubject, onDelete }: ItemProps) {
+function MemoryItem({ memory, assistant, today, onOpenChat, onSave, onMove, onMoveSubject, onDelete }: ItemProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(memory.content);
+  // "For now" can be set, moved or cleared only on the user's own facts (memories.ts).
+  const canBeForNow = memory.kind === 'fact' && memory.subject === 'user';
+  const forNow = isForNow(memory.until, today);
+  const [until, setUntil] = useState<string | null>(forNow ? memory.until : null);
+
+  function startEditing() {
+    setDraft(memory.content);
+    setUntil(forNow ? memory.until : null);
+    setEditing(true);
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (draft.trim() === memory.content || (await onSave(draft.trim()))) setEditing(false);
+    const change: { content?: string; until?: string | null } = {};
+    if (draft.trim() !== memory.content) change.content = draft.trim();
+    if (canBeForNow && until !== (forNow ? memory.until : null)) change.until = until;
+    if (Object.keys(change).length === 0 || (await onSave(change))) setEditing(false);
   }
 
   if (editing) {
@@ -558,6 +598,30 @@ function MemoryItem({ memory, assistant, onOpenChat, onSave, onMove, onMoveSubje
               if (e.key === 'Enter' && !e.shiftKey) void save(e);
             }}
           />
+          {canBeForNow && (
+            <div className="memory-for-now">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={until !== null}
+                  onChange={(e) => setUntil(e.target.checked ? addDays(today, FOR_NOW_DEFAULT_DAYS) : null)}
+                />{' '}
+                For now, until
+              </label>
+              <label className="visually-hidden" htmlFor={`memory-${memory.id}-until`}>
+                Last day
+              </label>
+              <input
+                id={`memory-${memory.id}-until`}
+                type="date"
+                value={until ?? ''}
+                min={today}
+                max={addDays(today, MAX_FOR_NOW_DAYS_BY_HAND)}
+                disabled={until === null}
+                onChange={(e) => e.target.value && setUntil(e.target.value)}
+              />
+            </div>
+          )}
           <div className="memory-actions">
             <button type="submit">Save</button>
             <button type="button" className="link" onClick={() => setEditing(false)}>
@@ -579,6 +643,11 @@ function MemoryItem({ memory, assistant, onOpenChat, onSave, onMove, onMoveSubje
         <span className="memory-id" title="Newest change first: the page is sorted by this">
           {memoryDate(memory.created_at, memory.updated_at)}
         </span>
+        {forNow && (
+          <span className="memory-until" title="Included in every chat through this day, then kept as something that happened">
+            until {dayLabel(memory.until!, today)}
+          </span>
+        )}
         {memory.source_conversation_id !== null ? (
           <a
             href={`#/c/${memory.source_conversation_id}`}
@@ -595,10 +664,7 @@ function MemoryItem({ memory, assistant, onOpenChat, onSave, onMove, onMoveSubje
         <button
           type="button"
           className="link"
-          onClick={() => {
-            setDraft(memory.content);
-            setEditing(true);
-          }}
+          onClick={startEditing}
         >
           Edit
         </button>

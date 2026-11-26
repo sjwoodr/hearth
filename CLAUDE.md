@@ -310,6 +310,35 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   extraction prompt line "leave out what only matters on the day" (mixed memories stopped being written).
   Without "stories from their past" the check dropped "his wife met a famous ballplayer" 3/3. The bench's
   `expect.keep`/`expect.avoid` regexes score this; keep both rates, and treat a lost fact as the worse error.
+- **"For now" memories: a situation that lasts days or weeks, then ends** (`server/for-now.ts`,
+  `shared/for-now.ts`, `memories.until`, migration 021; 2026-11-25, owner's request). A new chat knew nothing
+  of a week-long trip the owner had talked about for days in another chat, or of the place he went each
+  evening (owner-approved look at that chat's mentions and a month of memories; their words stay out of this
+  repo): each mention of the place was a "tonight" moment, which extraction rightly leaves out, and a
+  week-long trip fails the next-month test, so the trip only showed up inside other memories, and recall
+  attaches those only to a message about it (a made-up "Good evening!" got nothing). Now extraction can give a memory `until`, its last day; until then
+  it rides on every reply, on the newest message (never the system prompt: one added mid-chat would make the
+  chat reread it all), at most 5, after the always-remembered ones in the budget, not on the "Remembered" line.
+  The day after, the memory sweep rewrites it once in the past tense with its month and clears `until`; an
+  answer that isn't one sentence, or a failure, keeps the words (owner's calls: rewrite, a week when no end is
+  given, "For now" on the page). Each guard came from the probe (made-up chats, live UD model, x3 per case; ad
+  hoc, scratchpad): the prompt alone gave "learning ukulele since the summer" an end date 3/3 and a dog 1/3, so
+  `isTemporary` (yes/no on the memory alone) turns a no, or a failed check, back into a lasting memory; "dentist
+  appointment tomorrow" became for-now until tomorrow 3/3 despite "anything over by tomorrow" in the prompt, so
+  a new one must end two days out; an extended trip came back with the new date in its words but not in
+  `until` (0/3 with one wording, 3/3 with another), so an update's latest YYYY-MM-DD becomes its end; "update
+  it by its id" for details during a trip sent the model to overwrite an unrelated lasting memory with the
+  cruise 3/3, until it said "in the one you add if it's new"; and with only today's date "flying Monday, back
+  Thursday" ended on the Sunday 3/3, so the prompt lists the next two weeks' dates (right 3/3). Final: six
+  situations 18/18 for now with the right end (a week by default, "back Sunday", a visit, a deadline, a work
+  trip; a flu "rest of the week" got the Monday), the trip's favourite bar kept 3/3, an extension moved the
+  end 3/3; seven lasting controls 0/21 with an end; tonight's game, dinner and show and tomorrow's dentist 0
+  for now. Rewrites 21/21 usable, 0.5-1.4 s. Through the real server, a new chat's "Good evening!" asked about
+  the cruise 3/3 with it for now and 0/3 with the same memory as an ordinary fact; "what should I do tonight?"
+  suggested the piano bar 3/3 vs 0/3. Leftovers: details from a trip's first day are saved beside it as
+  lasting memories, not inside it, and an update that merges one can add a lasting copy too; a rewrite dates a
+  trip by the month it ended. Mutation-checked (37 sabotages, all caught, after three tests were made
+  stricter); the page checked at phone width, light and dark.
 - **Extraction never creates `profile` memories and never deletes.** The model turned "keep this reply
   short" into a standing preference, so only the user promotes a fact to profile.
 - **Chat goes first** (`server/busy.ts`). Every model call goes through the scheduler, which hands
@@ -650,7 +679,8 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
 | `server/system-prompt.ts` | reads the system prompt, filling `{{name}}` with `HEARTH_ASSISTANT_NAME` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
-| `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |
+| `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, temporary, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |
+| `server/for-now.ts`, `shared/for-now.ts` | "for now" memories (`memories.until`): the past-tense rewrite once one ends (`rewriteEnded`, run at the start of each memory sweep); the dates, limits and labels server and page share |
 | `server/retitle.ts`, `client/src/RenameChat.tsx` | a new title for a quiet chat that moved on from its first one (yes/no fit check, then `writeTitle`); runs beside extraction. `titleLines` (what both read), and the rename box's Suggest (`POST /conversations/:id/title-suggestion`, `writeTitle` with titles to `avoid`) |
 | `server/summarize.ts`, `titles.ts`, `context.ts` | running summary (`createSummarizer` after each reply; `createSummarySweep` for the worker; `contextUse` for the title bar's % meter, `client/src/ContextMeter.tsx`; `summary_folds` + `listFolds` for the line each fold leaves in the chat), model titles, history fitting (char estimate, ~3.5/token) |
 | `server/lookback.ts` | look-back: `indexFolded` (folded messages → `message_pieces`, embedded; `startLookbackIndexer` wherever summaries fold), `lookBack` (the earlier exchanges matching the newest message, attached to it like recalled facts; `lookBackForPrompt` counts and swallows failures) |

@@ -10,6 +10,8 @@ import { withImageText, type MessageRow } from './images.ts';
 import { cosine, MAX_MEMORY_CHARS, toBlob, withEmbeddings, type MemoryKind } from './memories.ts';
 import type { EmbedFn, JsonFn } from './ollama.ts';
 import { cleanDisplayName, MAX_DISPLAY_NAME_CHARS } from './users.ts';
+import { addDays, calendarDay, dayWithWeekday, FOR_NOW_DEFAULT_DAYS, localDay, MAX_FOR_NOW_DAYS } from '../shared/for-now.ts';
+import { rewriteEnded } from './for-now.ts';
 
 const MAX_CHANGES = 8;
 /** How many of the user's memories the extractor is shown: past this, the ones closest to the chat. */
@@ -22,6 +24,8 @@ const TRANSCRIPT_BUDGET_TOKENS = 4500;
 // quote from ending a fact early (see JsonFn): with no raw quote allowed and a closing punctuation
 // mark required, the string can only end where the sentence does. Ollama enforces patterns.
 const CONTENT = { type: 'string', maxLength: 2 * MAX_MEMORY_CHARS, pattern: String.raw`^[^"\\\n]*[.!?)]$` };
+/** A "for now" memory's last day (shared/for-now.ts); left out for lasting ones. */
+const UNTIL = { type: 'string', pattern: String.raw`^\d{4}-\d{2}-\d{2}$` };
 
 export const EXTRACTION_SCHEMA = {
   type: 'object',
@@ -29,14 +33,14 @@ export const EXTRACTION_SCHEMA = {
     add: {
       type: 'array',
       maxItems: MAX_CHANGES,
-      items: { type: 'object', properties: { content: CONTENT }, required: ['content'] },
+      items: { type: 'object', properties: { content: CONTENT, until: UNTIL }, required: ['content'] },
     },
     update: {
       type: 'array',
       maxItems: MAX_CHANGES,
       items: {
         type: 'object',
-        properties: { id: { type: 'integer' }, content: CONTENT },
+        properties: { id: { type: 'integer' }, content: CONTENT, until: UNTIL },
         required: ['id', 'content'],
       },
     },
@@ -48,13 +52,15 @@ export const EXTRACTION_SCHEMA = {
 // Extraction only ever adds facts. A memory becomes "profile" (included in every chat) only when
 // the user promotes it: the model over-generalizes one-off requests into standing preferences.
 export type Extraction = {
-  add: { content: string }[];
-  update: { id: number; content: string }[];
+  /** `until`: a "for now" memory's last day, after today and within MAX_FOR_NOW_DAYS. */
+  add: { content: string; until?: string }[];
+  /** `until` only for a memory that is already "for now" (a trip extended): never makes a lasting one expire. */
+  update: { id: number; content: string; until?: string }[];
   /** A name the user explicitly asked to be called, if any. */
   name?: string;
 };
 
-type Existing = { id: number; kind: MemoryKind; content: string };
+type Existing = { id: number; kind: MemoryKind; content: string; until?: string | null };
 
 /**
  * The user's memories the extractor sees, newest-changed first. Up to MAX_EXISTING_SHOWN that's all of
@@ -65,7 +71,7 @@ type Existing = { id: number; kind: MemoryKind; content: string };
  */
 async function memoriesToShow(db: DB, userId: number, said: string[], embed?: EmbedFn): Promise<Existing[]> {
   const all = db
-    .prepare(`SELECT id, kind, content FROM memories WHERE user_id = ? AND subject = 'user' ORDER BY updated_at DESC, id DESC`)
+    .prepare(`SELECT id, kind, content, until FROM memories WHERE user_id = ? AND subject = 'user' ORDER BY updated_at DESC, id DESC`)
     .all(userId) as Existing[];
   if (all.length <= MAX_EXISTING_SHOWN) return all;
   const newest = all.slice(0, MAX_EXISTING_SHOWN);
@@ -87,8 +93,14 @@ async function memoriesToShow(db: DB, userId: number, said: string[], embed?: Em
 /**
  * Keeps only well-formed changes: known kinds, non-empty text within the length limit,
  * updates to memories this user actually has, no duplicate additions, a capped count.
+ * A new "for now" memory must end at least two days out: one ending today or tomorrow was only
+ * about the day (the prompt says so, yet "dentist appointment tomorrow" became "for now" until
+ * tomorrow 3/3 in a probe), so that addition is dropped; one past MAX_FOR_NOW_DAYS isn't "for now", so it
+ * loses the date and is judged as a lasting memory. An update may move the end date only of a
+ * memory that already has one; if it leaves "until" out but names a later day in its words ("…, now
+ * extended until 2026-12-02"), that day is the new end (the model did that 3/3 in a probe).
  */
-export function sanitizeExtraction(raw: unknown, existing: Existing[]): Extraction {
+export function sanitizeExtraction(raw: unknown, existing: Existing[], today: string = localDay()): Extraction {
   const out: Extraction = { add: [], update: [] };
   if (!raw || typeof raw !== 'object') return out;
   const { add, update, name } = raw as { add?: unknown; update?: unknown; name?: unknown };
@@ -97,13 +109,17 @@ export function sanitizeExtraction(raw: unknown, existing: Existing[]): Extracti
   const clean = (s: unknown) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : '');
   const known = new Map(existing.map((m) => [m.id, m]));
   const seen = new Set(existing.map((m) => m.content.toLowerCase()));
+  const latest = addDays(today, MAX_FOR_NOW_DAYS);
+  const endOf = (item: unknown) => calendarDay((item as { until?: unknown } | null)?.until);
 
   for (const item of Array.isArray(add) ? add : []) {
     const content = clean(item?.content);
     if (!content || content.length > MAX_MEMORY_CHARS) continue;
     if (seen.has(content.toLowerCase())) continue;
+    const until = endOf(item);
+    if (until && until <= addDays(today, 1)) continue;
     seen.add(content.toLowerCase());
-    out.add.push({ content });
+    out.add.push(until && until <= latest ? { content, until } : { content });
     if (out.add.length === MAX_CHANGES) break;
   }
   const updated = new Set<number>();
@@ -111,15 +127,22 @@ export function sanitizeExtraction(raw: unknown, existing: Existing[]): Extracti
     const content = clean(item?.content);
     const current = known.get(item?.id);
     if (!current || updated.has(current.id) || !content || content.length > MAX_MEMORY_CHARS) continue;
-    if (content === current.content) continue;
+    const named = (content.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []).map(calendarDay).filter((d): d is string => !!d);
+    const until = endOf(item) ?? (named.length ? named.sort().at(-1) : undefined);
+    const moved = current.until && until && until > today && until <= latest && until !== current.until ? until : undefined;
+    if (content === current.content && !moved) continue;
     updated.add(current.id);
-    out.update.push({ id: current.id, content });
+    out.update.push(moved ? { id: current.id, content, until: moved } : { id: current.id, content });
     if (out.update.length === MAX_CHANGES) break;
   }
   return out;
 }
 
-function instructions(username: string, assistant: string): string {
+/** The next two weeks as "Thursday 2026-11-26, Friday 2026-11-27, …", so "back Thursday" maps to a date. */
+const calendar = (today: string) =>
+  Array.from({ length: 14 }, (_, i) => dayWithWeekday(addDays(today, i + 1))).join(', ');
+
+function instructions(username: string, assistant: string, today: string): string {
   return `You maintain the long-term memory of a chat companion called ${assistant}, about its user ${username}.
 Read the new conversation and decide what is worth remembering in future chats.
 
@@ -140,6 +163,16 @@ Never record what ${assistant} said, general knowledge, guesses, or one-off smal
   Don't include dates; hearth records when each memory was learned.
 - Leave out what only matters on the day (tonight's plans, what ${username} is doing or watching right
   now, a score): keep only the part that will still be true next month, or record nothing.
+- The exception is a situation that lasts several days or weeks and then ends: a trip or vacation,
+  someone visiting, being ill, a busy stretch before a deadline. Record it as one memory and set
+  "until" to its last day (YYYY-MM-DD); if ${username} doesn't say when it ends, use
+  ${addDays(today, FOR_NOW_DEFAULT_DAYS)}. What ${username} likes or does during it (a favourite spot on
+  the trip, who is visiting) goes in that memory too: in the one you add if it's new, or by updating
+  it if it's already in the existing memories. If it now ends on another day (extended, cut short),
+  update it with the new "until". Tonight's plans and anything over by tomorrow are not one of these.
+  Hobbies, what they are learning, pets, family, their job and ongoing projects have no end: leave
+  "until" out of those and of every other memory.
+- Dates for "until": today is ${dayWithWeekday(today)}; then ${calendar(today)}.
 - If nothing is worth remembering, return empty lists.
 - "name": only if ${username} explicitly tells you their name or what to call them ("I'm Sam",
   "call me Sam"), put just that name here. Otherwise leave it empty. Never guess.`;
@@ -158,6 +191,32 @@ const MAX_CANDIDATES_CHECKED = 3;
 const SAME_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'] };
 
 const LASTING_SCHEMA = { type: 'object', properties: { lasting: { type: 'boolean' } }, required: ['lasting'] };
+const TEMPORARY_SCHEMA = { type: 'object', properties: { temporary: { type: 'boolean' } }, required: ['temporary'] };
+
+/**
+ * Whether a memory the extractor marked "for now" really describes something that will be over within
+ * weeks. Probe (2026-11-25, live model, made-up chats x3): the prompt alone gave "has been learning
+ * ukulele since the summer" an end date 3/3, and a dog 1/3; such a memory would be rewritten as past
+ * a week later. Judged on the memory alone, like isLasting.
+ */
+export async function isTemporary(json: JsonFn, username: string, memory: string): Promise<boolean> {
+  const raw = (await json(
+    [
+      {
+        role: 'system',
+        content:
+          `You check one memory about ${username} that a chat companion will keep only for a few days or weeks, then ` +
+          'file away as something that happened. Answer temporary=true if what it describes will be over within weeks: ' +
+          'a trip or vacation, a visit, an illness or recovery, a deadline or busy stretch, an event they are preparing ' +
+          'for. Answer temporary=false if it is an ongoing part of their life: a hobby, something they are learning, a ' +
+          'pet, family, their job, where they live, a taste or habit, a long-running project.',
+      },
+      { role: 'user', content: `MEMORY: ${memory}` },
+    ],
+    TEMPORARY_SCHEMA,
+  )) as { temporary?: unknown };
+  return raw?.temporary === true;
+}
 
 /**
  * Whether `memory` will still be true and worth knowing in a month. Live chats about a game became
@@ -248,7 +307,7 @@ export async function saysTheSame(json: JsonFn, existing: string, candidate: str
   return raw?.same === true;
 }
 
-type NewMemory = { content: string; vector?: ArrayLike<number> };
+type NewMemory = { content: string; until?: string; vector?: ArrayLike<number> };
 
 /**
  * Drops additions that reword a memory the user already has, one updated in this batch, or one
@@ -257,7 +316,7 @@ type NewMemory = { content: string; vector?: ArrayLike<number> };
 async function dropNearDuplicates(
   db: DB,
   userId: number,
-  adds: { content: string }[],
+  adds: { content: string; until?: string }[],
   updates: { content: string }[],
   json: JsonFn,
   embed: EmbedFn,
@@ -277,7 +336,7 @@ async function dropNearDuplicates(
     return { kept: adds, skipped: 0 };
   }
 
-  const kept: { content: string; vector: ArrayLike<number> }[] = [];
+  const kept: (NewMemory & { vector: ArrayLike<number> })[] = [];
   let skipped = 0;
   for (const [i, add] of adds.entries()) {
     const vector = vectors[i]!;
@@ -300,7 +359,7 @@ async function dropNearDuplicates(
       }
     }
     if (duplicate) skipped++;
-    else kept.push({ content: add.content, vector });
+    else kept.push({ ...add, vector });
   }
   return { kept, skipped };
 }
@@ -401,6 +460,8 @@ export type ExtractResult = {
   conversationId: number;
   read: number;
   added: number;
+  /** How many of those were "for now" (shared/for-now.ts). */
+  forNow: number;
   updated: number;
   /** Additions dropped as rewordings of an existing memory. */
   duplicates: number;
@@ -415,7 +476,8 @@ export type ExtractResult = {
 
 /**
  * `embed` enables the near-duplicate check; without it only exact duplicates are skipped.
- * `assistant` is the name the assistant answers to (HEARTH_ASSISTANT_NAME).
+ * `assistant` is the name the assistant answers to (HEARTH_ASSISTANT_NAME). `today` (server time
+ * zone) is what "for now" end dates are worked out from.
  */
 export async function extractMemories(
   db: DB,
@@ -423,6 +485,7 @@ export async function extractMemories(
   json: JsonFn,
   embed?: EmbedFn,
   assistant = 'hearth',
+  today: string = localDay(),
 ): Promise<ExtractResult> {
   const conversation = db
     .prepare(
@@ -442,7 +505,7 @@ export async function extractMemories(
       'SELECT id, role, content, image_count, image_note, no_extraction FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id',
     )
     .all(conversation.id, conversation.memory_through_message_id) as (MessageRow & { no_extraction: number })[];
-  const none = { conversationId, read: 0, added: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false, self: 0 };
+  const none = { conversationId, read: 0, added: 0, forNow: 0, updated: 0, duplicates: 0, unstated: 0, fleeting: 0, named: false, self: 0 };
   if (since.length === 0) return none;
   const lastId = since.at(-1)!.id;
   // A message the user started with "[no extraction]", and its reply, are never read (by either pass),
@@ -471,13 +534,13 @@ export async function extractMemories(
   const existing = await memoriesToShow(db, conversation.user_id, said, embed);
   const existingText = existing.length
     ? existing
-        .map((m) => `[${m.id}] (${m.kind}) ${m.content}`)
+        .map((m) => `[${m.id}] (${m.kind}${m.until ? `, until ${m.until}` : ''}) ${m.content}`)
         .join('\n')
     : '(none yet)';
 
   const raw = await json(
     [
-      { role: 'system', content: instructions(conversation.username, assistant) },
+      { role: 'system', content: instructions(conversation.username, assistant, today) },
       {
         role: 'user',
         content: `Existing memories:\n${existingText}\n\nNew conversation:\n${transcript.join('\n\n')}`,
@@ -485,23 +548,38 @@ export async function extractMemories(
     ],
     EXTRACTION_SCHEMA,
   );
-  const changes = sanitizeExtraction(raw, existing);
+  const changes = sanitizeExtraction(raw, existing, today);
   const named = changes.name !== undefined && conversation.display_name === null;
   // Each new memory must outlast the day, then be something the user said about themselves, not a
   // question they asked. Updates are only checked for lasting: they rewrite a memory the user
-  // already has, and a fleeting one leaves it as it was. Any failure keeps the memory.
+  // already has, and a fleeting one leaves it as it was. Any failure keeps the memory. A "for now"
+  // memory isn't asked whether it lasts a month (it doesn't, by design): its end date, after
+  // today, is its check (sanitizeExtraction).
   const { username } = conversation;
-  const stated: { content: string }[] = [];
+  const forNowIds = new Set(existing.filter((m) => m.until).map((m) => m.id));
+  const stated: { content: string; until?: string }[] = [];
   let unstated = 0;
   let fleeting = 0;
   for (const add of changes.add) {
-    if (!(await keptIfFails('lasting', () => isLasting(json, username, add.content)))) fleeting++;
+    // Not really temporary (or the check failed): it's judged as a lasting memory, without an end.
+    // A lasting fact filed away as past a week later is the worse error than a trip recalled only when relevant.
+    if (add.until) {
+      let temporary = false;
+      try {
+        temporary = await isTemporary(json, username, add.content);
+      } catch (err) {
+        if (isPreempted(err)) throw err;
+        console.error('memory: temporary check failed, keeping it as lasting:', err instanceof Error ? err.message : err);
+      }
+      if (!temporary) delete add.until;
+    }
+    if (!add.until && !(await keptIfFails('lasting', () => isLasting(json, username, add.content)))) fleeting++;
     else if (await keptIfFails('stated', () => statedByUser(json, username, transcript.join('\n\n'), add.content, assistant))) stated.push(add);
     else unstated++;
   }
   const updates: Extraction['update'] = [];
   for (const u of changes.update) {
-    if (await keptIfFails('lasting', () => isLasting(json, username, u.content))) updates.push(u);
+    if (forNowIds.has(u.id) || (await keptIfFails('lasting', () => isLasting(json, username, u.content)))) updates.push(u);
     else fleeting++;
   }
   const { kept, skipped } = embed
@@ -529,19 +607,19 @@ export async function extractMemories(
 
   db.transaction(() => {
     const insert = db.prepare(
-      'INSERT INTO memories (user_id, kind, content, source_conversation_id, embedding) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO memories (user_id, kind, content, source_conversation_id, embedding, until) VALUES (?, ?, ?, ?, ?, ?)',
     );
     for (const a of kept) {
-      insert.run(conversation.user_id, 'fact', a.content, conversation.id, a.vector ? toBlob(a.vector) : null);
+      insert.run(conversation.user_id, 'fact', a.content, conversation.id, a.vector ? toBlob(a.vector) : null, a.until ?? null);
     }
     const insertSelf = db.prepare(
       "INSERT INTO memories (user_id, kind, content, source_conversation_id, embedding, subject) VALUES (?, 'fact', ?, ?, ?, 'assistant')",
     );
     for (const f of selfKept) insertSelf.run(conversation.user_id, f.content, conversation.id, f.vector ? toBlob(f.vector) : null);
     const update = db.prepare(
-      "UPDATE memories SET content = ?, embedding = NULL, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND subject = 'user'",
+      "UPDATE memories SET content = ?, until = coalesce(?, until), embedding = NULL, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND subject = 'user'",
     );
-    for (const u of updates) update.run(u.content, u.id, conversation.user_id);
+    for (const u of updates) update.run(u.content, u.until ?? null, u.id, conversation.user_id);
     db.prepare('UPDATE conversations SET memory_through_message_id = ? WHERE id = ?').run(lastId, conversation.id);
     // A learned name only fills a blank; it never replaces one someone set.
     if (named) db.prepare('UPDATE users SET display_name = ? WHERE id = ? AND display_name IS NULL').run(changes.name, conversation.user_id);
@@ -551,6 +629,7 @@ export async function extractMemories(
     conversationId,
     read: unread.length,
     added: kept.length,
+    forNow: kept.filter((a) => a.until).length,
     updated: updates.length,
     duplicates: skipped,
     unstated,
@@ -604,6 +683,13 @@ export function createSweep(
     if (running || opts.paused?.()) return;
     running = true;
     try {
+      // "For now" memories past their last day become ordinary ones first (for-now.ts).
+      try {
+        await rewriteEnded(db, json);
+      } catch (err) {
+        if (isPreempted(err)) return;
+        console.error('memory: ended "for now" memories:', err instanceof Error ? err.message : err);
+      }
       for (const id of conversationsReadyForExtraction(db, idleMinutes)) {
         if ((retryAt.get(id) ?? 0) > now()) continue;
         if (opts.paused?.()) return;
@@ -615,7 +701,8 @@ export function createSweep(
           retryAt.delete(id);
           job('memory', 'ok');
           console.log(
-            `memory: chat ${id} done in ${secs()}: read ${r.read}, added ${r.added}, updated ${r.updated}, skipped ${r.duplicates} duplicate(s), ${r.unstated} not said by the user`,
+            `memory: chat ${id} done in ${secs()}: read ${r.read}, added ${r.added} (${r.forNow} for now), updated ${r.updated}, ` +
+              `skipped ${r.duplicates} duplicate(s), ${r.unstated} not said by the user, ${r.fleeting} only for the day`,
           );
         } catch (err) {
           if (isPreempted(err)) {

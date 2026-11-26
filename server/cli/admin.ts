@@ -24,6 +24,8 @@ export type MemoryRow = {
   source_conversation_id: number | null;
   created_at: string;
   updated_at: string;
+  /** A "for now" memory's last day (shared/for-now.ts), or null. */
+  until: string | null;
 };
 export type SessionRow = { id: string; username: string; created_at: string; expires_at: number };
 
@@ -144,7 +146,7 @@ export function formatConversation(c: ConversationRow, messages: MessageRow[]): 
 export function listMemories(db: DB, username?: string): MemoryRow[] {
   return db
     .prepare(
-      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at
+      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at, m.until
        FROM memories m JOIN users u ON u.id = m.user_id ${byUser(username)}
        ORDER BY u.username, m.subject DESC, m.kind DESC, m.updated_at DESC`,
     )
@@ -154,7 +156,7 @@ export function listMemories(db: DB, username?: string): MemoryRow[] {
 export function getMemory(db: DB, id: number): MemoryRow | undefined {
   return db
     .prepare(
-      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at
+      `SELECT m.id, u.username, m.kind, m.subject, m.content, m.source_conversation_id, m.created_at, m.updated_at, m.until
        FROM memories m JOIN users u ON u.id = m.user_id WHERE m.id = ?`,
     )
     .get(id) as MemoryRow | undefined;
@@ -175,8 +177,13 @@ export function updateMemoryContent(db: DB, id: number, content: string): boolea
   );
 }
 
+// Always-remembered memories are never "for now" (memories.ts): promoting one ends it.
 export function updateMemoryKind(db: DB, id: number, kind: string): boolean {
-  return db.prepare("UPDATE memories SET kind = ?, updated_at = datetime('now') WHERE id = ?").run(kind, id).changes > 0;
+  return (
+    db
+      .prepare("UPDATE memories SET kind = ?, until = CASE WHEN ? = 'fact' THEN until END, updated_at = datetime('now') WHERE id = ?")
+      .run(kind, kind, id).changes > 0
+  );
 }
 
 export function deleteMemory(db: DB, id: number): boolean {
@@ -185,7 +192,7 @@ export function deleteMemory(db: DB, id: number): boolean {
 
 export function formatMemory(m: MemoryRow): string {
   return [
-    `Memory ${m.id} · ${m.username} · ${m.kind}`,
+    `Memory ${m.id} · ${m.username} · ${m.kind}${m.until ? ` · for now, until ${m.until}` : ''}`,
     `From chat: ${m.source_conversation_id ?? '(added by hand)'}`,
     `Created ${localTime(m.created_at)} · updated ${localTime(m.updated_at)}`,
     '',

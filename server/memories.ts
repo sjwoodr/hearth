@@ -1,5 +1,6 @@
 // Memory queries for the web app and chat. Every function is scoped to one user.
 import { estimateTokens } from './context.ts';
+import { isForNow, localDay, MAX_ACTIVE_FOR_NOW } from '../shared/for-now.ts';
 import type { DB } from './db.ts';
 import type { EmbedFn } from './ollama.ts';
 import { getPersona } from './persona.ts';
@@ -21,9 +22,15 @@ export type Memory = {
   source_conversation_id: number | null;
   created_at: string;
   updated_at: string;
+  /**
+   * A "for now" memory's last day (YYYY-MM-DD, server time zone): it rides on every reply until then,
+   * and is rewritten as past afterwards (for-now.ts). NULL for lasting memories. Only the user's facts
+   * have one: promoting a memory to always-remembered, or filing it under the assistant, clears it.
+   */
+  until: string | null;
 };
 
-const COLUMNS = 'id, kind, subject, content, source_conversation_id, created_at, updated_at';
+const COLUMNS = 'id, kind, subject, content, source_conversation_id, created_at, updated_at, until';
 
 export const isMemoryKind = (value: unknown): value is MemoryKind =>
   typeof value === 'string' && (MEMORY_KINDS as readonly string[]).includes(value);
@@ -47,28 +54,35 @@ export function addMemory(
   content: string,
   sourceConversationId: number | null = null,
   subject: MemorySubject = 'user',
+  until: string | null = null,
 ): Memory {
   const id = db
-    .prepare('INSERT INTO memories (user_id, kind, content, source_conversation_id, subject) VALUES (?, ?, ?, ?, ?)')
-    .run(userId, kind, content, sourceConversationId, subject).lastInsertRowid;
+    .prepare('INSERT INTO memories (user_id, kind, content, source_conversation_id, subject, until) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(userId, kind, content, sourceConversationId, subject, kind === 'fact' && subject === 'user' ? until : null).lastInsertRowid;
   return getMemory(db, userId, Number(id))!;
 }
 
-/** New content clears the stored embedding; recall computes a fresh one on next use. */
+/**
+ * New content clears the stored embedding; recall computes a fresh one on next use. `until` is kept
+ * unless given (null makes the memory lasting), and only the user's facts keep one.
+ */
 export function updateMemory(
   db: DB,
   userId: number,
   id: number,
-  change: { kind?: MemoryKind; content?: string; subject?: MemorySubject },
+  change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null },
 ): boolean {
   const current = getMemory(db, userId, id);
   if (!current) return false;
   const content = change.content ?? current.content;
+  const kind = change.kind ?? current.kind;
+  const subject = change.subject ?? current.subject;
+  const until = kind === 'fact' && subject === 'user' ? (change.until !== undefined ? change.until : current.until) : null;
   db.prepare(
-    `UPDATE memories SET kind = ?, subject = ?, content = ?, updated_at = datetime('now'),
+    `UPDATE memories SET kind = ?, subject = ?, content = ?, until = ?, updated_at = datetime('now'),
        embedding = CASE WHEN content = ? THEN embedding ELSE NULL END
      WHERE id = ? AND user_id = ?`,
-  ).run(change.kind ?? current.kind, change.subject ?? current.subject, content, content, id, userId);
+  ).run(kind, subject, content, until, content, id, userId);
   return true;
 }
 
@@ -178,6 +192,9 @@ export async function rankFacts(db: DB, userId: number, query: string, embed: Em
  *   changing system prompt every reply reread the whole ~7k-token chat, ~22 s; appended at the
  *   end, ~1 s.)
  * - `remembered`: those recalled facts' ids and text, for the "Remembered" line under the reply.
+ * "For now" memories (a trip, a visit: `until` today or later) go in `recalled` too, on every reply,
+ * since a new chat's "good evening" matches nothing about the trip it's sent from. The newest
+ * message, not the system prompt: one added mid-chat would make the whole chat reread its prompt.
  * All are empty when the user has no memories.
  */
 export type MemorySections = { stable: string; recalled: string; remembered: { id: number; content: string }[] };
@@ -189,15 +206,20 @@ export async function memoryContext(
   embed: EmbedFn,
   budgetTokens: number,
   opts: RecallOptions = DEFAULT_RECALL,
+  today: string = localDay(),
 ): Promise<MemorySections> {
   const all = listMemories(db, user.id);
   const { about } = getPersona(db, user.id);
   if (all.length === 0 && !about) return { stable: '', recalled: '', remembered: [] };
   const theirs = all.filter((m) => m.subject === 'user');
   const self = all.filter((m) => m.subject === 'assistant');
+  // Newest-changed first (listMemories' order), so a trip that was just extended stays in.
+  const forNow = theirs.filter((m) => m.kind === 'fact' && isForNow(m.until, today)).slice(0, MAX_ACTIVE_FOR_NOW);
+  const riding = new Set(forNow.map((m) => m.id));
   let facts: ScoredFact[] = [];
   try {
-    if (all.some((m) => m.kind === 'fact')) facts = (await rankFacts(db, user.id, query, embed)).filter((f) => f.score >= opts.minScore);
+    if (all.some((m) => m.kind === 'fact' && !riding.has(m.id)))
+      facts = (await rankFacts(db, user.id, query, embed)).filter((f) => f.score >= opts.minScore && !riding.has(f.id));
   } catch (err) {
     // Recall is a nicety: if embedding fails, chat carries on with the profile alone.
     console.error('memory recall failed:', err instanceof Error ? err.message : err);
@@ -214,6 +236,7 @@ export async function memoryContext(
     });
   const keptProfile = take(theirs.filter((m) => m.kind === 'profile'));
   const keptSelfProfile = take(self.filter((m) => m.kind === 'profile'));
+  const keptForNow = take(forNow);
   const keptFacts = take(facts.filter((f) => f.subject === 'user').slice(0, opts.topK));
   const keptSelfFacts = take(facts.filter((f) => f.subject === 'assistant').slice(0, SELF_RECALL_TOP));
 
@@ -237,7 +260,7 @@ export async function memoryContext(
       '',
       // "Notes" is the save_notes tool's word (chat-notes.ts): calling memories notes too made the model
       // describe the tool as a place for the user's preferences.
-      `Today is ${new Date().toLocaleDateString('en-CA')}. A message may start with things you remember from earlier ` +
+      `Today is ${today}. A message may start with things you remember from earlier ` +
         `chats. Use memories the way a friend would: let them shape your reply when they fit, and bring one up only ` +
         "when it helps. Don't list them back or announce that you remember something.",
     );
@@ -246,6 +269,14 @@ export async function memoryContext(
 
   // The date comes from the database, so the model can say "last week" without guessing.
   const blocks: string[] = [];
+  if (keptForNow.length) {
+    blocks.push(
+      [
+        `[Going on in ${user.name}'s life for now, from your memory, until the date shown. ${user.name} didn't write this.]`,
+        ...keptForNow.map((m) => `- ${m.content} (until ${m.until})`),
+      ].join('\n'),
+    );
+  }
   if (keptFacts.length) {
     blocks.push(
       [
@@ -258,7 +289,7 @@ export async function memoryContext(
     blocks.push(['[What you know about yourself, possibly relevant here.]', ...keptSelfFacts.map((m) => `- ${m.content}`)].join('\n'));
   }
   // The facts recalled for this message, for the "Remembered" line under the reply (never the
-  // always-remembered ones, which ride on every reply).
+  // always-remembered or for-now ones, which ride on every reply).
   const remembered = [...keptFacts, ...keptSelfFacts].map(({ id, content }) => ({ id, content }));
   return { stable: sections.join('\n\n'), recalled: blocks.join('\n\n'), remembered };
 }

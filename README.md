@@ -338,6 +338,18 @@ Oct 27"):
   only the memories' ids (`messages.remembered`, migration 019), so the list
   shows each one as it reads now, and one deleted since drops out. Private chats
   show it too, and store nothing.
+- **For now** (a `fact` with an end date, `until`): a trip, a visit, a sick week,
+  a busy stretch before a deadline. It goes with every reply through its last day,
+  on the newest message like recalled facts (never the system prompt), so a new
+  chat's "good evening" knows about the trip; at most 5 at a time, after the
+  always-remembered ones in the 800-token allowance, and not listed under
+  "Remembered". The day after it ends, the memory sweep rewrites it once in the
+  past tense ("went on a cruise in November 2026 and liked the piano bar") and it
+  becomes an ordinary recalled memory; if the rewrite fails it stays as written.
+  On the Memories page these have their own section with "until Nov 29"; Edit
+  changes or clears the date (cleared, it's kept for good), and the add box has
+  "For now (a week)". Promoting one to always-remembered, or moving it to About
+  <name>, ends it.
 
 **Extraction** runs in the background: once a minute the server looks for chats
 whose newest message is at least `HEARTH_MEMORY_IDLE_MINUTES` (5) old and have
@@ -361,6 +373,16 @@ the past are. A fleeting addition is dropped, and a fleeting update leaves the m
 extraction prompt also asks the model to leave the passing details out of a memory, so "a Bears fan
 watching tonight's game" keeps only the Bears. On real chats this cut the noise saved from about half the
 fleeting moments to 6 in 100, without dropping a lasting fact; a failed check keeps the memory.
+
+**For now, with an end date.** A situation that lasts days or weeks and then ends is saved as one
+"for now" memory with its last day: the date the user gave ("back Sunday", worked out from today and a
+two-week calendar in the prompt), or a week from today if they didn't say. Details from during it (a
+favourite spot on the trip) go in that memory, and a trip that's extended moves its date. Tonight's plans
+and anything over by tomorrow still aren't saved: a new one ending today or tomorrow is dropped.
+A yes/no check then asks whether it really will be over within weeks: the prompt alone gave "has been
+learning ukulele since the summer" an end date, and anything that fails is saved as a lasting memory
+instead (and asked whether it lasts, like any other). These skip the one-month question, which they fail
+by design.
 
 **Only what the user said.** Each new memory gets one more yes/no question before it's saved:
 did the user say this about themselves, or only ask about it? A lone lookup ("who is the Jaguars'

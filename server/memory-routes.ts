@@ -20,6 +20,7 @@ import {
   savePersona,
 } from './persona.ts';
 import type { SessionUser } from './sessions.ts';
+import { addDays, calendarDay, localDay, MAX_FOR_NOW_DAYS_BY_HAND } from '../shared/for-now.ts';
 
 type Env = { Variables: { user: SessionUser } };
 
@@ -35,6 +36,16 @@ function cleanContent(value: unknown): string | { error: string } {
 }
 
 const BAD_SUBJECT = { error: 'Subject must be "user" or "assistant".' };
+const NOT_FOR_NOW = { error: 'Only memories about you that are recalled when relevant can be "for now".' };
+
+/** A "for now" end date from a request: null (lasting), or a real day from today to a year ahead. */
+function cleanUntil(value: unknown, today: string): string | null | { error: string } {
+  if (value === null) return null;
+  const day = calendarDay(value);
+  if (!day || day < today || day > addDays(today, MAX_FOR_NOW_DAYS_BY_HAND))
+    return { error: `"until" must be a date (YYYY-MM-DD) from today to ${MAX_FOR_NOW_DAYS_BY_HAND} days ahead, or null.` };
+  return day;
+}
 
 /**
  * `defaultName` is the server's assistant name, shown when the user hasn't given theirs one;
@@ -57,13 +68,17 @@ export function registerMemoryRoutes(
     if (!isMemorySubject(subject)) return c.json(BAD_SUBJECT, 400);
     const content = cleanContent(body?.content);
     if (typeof content !== 'string') return c.json(content, 400);
-    return c.json(addMemory(db, c.get('user').id, body.kind, content, null, subject), 201);
+    const until = body?.until === undefined ? null : cleanUntil(body.until, localDay());
+    if (until !== null && typeof until === 'object') return c.json(until, 400);
+    if (until && (body.kind !== 'fact' || subject !== 'user')) return c.json(NOT_FOR_NOW, 400);
+    return c.json(addMemory(db, c.get('user').id, body.kind, content, null, subject, until), 201);
   });
 
   api.patch('/memories/:id', async (c) => {
     const userId = c.get('user').id;
     const id = parseId(c.req.param('id'));
-    if (!id || !getMemory(db, userId, id)) return c.json(notFound, 404);
+    const current = id ? getMemory(db, userId, id) : undefined;
+    if (!id || !current) return c.json(notFound, 404);
     const body = await c.req.json().catch(() => null);
     const change: Parameters<typeof updateMemory>[3] = {};
     if (body?.kind !== undefined) {
@@ -78,6 +93,13 @@ export function registerMemoryRoutes(
       const content = cleanContent(body.content);
       if (typeof content !== 'string') return c.json(content, 400);
       change.content = content;
+    }
+    // Promoting to always-remembered or filing under the assistant ends "for now" (updateMemory).
+    if (body?.until !== undefined) {
+      const until = cleanUntil(body.until, localDay());
+      if (until !== null && typeof until === 'object') return c.json(until, 400);
+      if (until && ((change.kind ?? current.kind) !== 'fact' || (change.subject ?? current.subject) !== 'user')) return c.json(NOT_FOR_NOW, 400);
+      change.until = until;
     }
     updateMemory(db, userId, id, change);
     return c.json(getMemory(db, userId, id));

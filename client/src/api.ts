@@ -128,6 +128,8 @@ export type Memory = {
   source_conversation_id: number | null;
   created_at: string;
   updated_at: string;
+  /** A "for now" memory's last day (YYYY-MM-DD; shared/for-now.ts), or null for a lasting one. */
+  until: string | null;
 };
 
 /** Who the user's assistant is: the name it answers to ('' for the server's `defaultName`) and their description of it. */
@@ -251,9 +253,9 @@ export const api = {
   endPrivate: (chatId: string) => request('DELETE', `/api/private/${chatId}`),
   search: (q: string) => request<SearchHit[]>('GET', `/api/search?q=${encodeURIComponent(q)}`),
   memories: () => request<Memory[]>('GET', '/api/memories'),
-  addMemory: (kind: MemoryKind, content: string, subject: MemorySubject = 'user') =>
-    request<Memory>('POST', '/api/memories', { kind, content, subject }),
-  updateMemory: (id: number, change: { kind?: MemoryKind; content?: string; subject?: MemorySubject }) =>
+  addMemory: (kind: MemoryKind, content: string, subject: MemorySubject = 'user', until: string | null = null) =>
+    request<Memory>('POST', '/api/memories', { kind, content, subject, until }),
+  updateMemory: (id: number, change: { kind?: MemoryKind; content?: string; subject?: MemorySubject; until?: string | null }) =>
     request<Memory>('PATCH', `/api/memories/${id}`, change),
   persona: () => request<Persona>('GET', '/api/persona'),
   savePersona: (name: string, about: string) => request<Persona>('PUT', '/api/persona', { name, about }),
