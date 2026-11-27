@@ -183,8 +183,9 @@ button.icon:hover, button.link:hover { color: var(--accent); }
 
 .conversation { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .messages { flex: 1; overflow-y: auto; padding: 1.25rem 16px; }
-/* "↓ Latest": pinned to the bottom of the visible chat while it's scrolled well up; takes no room. */
-.to-latest { position: sticky; bottom: 0.75rem; height: 0; display: flex; justify-content: center; pointer-events: none; }
+/* "↓ Latest": pinned to the bottom of the visible chat while it's scrolled well up; takes no room.
+   flex-start: stretched to this zero-height row, the button kept only its padding and the label hung out below. */
+.to-latest { position: sticky; bottom: 0.75rem; height: 0; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; }
 .to-latest button {
   pointer-events: auto; transform: translateY(-100%); border-radius: 999px; padding: 0.4rem 1rem; font-size: 0.85rem;
   background: var(--surface); color: var(--accent); border: 1px solid var(--border); box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
