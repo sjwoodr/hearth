@@ -540,6 +540,19 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   being tired, the late hour or bed coming soon isn't goodbye. When they do sign off, say goodnight
   warmly"; a real goodnight still got one 6/6. Leftover: "I'm already in bed" still gets "Sleep well" (6/9
   on the older bedtime turns, 7/9 before).
+  **Plans coming up: naming them in the prompt makes it worse** (2026-11-26; owner: it sends him off when
+  he mentions something coming up, even half an hour away). Made-up chats sent whole through a scratch
+  server's private-chat route, so only the last reply varies (live UD model, fast; ad hoc, scratchpad):
+  plans 30-60 minutes out (dinner, a dentist, a call, a show, a briefing) with the person still chatting got
+  0 send-offs in 60 under the current line, real goodbyes were still seen off 10/10, and the bedtime turns
+  stayed clean ("already in bed" 0/10). It reproduced only once they were already seated with a show 10
+  minutes away: 15/60 ("I'll let you get to it so you don't miss the opening"); a photo of the stage in
+  place of the words, 0/30. Each wording that named the situation did worse than the current line in the
+  same runs: "something they have later (dinner, a show, a call) isn't goodbye" 13/30 vs 5/30; that plus
+  "never say 'I'll let you go' or 'I'll leave you to it'" 6/20 vs 3/20 (it still wrote "I'll leave you to
+  the spectacle"); "plans tell you how long they can talk… leave the goodbye to them" 15/30 vs 10/30. So
+  the line is unchanged. A note on the newest message (simulated inside the message) gave 5/30 vs 10/30:
+  too few runs to build on. Not reproduced: a send-off at half an hour, which may need a long chat.
 - **The time of day rides on a chat's first message and the first after a break** (`timeNote` in
   `pause.ts`, server `TZ`): with only the date, chat 66's 8:34 PM opener got "I hope your Tuesday is off to
   a decent start", and base replays said "Good morning". Not on every message: those are the turns where
