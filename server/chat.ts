@@ -5,6 +5,7 @@ import { ActiveReplies } from './active-replies.ts';
 import { getNotes, notesForPrompt, notesFromCall, NOTES_INSTRUCTIONS, PrivateNotes, SAVE_NOTES_TOOL, savedInTurn, saveNotes } from './chat-notes.ts';
 import { fitHistory } from './context.ts';
 import { pauseNote, timeNote } from './pause.ts';
+import { comingUpNote } from './coming-up.ts';
 import { assistantNameFor } from './persona.ts';
 import { titleLines } from './retitle.ts';
 import { contextUse, listFolds } from './summarize.ts';
@@ -349,7 +350,8 @@ export function registerChatRoutes(api: Hono<Env>, deps: ChatDeps): void {
     // The time of day where a greeting would otherwise guess it: the chat's first message, or the first after a break.
     const opening = !extra.summary && history.filter((m) => m.role === 'user').length === 1;
     const time = opening || extra.pause ? timeNote(user.name, deps.now?.() ?? new Date()) : '';
-    const away = [extra.pause, time].filter(Boolean).join('\n');
+    // "I have to get ready in 30 minutes" isn't goodbye (coming-up.ts).
+    const away = [extra.pause, time, comingUpNote(user.name, latest)].filter(Boolean).join('\n');
     const notes = [recalled, lookedBack.text, away, notesForPrompt(extra.notes ?? '')].filter(Boolean).join('\n\n');
     if (notes && last?.role === 'user') {
       const withRecall = { ...last, content: `${notes}\n\n[${user.name}'s message]\n${last.content}` };

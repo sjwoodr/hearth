@@ -540,19 +540,29 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
   being tired, the late hour or bed coming soon isn't goodbye. When they do sign off, say goodnight
   warmly"; a real goodnight still got one 6/6. Leftover: "I'm already in bed" still gets "Sleep well" (6/9
   on the older bedtime turns, 7/9 before).
-  **Plans coming up: naming them in the prompt makes it worse** (2026-11-26; owner: it sends him off when
-  he mentions something coming up, even half an hour away). Made-up chats sent whole through a scratch
-  server's private-chat route, so only the last reply varies (live UD model, fast; ad hoc, scratchpad):
-  plans 30-60 minutes out (dinner, a dentist, a call, a show, a briefing) with the person still chatting got
-  0 send-offs in 60 under the current line, real goodbyes were still seen off 10/10, and the bedtime turns
-  stayed clean ("already in bed" 0/10). It reproduced only once they were already seated with a show 10
-  minutes away: 15/60 ("I'll let you get to it so you don't miss the opening"); a photo of the stage in
-  place of the words, 0/30. Each wording that named the situation did worse than the current line in the
-  same runs: "something they have later (dinner, a show, a call) isn't goodbye" 13/30 vs 5/30; that plus
-  "never say 'I'll let you go' or 'I'll leave you to it'" 6/20 vs 3/20 (it still wrote "I'll leave you to
-  the spectacle"); "plans tell you how long they can talk… leave the goodbye to them" 15/30 vs 10/30. So
-  the line is unchanged. A note on the newest message (simulated inside the message) gave 5/30 vs 10/30:
-  too few runs to build on. Not reproduced: a send-off at half an hour, which may need a long chat.
+  **Plans coming up: a note on the newest message, not a rule** (`server/coming-up.ts`, 2026-11-26; owner:
+  it sends him off when he mentions something coming up, even half an hour away). Made-up chats sent whole
+  through a scratch server's private-chat route, so only the last reply varies (live UD model, fast, 10 runs
+  per cell; ad hoc, scratchpad). **The wording decides it, not the time or the chat's length**: "I've got
+  about half an hour" and "we're heading to dinner in half an hour" got 0 send-offs in 100 (short chats, a
+  41-message one of ~6.5k tokens, and that one with an earlier send-off left in), while "I have to start
+  getting ready for dinner in about 30 minutes" got 5/10 and "I'll need to head out in a bit" 7/10 on the
+  long chat ("I'll let you get your things sorted… I'll be here whenever you're back"); seated with a show
+  10 minutes away, about 1 in 4 (15/60). Rules in the system prompt didn't help, and naming the situation
+  made it worse: on the two half-hour messages "something they have later (dinner, a show, a call) isn't
+  goodbye" 11/20, that plus "never say 'I'll let you go' or 'I'll leave you to it'" 12/20, "plans tell you
+  how long they can talk… leave the goodbye to them" 10/20, against 12/20 for the current line; seated, the
+  same three 13/30, 6/20 and 15/30 against 5/30, 3/20 and 10/30 (it still wrote "I'll leave you to the
+  spectacle" under the ban). A note on the newest message ("[Sam is still here and chatting. Whatever Sam
+  has coming up, don't wrap up or say goodbye: Sam will say when they're going.]") took the half-hour
+  messages to 0/20 simulated and 1/20 through the built code; real goodbyes still got one, 30/30 simulated
+  and 10/10 built ("gotta go, the show's starting" trips the rules too); two messages the rules catch that
+  aren't plans ("took 40 minutes before the line moved", "read for an hour before dinner") got ordinary
+  replies 20/20. Adding "if they're saying goodbye now, say goodbye warmly" to the note kept goodbyes but
+  let "head out in a bit" back to 6/10, so don't. **Leftover:** the seated case barely moves (3/10 built,
+  5/30 simulated). Keyword rules, like Think: Auto: time left ("in about 30 minutes", "half an hour to go",
+  "I've got an hour", "in a bit"), a clock time unless the message is about the past, getting ready or
+  leaving ("head out", "have to go", "bed soon", "not far off"). Mutation-checked (27 sabotages, all caught).
 - **The time of day rides on a chat's first message and the first after a break** (`timeNote` in
   `pause.ts`, server `TZ`): with only the date, chat 66's 8:34 PM opener got "I hope your Tuesday is off to
   a decent start", and base replays said "Good morning". Not on every message: those are the turns where
@@ -694,6 +704,7 @@ this file and `docs/` leave it out; the older private write-ups and the chart in
 | `server/active-replies.ts` | replies being written, per chat (in memory): a reply outlives its connection, so Stop, the 409 busy check and `replying` (catch-up after a dropped stream) go through it |
 | `server/ollama.ts` | `ollamaChat`, `ollamaThinkingChat`, `ollamaJson`, `ollamaEmbed`, `ollamaModelLoaded` (its `/api/ps`, for the loading notice); each takes an `Endpoint` (Ollama's URL, or the gateway's URL + token) and turns gateway queue lines into `onQueued`, its 409 into `PreemptedError` |
 | `server/think-router.ts` | Think: Auto rules and `SELF_CORRECTION` |
+| `server/coming-up.ts` | `mentionsComingUp` (keyword rules: time left, a clock time not about the past, getting ready or leaving) and `comingUpNote`, the "still here" note on a newest message that mentions plans; added in `assemble` beside the pause and time notes |
 | `server/system-prompt.ts` | reads the system prompt, filling `{{name}}` with `HEARTH_ASSISTANT_NAME` |
 | `server/active-model.ts`, `model-routes.ts` | the admin's model switch: `createModelChoice` (settings row, per-call resolve), `revertIfIdle`/`startModelReverter`; `GET /models`, `PUT`/`DELETE /model`, `requireAdmin` |
 | `server/memories.ts`, `extract.ts` | recall and background extraction (+ lasting, temporary, stated and near-duplicate checks); `memories.subject` is `user` or `assistant`, and the "Who you are" section, self recall and the persona pass (`selfFacts`, `establishedByUser`) handle the second |

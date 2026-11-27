@@ -543,7 +543,11 @@ comes 3 hours or more after the one before it ("Sent about 4 days after the prev
 history carries no times, so a chat picked up days later otherwise reads as one sitting. After a day
 or more the note also asks the model to greet them like someone it missed. A chat's first message
 and the first after a break also carry the user's weekday and time ("It's Tuesday 8:34 PM for
-Steve", in the server's time zone, `TZ`), so an evening hello isn't answered with "good morning". The chat
+Steve", in the server's time zone, `TZ`), so an evening hello isn't answered with "good morning". A
+message that mentions something coming up ("I have to start getting ready in 30 minutes", "show's at
+8:30, I'll head out in a bit") carries a note that the user is still here and will say when they're
+going (`server/coming-up.ts`, keyword rules): without it the model often wrapped the chat up there ("I'll
+let you get your things sorted… I'll be here whenever you're back"). The chat
 shows the same break as a divider ("4 days later"; `shared/time-gap.ts`). Measured on a ~7k-token chat: follow-ups start in ~1 s at 16k; with
 recall in the system prompt every reply reread the whole chat (~22 s), and at 8k the chat no longer
 fits, so trimming changed the start every turn (~7 s). Prompts are kept to `HEARTH_CONTEXT_BUDGET`
